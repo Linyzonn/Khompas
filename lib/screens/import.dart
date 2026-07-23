@@ -5,14 +5,16 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../ai_extractor.dart';
+import '../api_client.dart';
 import '../store.dart';
 import 'settings.dart';
 import 'verify.dart';
 
-/// Import du colloscope, deux chemins au choix :
-/// - "automatique" : photo(s) -> API Claude (cle perso) -> verification ;
-/// - "copier-coller" (gratuit) : on copie le prompt dans SON appli d'IA
-///   (ChatGPT, Claude, Gemini...), on colle sa reponse ici -> verification.
+/// Import du colloscope, trois chemins :
+/// - "code de classe" (serveur Khompas) : un eleve envoie les photos une
+///   fois, tous les autres tapent le code + leur groupe. RECOMMANDE.
+/// - "automatique" : photo(s) -> API Claude avec sa propre cle ;
+/// - "copier-coller" (gratuit) : prompt colle dans SON appli d'IA.
 class ImportScreen extends StatefulWidget {
   const ImportScreen({super.key});
 
@@ -23,20 +25,41 @@ class ImportScreen extends StatefulWidget {
 class _ImportScreenState extends State<ImportScreen> {
   final List<Uint8List> images = [];
   late final TextEditingController groupeCtl;
+  late final TextEditingController codeCtl;
   bool busy = false;
+  String busyLabel = '';
 
   @override
   void initState() {
     super.initState();
-    groupeCtl = TextEditingController(text: AppModel.instance.groupe.toString());
+    final m = AppModel.instance;
+    groupeCtl = TextEditingController(text: m.groupe.toString());
+    codeCtl = TextEditingController(text: m.codeClasse);
+  }
+
+  void _setBusy(String label) => setState(() {
+        busy = true;
+        busyLabel = label;
+      });
+
+  void _clearBusy() {
+    if (mounted) setState(() => busy = false);
+  }
+
+  String _msg(Object e) => e.toString().replaceFirst('Exception: ', '');
+
+  void _snack(String msg, {int secondes = 4}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: Duration(seconds: secondes),
+      content: Text(msg),
+    ));
   }
 
   Future<void> _pick(ImageSource source) async {
     final picker = ImagePicker();
     // On redimensionne des le pick : l'API vision reduit de toute facon les
-    // images a ~1568 px de cote long, donc envoyer une photo 12 Mpx ne fait
-    // que payer plus cher, uploader plus lentement et risquer la limite de
-    // 5 Mo par image. 1600 px suffit pour lire un colloscope net.
+    // images a ~1568 px de cote long, et le serveur borne chaque photo a
+    // ~1,5 Mo. 1600 px suffit pour lire un colloscope net.
     if (source == ImageSource.gallery) {
       final files = await picker.pickMultiImage(
           imageQuality: 88, maxWidth: 1600, maxHeight: 1600);
@@ -57,19 +80,15 @@ class _ImportScreenState extends State<ImportScreen> {
   int? _groupeValide() {
     final groupe = int.tryParse(groupeCtl.text.trim());
     if (groupe == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Indique d'abord ton numéro de groupe."),
-      ));
+      _snack("Indique d'abord ton numéro de groupe.");
     }
     return groupe;
   }
 
   void _versVerification(ExtractionResult result) {
     if (result.colles.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'Aucun créneau trouvé pour ce groupe — vérifie la photo et le numéro.'),
-      ));
+      _snack(
+          'Aucun créneau trouvé pour ce groupe — vérifie le numéro (et la photo).');
       return;
     }
     Navigator.pushReplacement(
@@ -78,15 +97,117 @@ class _ImportScreenState extends State<ImportScreen> {
     );
   }
 
-  // ---------- Chemin 1 : extraction automatique (cle API) ----------
+  // ---------- Chemin 1 : code de classe (serveur Khompas) ----------
+
+  Future<void> _viaCode() async {
+    final groupe = _groupeValide();
+    if (groupe == null) return;
+    final code = codeCtl.text.trim().toUpperCase();
+    if (code.length != 6) {
+      _snack('Le code de classe fait 6 caractères (ex. K7M2PX).');
+      return;
+    }
+    final m = AppModel.instance;
+    _setBusy(
+        'Récupération de tes khôlles… (jusqu\'à 2 min si ton groupe est le premier à demander)');
+    try {
+      final result = await ApiKhompas(m.serverUrl).groupe(code, groupe);
+      m.setProfil(filiere: m.filiere, groupe: groupe);
+      m.setCodeClasse(code);
+      if (!mounted) return;
+      _versVerification(result);
+    } catch (e) {
+      if (mounted) _snack('Échec : ${_msg(e)}', secondes: 6);
+    } finally {
+      _clearBusy();
+    }
+  }
+
+  Future<void> _creerClasse() async {
+    final groupe = _groupeValide();
+    if (groupe == null) return;
+    if (images.isEmpty) {
+      _snack(
+          "Ajoute d'abord les photos du colloscope (section « Photos » juste en dessous).");
+      return;
+    }
+    final m = AppModel.instance;
+    try {
+      _setBusy('Création du code de classe…');
+      final api = ApiKhompas(m.serverUrl);
+      final code = await api.creerClasse();
+      for (var i = 0; i < images.length; i++) {
+        _setBusy('Envoi de la photo ${i + 1}/${images.length}…');
+        await api.envoyerPhoto(code, i, images[i]);
+      }
+      m.setCodeClasse(code);
+      m.setProfil(filiere: m.filiere, groupe: groupe);
+      codeCtl.text = code;
+      _clearBusy();
+      if (!mounted) return;
+      await _montrerCode(code);
+      _setBusy('Extraction des khôlles de ton groupe… (jusqu\'à 2 min)');
+      final result = await api.groupe(code, groupe);
+      if (!mounted) return;
+      _versVerification(result);
+    } catch (e) {
+      if (mounted) _snack('Échec : ${_msg(e)}', secondes: 6);
+    } finally {
+      _clearBusy();
+    }
+  }
+
+  Future<void> _montrerCode(String code) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Code de ta classe 🎉'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: SelectableText(
+                code,
+                style: const TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 6),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Partage-le à ta classe (groupe WhatsApp, Discord…) : chacun '
+              'entre ce code et son numéro de groupe, et reçoit ses khôlles — '
+              'sans photo, sans clé, gratuitement. Le code reste enregistré '
+              'dans ton profil.',
+              style: TextStyle(fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: code));
+            },
+            child: const Text('Copier le code'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Continuer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------- Chemin 2 : extraction directe (cle API perso) ----------
 
   Future<void> _lancer() async {
     final m = AppModel.instance;
     if (m.apiKey.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            "Pas de clé API ? Utilise l'import gratuit par copier-coller, juste en dessous."),
-      ));
+      _snack(
+          "Pas de clé API ? Utilise le code de classe ou l'import copier-coller.");
       Navigator.push(
           context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
       return;
@@ -94,7 +215,7 @@ class _ImportScreenState extends State<ImportScreen> {
     final groupe = _groupeValide();
     if (groupe == null || images.isEmpty) return;
 
-    setState(() => busy = true);
+    _setBusy('Analyse du colloscope en cours…');
     try {
       m.setProfil(filiere: m.filiere, groupe: groupe);
       final result = await extraireColloscope(
@@ -105,16 +226,13 @@ class _ImportScreenState extends State<ImportScreen> {
       if (!mounted) return;
       _versVerification(result);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Échec : $e')));
-      }
+      if (mounted) _snack('Échec : ${_msg(e)}', secondes: 6);
     } finally {
-      if (mounted) setState(() => busy = false);
+      _clearBusy();
     }
   }
 
-  // ---------- Chemin 2 : copier-coller avec son IA (gratuit) ----------
+  // ---------- Chemin 3 : copier-coller avec son IA (gratuit) ----------
 
   Future<void> _copierPrompt() async {
     final groupe = _groupeValide();
@@ -123,11 +241,9 @@ class _ImportScreenState extends State<ImportScreen> {
     m.setProfil(filiere: m.filiere, groupe: groupe);
     await Clipboard.setData(ClipboardData(text: buildPromptColloscope(groupe)));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      duration: Duration(seconds: 7),
-      content: Text(
-          'Prompt copié ✅ Ouvre ChatGPT, Claude ou Gemini : joins la ou les photos du colloscope, colle le prompt, puis copie TOUTE sa réponse et reviens appuyer sur « Coller la réponse ».'),
-    ));
+    _snack(
+        'Prompt copié ✅ Ouvre ChatGPT, Claude ou Gemini : joins la ou les photos du colloscope, colle le prompt, puis copie TOUTE sa réponse et reviens appuyer sur « Coller la réponse ».',
+        secondes: 7);
   }
 
   Future<void> _collerReponse() async {
@@ -172,10 +288,9 @@ class _ImportScreenState extends State<ImportScreen> {
       _versVerification(result);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              "Réponse illisible — copie bien TOUTE la réponse de l'IA, accolades comprises, puis réessaie."),
-        ));
+        _snack(
+            "Réponse illisible — copie bien TOUTE la réponse de l'IA, accolades comprises, puis réessaie.",
+            secondes: 6);
       }
     }
   }
@@ -184,22 +299,30 @@ class _ImportScreenState extends State<ImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final serveurActif = AppModel.instance.serverUrl.isNotEmpty;
     return Scaffold(
       appBar: AppBar(title: const Text('Importer mon colloscope')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(14),
-              child: Text(
-                '📸 Le point de départ : une photo (ou capture d\'écran) de ton colloscope — le grand tableau des groupes par semaine. '
-                'L\'IA repère tes créneaux, calcule les vraies dates (vacances comprises) et applique les règles écrites en bas de page. '
-                'Tu vérifies tout avant l\'ajout.',
+          if (busy)
+            Card(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(busyLabel)),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 14),
           TextField(
             controller: groupeCtl,
             keyboardType: TextInputType.number,
@@ -208,8 +331,65 @@ class _ImportScreenState extends State<ImportScreen> {
               border: OutlineInputBorder(),
             ),
           ),
+          if (serveurActif) ...[
+            const SizedBox(height: 20),
+            Text('Ma classe — avec un code',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Quelqu'un de ta classe a déjà créé un code ? Entre-le : "
+                      'tes khôlles arrivent toutes seules — sans photo, sans clé.',
+                      style:
+                          TextStyle(fontSize: 13, color: Colors.grey.shade800),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: codeCtl,
+                            textCapitalization: TextCapitalization.characters,
+                            decoration: const InputDecoration(
+                              labelText: 'Code de classe',
+                              border: OutlineInputBorder(),
+                              hintText: 'ex. K7M2PX',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        FilledButton.icon(
+                          icon: const Icon(Icons.download),
+                          label: const Text('Récupérer'),
+                          onPressed: busy ? null : _viaCode,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Premier de ta classe ? Ajoute les photos du colloscope '
+                      '(section suivante) puis :',
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 6),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.group_add),
+                      label: const Text('Créer le code de ma classe'),
+                      onPressed: busy ? null : _creerClasse,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
-          Text('Automatique — avec ta clé API',
+          Text('Photos du colloscope',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Row(
@@ -264,23 +444,23 @@ class _ImportScreenState extends State<ImportScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
+          Text(
+            'Une photo bien à plat, nette et entière (tableau + tableau des semaines + notes du bas) donne les meilleurs résultats.',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          ),
+          const SizedBox(height: 20),
+          Text('Extraction directe — avec ta clé API',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
           FilledButton.icon(
-            icon: busy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.auto_awesome),
-            label: Text(busy ? 'Analyse en cours…' : "Lancer l'extraction"),
+            icon: const Icon(Icons.auto_awesome),
+            label: const Text("Lancer l'extraction"),
             onPressed: busy || images.isEmpty ? null : _lancer,
           ),
           const SizedBox(height: 6),
           Text(
-            'Nécessite ta clé API dans Réglages (quelques centimes par import). '
-            'Astuce : une photo bien à plat, nette et entière (tableau + tableau des semaines + notes du bas) donne les meilleurs résultats.',
+            'Nécessite ta clé API dans Réglages (quelques centimes par import).',
             style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
           ),
           const SizedBox(height: 20),

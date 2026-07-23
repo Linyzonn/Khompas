@@ -18,10 +18,14 @@ class AppModel extends ChangeNotifier {
   List<Chapitre> chapitres = [];
   String filiere = 'PCSI';
   int groupe = 1;
+  // Code de partage du colloscope de ma classe (serveur Khompas).
+  String codeClasse = '';
   // Priorite par matiere (1 a 3) : ponderation du plan de travail.
   Map<String, int> prios = {};
 
   String apiKey = '';
+  // URL du serveur Khompas (beta) — vide = fonctions serveur masquees.
+  String serverUrl = '';
   bool loaded = false;
 
   // ---------- Persistance ----------
@@ -35,6 +39,7 @@ class AppModel extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       apiKey = prefs.getString('apiKey') ?? '';
+      serverUrl = prefs.getString('serverUrl') ?? '';
       String? raw;
       if (kIsWeb) {
         // Version web (PC) : pas de systeme de fichiers, la base vit dans
@@ -57,6 +62,7 @@ class AppModel extends ChangeNotifier {
             .toList();
         filiere = (j['filiere'] ?? 'PCSI') as String;
         groupe = (j['groupe'] ?? 1) as int;
+        codeClasse = (j['codeClasse'] ?? '') as String;
         prios = ((j['prios'] ?? {}) as Map)
             .map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
       }
@@ -76,6 +82,7 @@ class AppModel extends ChangeNotifier {
         'chapitres': chapitres.map((c) => c.toJson()).toList(),
         'filiere': filiere,
         'groupe': groupe,
+        'codeClasse': codeClasse,
         'prios': prios,
       };
 
@@ -131,6 +138,7 @@ class AppModel extends ChangeNotifier {
           .toList();
       final newFiliere = (decoded['filiere'] ?? filiere) as String;
       final newGroupe = ((decoded['groupe'] ?? groupe) as num).toInt();
+      final newCodeClasse = (decoded['codeClasse'] ?? codeClasse) as String;
       final newPrios = ((decoded['prios'] ?? {}) as Map)
           .map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
       colles = newColles;
@@ -138,6 +146,7 @@ class AppModel extends ChangeNotifier {
       chapitres = newChapitres;
       filiere = newFiliere;
       groupe = newGroupe;
+      codeClasse = newCodeClasse;
       prios = newPrios;
     } catch (_) {
       throw Exception('sauvegarde illisible ou incomplète — rien n\'a été modifié.');
@@ -151,6 +160,18 @@ class AppModel extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('apiKey', apiKey);
     notifyListeners();
+  }
+
+  Future<void> saveServerUrl(String url) async {
+    serverUrl = url.trim();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('serverUrl', serverUrl);
+    notifyListeners();
+  }
+
+  void setCodeClasse(String code) {
+    codeClasse = code.trim().toUpperCase();
+    _touch();
   }
 
   void _touch() {

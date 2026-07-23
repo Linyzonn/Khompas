@@ -2,7 +2,9 @@
 
 Le manque que toutes les prépas connaissent : un outil qui comprend VRAIMENT le fonctionnement d'une CPGE — colloscope, khôlles, programmes de colles, DS du samedi — et qui t'aide à décider quoi travailler chaque soir.
 
-## ✨ Fonctionnalités (bêta 0.2)
+## ✨ Fonctionnalités (bêta 0.3)
+
+- 🤝 **Partage par code de classe** (serveur Khompas) : un élève envoie les photos du colloscope une fois → code à 6 caractères → chaque camarade entre le code + son numéro de groupe et reçoit ses khôlles. Sans photo, sans clé API. Une extraction par groupe, en cache pour toute la classe (~1 € par classe entière). Mise en route du serveur : [server/README-SERVEUR.md](server/README-SERVEUR.md).
 
 - 📸 **Import du colloscope en une photo** : l'IA repère tes créneaux (ton groupe), convertit les numéros de semaines en vraies dates (vacances comprises) et applique les règles écrites en bas de page (roulements de créneaux…). Tu vérifies et corriges tout avant l'ajout.
 - 🆓 **Import "copier-coller" sans clé API** : copie le prompt d'extraction, colle-le (avec la photo) dans ton appli ChatGPT / Claude / Gemini, puis colle sa réponse dans Khompas. Gratuit avec l'IA que tu as déjà.

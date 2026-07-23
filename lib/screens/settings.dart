@@ -19,6 +19,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController keyCtl;
+  late final TextEditingController serverCtl;
   late final TextEditingController groupeCtl;
   static const filieres = [
     'MPSI', 'PCSI', 'PTSI', 'MP2I', 'BCPST',
@@ -31,6 +32,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     final m = AppModel.instance;
     keyCtl = TextEditingController(text: m.apiKey);
+    serverCtl = TextEditingController(text: m.serverUrl);
     groupeCtl = TextEditingController(text: m.groupe.toString());
   }
 
@@ -214,14 +216,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          Text('Extraction IA', style: Theme.of(context).textTheme.titleMedium),
+          Text('Serveur Khompas & extraction IA',
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           Text(
-            'Deux façons d\'importer un colloscope : automatiquement avec ta clé API '
-            'Claude ci-dessous (console.anthropic.com → API keys, quelques centimes '
-            'par import), ou GRATUITEMENT par copier-coller avec ton appli d\'IA '
-            '(ChatGPT, Claude, Gemini) — voir l\'écran d\'import. Une version sans '
-            'aucune manipulation arrivera avec le compte Khompas.',
+            'Avec le serveur Khompas, ta classe partage son colloscope par un '
+            'simple CODE : personne n\'a besoin de clé API. Colle ici l\'URL du '
+            'serveur (ex. https://khompas.deno.dev) — la section « Code de '
+            'classe » apparaîtra sur l\'écran d\'import.',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: serverCtl,
+            keyboardType: TextInputType.url,
+            decoration: InputDecoration(
+              labelText: 'Serveur Khompas (URL)',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.save),
+                onPressed: () async {
+                  await m.saveServerUrl(serverCtl.text);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Serveur enregistré ✅')));
+                  }
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Sans serveur, deux autres options sur l\'écran d\'import : ta propre '
+            'clé API Claude ci-dessous (console.anthropic.com → API keys, quelques '
+            'centimes par import), ou l\'import GRATUIT par copier-coller avec ton '
+            'appli d\'IA (ChatGPT, Claude, Gemini).',
             style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
           ),
           const SizedBox(height: 8),
@@ -247,7 +276,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Khompas — bêta 0.2'),
+            title: Text('Khompas — bêta 0.3'),
             subtitle: Text(
                 'Le compagnon de ta prépa. Tes données restent sur ton téléphone.'),
           ),
