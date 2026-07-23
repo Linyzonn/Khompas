@@ -11,7 +11,13 @@
 // Garde-fous : limites par IP et globale par jour, taille des photos bornee,
 // tout expire apres ~13 mois (le temps d'une annee scolaire).
 
-const MODELE = 'claude-sonnet-4-6';
+// Moteur d'extraction, au choix via les variables d'environnement :
+//  - GEMINI_API_KEY : GRATUIT (clé AI Studio, sans carte bancaire) — prioritaire ;
+//  - ANTHROPIC_API_KEY : payant (~5 centimes/extraction), qualité maximale.
+// Pour changer de moteur : il suffit de changer la variable, pas le code.
+// (Apres un changement, ?force=1 permet de re-extraire un groupe deja en cache.)
+const MODELE_CLAUDE = 'claude-sonnet-4-6';
+const MODELE_GEMINI_DEFAUT = 'gemini-2.5-flash';
 const MAX_PHOTOS = 5;
 const MAX_B64_PAR_PHOTO = 2_000_000; // ~1,5 Mo de JPEG une fois decode
 const CHUNK = 60_000; // Deno KV limite chaque valeur a 64 Ko
@@ -117,6 +123,59 @@ async function lirePhotos(code: string): Promise<string[] | null> {
 }
 
 async function extraire(images: string[], groupe: number): Promise<string> {
+  const cleGemini = Deno.env.get('GEMINI_API_KEY');
+  const cleClaude = Deno.env.get('ANTHROPIC_API_KEY');
+  if (cleGemini) return await extraireGemini(cleGemini, images, groupe);
+  if (cleClaude) return await extraireClaude(cleClaude, images, groupe);
+  throw new Error(
+    "aucune clé configurée sur le serveur — ajoute GEMINI_API_KEY (gratuite, aistudio.google.com) ou ANTHROPIC_API_KEY dans les variables d'environnement.",
+  );
+}
+
+async function extraireGemini(
+  cle: string,
+  images: string[],
+  groupe: number,
+): Promise<string> {
+  const modele = Deno.env.get('GEMINI_MODEL') ?? MODELE_GEMINI_DEFAUT;
+  const parts: unknown[] = images.map((b64) => ({
+    inline_data: { mime_type: 'image/jpeg', data: b64 },
+  }));
+  parts.push({ text: promptColloscope(groupe) });
+  const body = JSON.stringify({
+    contents: [{ parts }],
+    // Marge large : sur Gemini 2.5, la reflexion interne compte dans la sortie.
+    generationConfig: { maxOutputTokens: 16384 },
+  });
+  for (let essai = 0; ; essai++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cle}`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body },
+    );
+    if (res.ok) {
+      const data = await res.json() as {
+        candidates?: { content?: { parts?: { text?: string }[] } }[];
+      };
+      return (data.candidates?.[0]?.content?.parts ?? [])
+        .map((p) => p.text ?? '')
+        .join('\n');
+    }
+    // Quota gratuit Gemini : ~10 requetes/minute. Si toute une classe arrive
+    // en meme temps, on encaisse un refus en retentant une fois apres 8 s.
+    if ((res.status === 429 || res.status === 503) && essai === 0) {
+      await res.text();
+      await new Promise((r) => setTimeout(r, 8000));
+      continue;
+    }
+    throw new Error(`API Gemini ${res.status} : ${(await res.text()).slice(0, 300)}`);
+  }
+}
+
+async function extraireClaude(
+  cle: string,
+  images: string[],
+  groupe: number,
+): Promise<string> {
   const content: unknown[] = images.map((b64) => ({
     type: 'image',
     source: { type: 'base64', media_type: 'image/jpeg', data: b64 },
@@ -125,12 +184,12 @@ async function extraire(images: string[], groupe: number): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') ?? '',
+      'x-api-key': cle,
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: MODELE,
+      model: MODELE_CLAUDE,
       max_tokens: 8000,
       messages: [{ role: 'user', content }],
     }),
