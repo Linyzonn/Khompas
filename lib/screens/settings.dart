@@ -92,7 +92,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (ok != true) return;
     try {
-      final res = await FilePicker.platform.pickFiles(withData: true);
+      // API file_picker v11 : methode statique (l'ancien FilePicker.platform
+      // n'existe plus).
+      final res = await FilePicker.pickFiles(withData: true);
       final bytes = res?.files.single.bytes;
       if (bytes == null) return; // annule par l'utilisateur
       final resume = AppModel.instance.importJson(utf8.decode(bytes));
