@@ -26,9 +26,8 @@ jobs:
       - name: Générer le squelette web
         run: flutter create . --platforms=web --project-name khompas
       - run: flutter pub get
-      # ⚠️ « /khompas/ » doit être exactement le nom du dépôt GitHub.
-      # Si tu appelles ton dépôt autrement, change cette ligne.
-      - run: flutter build web --release --base-href /khompas/
+      # Le base-href reprend automatiquement le nom du dépôt, quel qu'il soit.
+      - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web

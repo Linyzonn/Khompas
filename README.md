@@ -20,7 +20,7 @@ Le manque que toutes les prépas connaissent : un outil qui comprend VRAIMENT le
 
 Ce dossier **est** le projet complet : les workflows GitHub génèrent eux-mêmes les squelettes iOS / Android / web (`flutter create .`) et injectent les permissions iOS. Pas besoin de Flutter en local, pas d'Info.plist à éditer.
 
-1. **Publie ce dossier sur GitHub** avec GitHub Desktop : *Add local repository* → commit → *Publish repository*, nom **`khompas`** (⚠️ exactement ce nom, en minuscules — sinon adapte la ligne `--base-href` de `deploy-web.yml`), repo **public** (nécessaire pour GitHub Pages gratuit).
+1. **Publie ce dossier sur GitHub** avec GitHub Desktop : *Add local repository* → commit → *Publish repository*, en **public** (nécessaire pour GitHub Pages gratuit). Le nom du dépôt est libre : le workflow web s'y adapte automatiquement.
 2. **Active la version web** (une seule fois) : sur github.com → ton repo → *Settings* → *Pages* → *Source* : **GitHub Actions**.
 3. C'est tout. Ensuite :
 
