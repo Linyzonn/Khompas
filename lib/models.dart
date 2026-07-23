@@ -121,24 +121,90 @@ class Ds {
       );
 }
 
-/// Un chapitre du programme, avec ton niveau de maitrise auto-evalue (0 a 4).
+/// Etapes de progression d'un chapitre (le workflow prepa).
+const List<String> kEtapesChapitre = [
+  'pas vu', 'vu en cours', 'revu chez moi', 'exos faits', 'DS/DNS passé',
+];
+
+/// Un chapitre du programme, avec :
+/// - [etape] : ou tu en es dans le workflow (0 = pas vu ... 4 = DS/DNS passe) ;
+/// - [maitrise] : a quel point tu le tiens (0 = fragile ... 4 = maitrise).
 class Chapitre {
   String id;
   String matiere;
   String nom;
   int maitrise; // 0 = pas vu, 4 = maitrise
+  int etape; // index dans kEtapesChapitre
 
-  Chapitre({String? id, required this.matiere, required this.nom, this.maitrise = 2})
-      : id = id ?? _newId();
+  Chapitre({
+    String? id,
+    required this.matiere,
+    required this.nom,
+    this.maitrise = 2,
+    this.etape = 0,
+  }) : id = id ?? _newId();
 
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'matiere': matiere, 'nom': nom, 'maitrise': maitrise};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'matiere': matiere,
+        'nom': nom,
+        'maitrise': maitrise,
+        'etape': etape,
+      };
 
   static Chapitre fromJson(Map<String, dynamic> j) => Chapitre(
         id: j['id'] as String?,
         matiere: (j['matiere'] ?? '') as String,
         nom: (j['nom'] ?? '') as String,
         maitrise: (j['maitrise'] ?? 2) as int,
+        etape: (j['etape'] ?? 0) as int,
+      );
+}
+
+/// Un evenement recurrent de la semaine type : cours qui finit tard, sport,
+/// musique, association... Affiche sur l'onglet Aujourd'hui pour avoir la
+/// journee complete en tete et calibrer le travail du soir.
+class Routine {
+  String id;
+  String titre;
+  int jour; // 1 = lundi ... 7 = dimanche
+  int debutMin; // minutes depuis minuit (ex. 18h30 -> 1110)
+  int dureeMin;
+  // Matiere associee (facultatif) : "Cours de Maths" -> 'Maths'. Le moteur
+  // du soir s'en sert : cours vu aujourd'hui = a revoir ce soir.
+  String matiere;
+
+  Routine({
+    String? id,
+    required this.titre,
+    required this.jour,
+    required this.debutMin,
+    this.dureeMin = 60,
+    this.matiere = '',
+  }) : id = id ?? _newId();
+
+  String get labelHeure {
+    String h(int m) =>
+        '${m ~/ 60}h${(m % 60) == 0 ? '' : (m % 60).toString().padLeft(2, '0')}';
+    return '${h(debutMin)}–${h(debutMin + dureeMin)}';
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'titre': titre,
+        'jour': jour,
+        'debutMin': debutMin,
+        'dureeMin': dureeMin,
+        'matiere': matiere,
+      };
+
+  static Routine fromJson(Map<String, dynamic> j) => Routine(
+        id: j['id'] as String?,
+        titre: (j['titre'] ?? '') as String,
+        jour: (j['jour'] ?? 1) as int,
+        debutMin: (j['debutMin'] ?? 1080) as int,
+        dureeMin: (j['dureeMin'] ?? 60) as int,
+        matiere: (j['matiere'] ?? '') as String,
       );
 }
 

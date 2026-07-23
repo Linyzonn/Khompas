@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../store.dart';
+import 'routines.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -185,6 +186,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           const SizedBox(height: 24),
+          Text('Ma semaine type', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.loop),
+            title: const Text('Cours tardifs, sport, activités…'),
+            subtitle: const Text(
+                'Ce qui revient chaque semaine, affiché sur Aujourd\'hui'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const RoutinesScreen())),
+          ),
+          const SizedBox(height: 24),
           Text('Mes données', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           Text(
@@ -282,7 +296,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Khompas — bêta 0.3'),
+            title: Text('Khompas — bêta 0.5'),
             subtitle: Text(
                 'Le compagnon de ta prépa. Tes données restent sur ton téléphone.'),
           ),

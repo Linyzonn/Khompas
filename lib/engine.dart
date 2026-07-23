@@ -39,10 +39,29 @@ List<Suggestion> suggere(AppModel m, int minutesDispo) {
     }
   }
 
+  // Matieres ayant cours aujourd'hui / demain (routines etiquetees d'une
+  // matiere dans "Ma semaine type") : regle d'or de la prepa — revoir le
+  // cours du jour le soir meme, et preparer celui du lendemain.
+  final coursAujourdhui = <String>{};
+  final coursDemain = <String>{};
+  final demainJour = now.weekday % 7 + 1;
+  for (final r in m.routines) {
+    final matR = r.matiere.trim();
+    if (matR.isEmpty) continue;
+    if (r.jour == now.weekday) coursAujourdhui.add(matR.toLowerCase());
+    if (r.jour == demainJour) coursDemain.add(matR.toLowerCase());
+  }
+
   // Score par matiere.
   final scores = <String, double>{};
   final raisons = <String, String>{};
-  final allMatieres = <String>{...m.matieres, ...echeances.keys};
+  final allMatieres = <String>{
+    ...m.matieres,
+    ...echeances.keys,
+    ...m.routines
+        .where((r) => r.matiere.trim().isNotEmpty)
+        .map((r) => r.matiere.trim()),
+  };
 
   for (final mat in allMatieres) {
     double urgence = 0.6; // travail de fond par defaut
@@ -67,15 +86,27 @@ List<Suggestion> suggere(AppModel m, int minutesDispo) {
 
     final prio = (m.prios[mat] ?? 2).toDouble(); // 1 a 3
 
-    // Fragilite : 1 (tout maitrise) a 2 (tout fragile).
-    final chs = m.chapitres.where((c) => c.matiere == mat).toList();
+    // Fragilite : 1 (tout maitrise) a 2 (tout fragile) — calculee sur les
+    // chapitres COMMENCES (etape > 0), pas sur le programme entier importe.
+    final chs =
+        m.chapitres.where((c) => c.matiere == mat && c.etape > 0).toList();
     double fragilite = 1.3;
     if (chs.isNotEmpty) {
       final avg = chs.map((c) => c.maitrise).reduce((a, b) => a + b) / chs.length;
       fragilite = 1 + (4 - avg) / 4; // maitrise 4 -> 1.0 ; maitrise 0 -> 2.0
     }
 
-    scores[mat] = urgence * prio * fragilite;
+    // Bonus "cours du jour / du lendemain" (Ma semaine type).
+    var bonusCours = 1.0;
+    if (coursAujourdhui.contains(mat.toLowerCase())) {
+      bonusCours = 1.5;
+      if (e == null) raison = "Cours d'aujourd'hui — à revoir ce soir";
+    } else if (coursDemain.contains(mat.toLowerCase())) {
+      bonusCours = 1.2;
+      if (e == null) raison = 'Cours demain — prends de l\'avance';
+    }
+
+    scores[mat] = urgence * prio * fragilite * bonusCours;
     raisons[mat] = raison;
   }
 
@@ -103,14 +134,20 @@ List<Suggestion> suggere(AppModel m, int minutesDispo) {
     if (mins > reste) mins = reste;
     reste -= mins;
 
-    // Contenu conseille : programme de colle s'il existe, sinon chapitres fragiles.
+    // Contenu conseille, dans l'ordre : programme de colle s'il existe,
+    // sinon chapitres "vus en cours mais pas revus", sinon chapitres fragiles.
     var quoi = '';
     final e = echeances[mat];
+    final aRevoir =
+        m.chapitres.where((c) => c.matiere == mat && c.etape == 1).toList();
     if (e != null && e.programme.trim().isNotEmpty) {
       quoi = 'Programme : ${e.programme.trim()}';
+    } else if (aRevoir.isNotEmpty) {
+      quoi =
+          'À revoir (vu en cours) : ${aRevoir.take(2).map((c) => c.nom).join(', ')}';
     } else {
       final fragiles = m.chapitres
-          .where((c) => c.matiere == mat && c.maitrise <= 2)
+          .where((c) => c.matiere == mat && c.maitrise <= 2 && c.etape > 0)
           .toList()
         ..sort((a, b) => a.maitrise.compareTo(b.maitrise));
       if (fragiles.isNotEmpty) {

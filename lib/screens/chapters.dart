@@ -2,11 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import 'import_chapitres.dart';
 
-/// Onglet "Chapitres" : ton niveau de maitrise auto-evalue, par matiere.
-/// C'est ce qui nourrit le plan de travail (les chapitres fragiles remontent).
+/// Onglet "Chapitres" : ou tu en es (etape) et a quel point tu tiens chaque
+/// chapitre (maitrise 0-4). Nourrit le plan de travail du soir.
 class ChaptersScreen extends StatelessWidget {
   const ChaptersScreen({super.key});
+
+  void _importer(BuildContext context) {
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const ImportChapitresScreen()));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,19 +25,39 @@ class ChaptersScreen extends StatelessWidget {
 
     return Scaffold(
       body: m.chapitres.isEmpty
-          ? const Center(
+          ? Center(
               child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                  'Ajoute les chapitres de ton programme et note ta maîtrise de 0 à 4.\n\n'
-                  'Le plan de travail du soir mettra automatiquement l\'accent sur tes points faibles.',
-                  textAlign: TextAlign.center,
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      'Charge les chapitres du programme officiel de ta filière '
+                      '(prepa.org), puis fais-les vivre : vu en cours → revu → '
+                      'exos → DS. Le plan du soir s\'appuie dessus.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.menu_book),
+                      label: const Text('Importer le programme officiel'),
+                      onPressed: () => _importer(context),
+                    ),
+                  ],
                 ),
               ),
             )
           : ListView(
               padding: const EdgeInsets.only(bottom: 90),
               children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.menu_book),
+                    label: const Text('Importer le programme officiel (IA)'),
+                    onPressed: () => _importer(context),
+                  ),
+                ),
                 for (final mat in matieres)
                   if (m.chapitres.any((c) => c.matiere == mat))
                     _section(context, mat),
@@ -70,27 +96,59 @@ class ChaptersScreen extends StatelessWidget {
           ListTile(
             dense: true,
             title: Text(c.nom),
-            subtitle: Row(
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (var i = 0; i < 5; i++)
-                  InkWell(
-                    onTap: () {
-                      c.maitrise = i;
-                      m.updateChapitre(c);
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.all(3),
-                      child: Icon(
-                        i <= c.maitrise ? Icons.circle : Icons.circle_outlined,
-                        size: 16,
-                        color: i <= c.maitrise ? _couleurMaitrise(c.maitrise) : Colors.grey,
+                // Etape de progression : le workflow prepa.
+                Wrap(
+                  spacing: 4,
+                  runSpacing: -8,
+                  children: [
+                    for (var iEt = 0; iEt < kEtapesChapitre.length; iEt++)
+                      ChoiceChip(
+                        label: Text(kEtapesChapitre[iEt],
+                            style: const TextStyle(fontSize: 10)),
+                        selected: c.etape == iEt,
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                        onSelected: (_) {
+                          c.etape = iEt;
+                          m.updateChapitre(c);
+                        },
                       ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                // Maitrise : a quel point tu le tiens.
+                Row(
+                  children: [
+                    for (var i = 0; i < 5; i++)
+                      InkWell(
+                        onTap: () {
+                          c.maitrise = i;
+                          m.updateChapitre(c);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(3),
+                          child: Icon(
+                            i <= c.maitrise
+                                ? Icons.circle
+                                : Icons.circle_outlined,
+                            size: 16,
+                            color: i <= c.maitrise
+                                ? _couleurMaitrise(c.maitrise)
+                                : Colors.grey,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _labelMaitrise(c.maitrise),
+                      style:
+                          TextStyle(fontSize: 11, color: Colors.grey.shade600),
                     ),
-                  ),
-                const SizedBox(width: 6),
-                Text(
-                  _labelMaitrise(c.maitrise),
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ],
                 ),
               ],
             ),
@@ -172,6 +230,8 @@ class ChaptersScreen extends StatelessWidget {
                 m.addChapitre(Chapitre(
                   matiere: matiereCtl.text.trim(),
                   nom: nomCtl.text.trim(),
+                  // Ajoute a la main = generalement un chapitre en cours.
+                  etape: 1,
                 ));
                 Navigator.pop(context);
               },

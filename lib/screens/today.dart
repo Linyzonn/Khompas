@@ -31,11 +31,44 @@ class _TodayScreenState extends State<TodayScreen> {
             d.date.isBefore(dimanche))
         .toList();
 
+    final routinesJour = m.routinesDu(now.weekday);
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         if (prochaine != null) _prochaineCard(context, prochaine),
         if (prochaine == null) _emptyCard(context),
+        if (routinesJour.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.loop, size: 16),
+                      const SizedBox(width: 6),
+                      Text("Aujourd'hui aussi :",
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Colors.grey.shade700)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  for (final r in routinesJour)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Text('• ${r.titre} · ${r.labelHeure}',
+                          style: const TextStyle(fontSize: 13)),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         Text('Ce soir, tu as…', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),

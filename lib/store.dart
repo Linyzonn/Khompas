@@ -16,6 +16,7 @@ class AppModel extends ChangeNotifier {
   List<Colle> colles = [];
   List<Ds> ds = [];
   List<Chapitre> chapitres = [];
+  List<Routine> routines = [];
   String filiere = 'PCSI';
   int groupe = 1;
   // Code de partage du colloscope de ma classe (serveur Khompas).
@@ -60,6 +61,9 @@ class AppModel extends ChangeNotifier {
         chapitres = ((j['chapitres'] ?? []) as List)
             .map((e) => Chapitre.fromJson(e as Map<String, dynamic>))
             .toList();
+        routines = ((j['routines'] ?? []) as List)
+            .map((e) => Routine.fromJson(e as Map<String, dynamic>))
+            .toList();
         filiere = (j['filiere'] ?? 'PCSI') as String;
         groupe = (j['groupe'] ?? 1) as int;
         codeClasse = (j['codeClasse'] ?? '') as String;
@@ -80,6 +84,7 @@ class AppModel extends ChangeNotifier {
         'colles': colles.map((c) => c.toJson()).toList(),
         'ds': ds.map((d) => d.toJson()).toList(),
         'chapitres': chapitres.map((c) => c.toJson()).toList(),
+        'routines': routines.map((r) => r.toJson()).toList(),
         'filiere': filiere,
         'groupe': groupe,
         'codeClasse': codeClasse,
@@ -136,6 +141,9 @@ class AppModel extends ChangeNotifier {
       final newChapitres = ((decoded['chapitres'] ?? []) as List)
           .map((e) => Chapitre.fromJson(e as Map<String, dynamic>))
           .toList();
+      final newRoutines = ((decoded['routines'] ?? []) as List)
+          .map((e) => Routine.fromJson(e as Map<String, dynamic>))
+          .toList();
       final newFiliere = (decoded['filiere'] ?? filiere) as String;
       final newGroupe = ((decoded['groupe'] ?? groupe) as num).toInt();
       final newCodeClasse = (decoded['codeClasse'] ?? codeClasse) as String;
@@ -144,6 +152,7 @@ class AppModel extends ChangeNotifier {
       colles = newColles;
       ds = newDs;
       chapitres = newChapitres;
+      routines = newRoutines;
       filiere = newFiliere;
       groupe = newGroupe;
       codeClasse = newCodeClasse;
@@ -218,6 +227,26 @@ class AppModel extends ChangeNotifier {
     _touch();
   }
 
+  /// Ajoute un lot de DS (import planning) en evitant les doublons
+  /// (meme matiere + meme jour). Retourne le nombre reellement ajoute.
+  int addDsList(List<Ds> nouveaux) {
+    var added = 0;
+    for (final d in nouveaux) {
+      final doublon = ds.any((e) =>
+          e.matiere.toLowerCase() == d.matiere.toLowerCase() &&
+          e.date.year == d.date.year &&
+          e.date.month == d.date.month &&
+          e.date.day == d.date.day);
+      if (!doublon) {
+        ds.add(d);
+        added++;
+      }
+    }
+    ds.sort((a, b) => a.date.compareTo(b.date));
+    _touch();
+    return added;
+  }
+
   void updateDs(Ds d) {
     final i = ds.indexWhere((e) => e.id == d.id);
     if (i >= 0) ds[i] = d;
@@ -236,6 +265,23 @@ class AppModel extends ChangeNotifier {
     _touch();
   }
 
+  /// Ajoute un lot de chapitres (import du programme officiel) en evitant
+  /// les doublons (meme matiere + meme nom). Retourne le nombre ajoute.
+  int addChapitresList(List<Chapitre> nouveaux) {
+    var added = 0;
+    for (final c in nouveaux) {
+      final doublon = chapitres.any((e) =>
+          e.matiere.toLowerCase() == c.matiere.toLowerCase() &&
+          e.nom.toLowerCase() == c.nom.toLowerCase());
+      if (!doublon) {
+        chapitres.add(c);
+        added++;
+      }
+    }
+    _touch();
+    return added;
+  }
+
   void updateChapitre(Chapitre c) {
     final i = chapitres.indexWhere((e) => e.id == c.id);
     if (i >= 0) chapitres[i] = c;
@@ -246,6 +292,36 @@ class AppModel extends ChangeNotifier {
     chapitres.removeWhere((e) => e.id == id);
     _touch();
   }
+
+  // ---------- Semaine type (routines) ----------
+
+  void addRoutine(Routine r) {
+    routines.add(r);
+    _trierRoutines();
+    _touch();
+  }
+
+  void updateRoutine(Routine r) {
+    final i = routines.indexWhere((e) => e.id == r.id);
+    if (i >= 0) routines[i] = r;
+    _trierRoutines();
+    _touch();
+  }
+
+  void deleteRoutine(String id) {
+    routines.removeWhere((e) => e.id == id);
+    _touch();
+  }
+
+  void _trierRoutines() {
+    routines.sort((a, b) =>
+        a.jour != b.jour ? a.jour.compareTo(b.jour) : a.debutMin.compareTo(b.debutMin));
+  }
+
+  /// Routines d'un jour de semaine (1 = lundi ... 7 = dimanche), triees.
+  List<Routine> routinesDu(int weekday) =>
+      routines.where((r) => r.jour == weekday).toList()
+        ..sort((a, b) => a.debutMin.compareTo(b.debutMin));
 
   void setPrio(String matiere, int p) {
     prios[matiere] = p;

@@ -59,7 +59,13 @@ Réponds UNIQUEMENT avec ce JSON, sans aucun texte autour :
 /// Utilise par l'appel API ET par l'import copier-coller.
 /// Tolerant : texte autour du JSON, clotures markdown, creneaux malformes
 /// (ignores un par un — l'ecran de verification permet de completer).
-ExtractionResult parseExtraction(String text) {
+/// Socle commun des parseurs : isole le JSON de la reponse, le decode, et en
+/// cas de JSON casse (reponse tronquee en plein vol par la limite de tokens)
+/// repeche les elements un par un — chaque element est un petit objet {...}
+/// autonome sans accolades imbriquees ; le dernier, incomplet, ne matchera
+/// pas, et l'ecran de verification permet de completer.
+/// Retourne (elements de la liste [cleListe], avertissements).
+(List<dynamic>, List<String>) _objetsJson(String text, String cleListe) {
   var clean = text.replaceAll('```json', '').replaceAll('```', '').trim();
   final start = clean.indexOf('{');
   final end = clean.lastIndexOf('}');
@@ -72,18 +78,13 @@ ExtractionResult parseExtraction(String text) {
   try {
     j = jsonDecode(clean) as Map<String, dynamic>;
   } catch (_) {
-    // JSON global casse — le plus souvent une reponse COUPEE en plein vol
-    // (limite de tokens). Plan B ci-dessous : on repeche les creneaux un par
-    // un, chaque khôlle etant un petit objet {...} autonome sans accolades
-    // imbriquees. Le dernier objet, incomplet, ne matchera pas : tant pis,
-    // l'ecran de verification permet de completer.
     j = null;
   }
 
   final warnings = <String>[];
   List<dynamic> bruts;
   if (j != null) {
-    bruts = (j['colles'] ?? []) as List;
+    bruts = (j[cleListe] ?? []) as List;
     warnings.addAll(
         ((j['avertissements'] ?? []) as List).map((e) => e.toString()));
   } else {
@@ -99,8 +100,13 @@ ExtractionResult parseExtraction(String text) {
       throw Exception("Réponse illisible de l'IA.");
     }
     warnings.add(
-        "Réponse de l'IA incomplète : les créneaux de fin d'année peuvent manquer — vérifie et relance l'extraction au besoin.");
+        "Réponse de l'IA incomplète : les éléments de fin peuvent manquer — vérifie et relance l'extraction au besoin.");
   }
+  return (bruts, warnings);
+}
+
+ExtractionResult parseExtraction(String text) {
+  final (bruts, warnings) = _objetsJson(text, 'colles');
 
   final colles = <Colle>[];
   for (final e in bruts) {
@@ -192,4 +198,130 @@ Future<ExtractionResult> extraireColloscope({
       .join('\n');
 
   return parseExtraction(text);
+}
+
+// ---------- Planning de DS (meme principe : prompt + parse tolerant) ----------
+
+/// Resultat d'une extraction de planning de DS.
+class DsExtraction {
+  final List<Ds> ds;
+  final List<String> avertissements;
+  DsExtraction(this.ds, this.avertissements);
+}
+
+/// Prompt d'extraction d'un planning de DS (photo ou PDF), a copier dans
+/// son appli d'IA comme pour le colloscope.
+String buildPromptDs() {
+  final now = DateTime.now();
+  final anneeDebut = now.month >= 8 ? now.year : now.year - 1;
+  final anneeFin = anneeDebut + 1;
+  final dateDuJour = '${now.day}/${now.month}/${now.year}';
+  return '''
+Tu analyses la photo (ou le PDF) d'un PLANNING DE DS (devoirs surveillés) de classe préparatoire française.
+
+Ta mission : extraire TOUS les DS avec leur date concrète.
+
+Règles :
+1. Un DS a une matière (Maths, Physique, Chimie, SII, Français, Anglais...), éventuellement un titre ou un numéro (DS 3, Concours blanc...), et une date.
+2. Si le document donne des numéros de semaines plutôt que des dates, convertis-les en dates concrètes (vacances comprises) ; les DS ont très souvent lieu le samedi matin.
+3. Si l'année n'est pas indiquée, utilise l'année scolaire en cours : septembre-décembre $anneeDebut, janvier-juillet $anneeFin (nous sommes le $dateDuJour).
+4. En cas de doute sur une ligne, fais ton meilleur choix ET signale-le dans "avertissements".
+
+Réponds UNIQUEMENT avec ce JSON, sans aucun texte autour :
+{
+  "ds": [
+    {"matiere": "Maths", "titre": "DS 1", "date": "2026-09-19"}
+  ],
+  "avertissements": ["..."]
+}
+''';
+}
+
+// ---------- Programme officiel -> chapitres (meme principe) ----------
+
+/// Resultat d'une extraction de programme officiel.
+class ChapitresExtraction {
+  final List<Chapitre> chapitres;
+  final List<String> avertissements;
+  ChapitresExtraction(this.chapitres, this.avertissements);
+}
+
+/// Prompt d'extraction des chapitres depuis le PROGRAMME OFFICIEL d'une
+/// filiere (texte copie depuis prepa.org, ou PDF officiel). L'utilisateur
+/// le colle dans son appli d'IA avec le programme, comme pour le colloscope.
+/// Sur prepa.org les programmes sont publies PAR MATIERE : si [matiere] est
+/// renseignee, le prompt cible cette matiere et impose son nom exact (pour
+/// coller aux noms de matieres deja utilises dans l'app).
+String buildPromptChapitres(String filiere, {String matiere = ''}) {
+  final mat = matiere.trim();
+  final cible = mat.isEmpty
+      ? "l'ensemble des matières couvertes par le document"
+      : 'la matière « $mat » uniquement';
+  final regleMatiere = mat.isEmpty
+      ? '1. Matières normalisées : "Maths", "Physique", "Chimie", "SII", "Informatique", "Français", "Anglais" (selon ce que couvre le document).'
+      : '1. Utilise EXACTEMENT "$mat" comme valeur du champ "matiere" pour tous les chapitres.';
+  return '''
+Tu analyses le PROGRAMME OFFICIEL d'une classe préparatoire française, filière $filiere (texte copié depuis prepa.org ou PDF officiel joint).
+
+Ta mission : en extraire une liste de CHAPITRES travaillables par un élève, pour $cible.
+
+Règles :
+$regleMatiere
+2. Un chapitre = un bloc révisable en quelques soirées (ex. "Espaces vectoriels", "Optique géométrique"). Regroupe les sous-points trop fins, ne découpe pas trop.
+3. Garde l'ordre du programme. Si le document sépare 1er et 2e semestre (ou 1re et 2e année), garde cet ordre et signale-le dans "avertissements".
+4. Vise la liste complète (typiquement 10 à 25 chapitres par matière scientifique et par année).
+
+Réponds UNIQUEMENT avec ce JSON, sans aucun texte autour :
+{
+  "chapitres": [
+    {"matiere": "Maths", "nom": "Espaces vectoriels"}
+  ],
+  "avertissements": ["..."]
+}
+''';
+}
+
+/// Transforme la reponse TEXTE de l'IA en liste de chapitres (etape et
+/// maitrise a zero : c'est a l'eleve de les faire vivre ensuite).
+ChapitresExtraction parseChapitresExtraction(String text) {
+  final (bruts, warnings) = _objetsJson(text, 'chapitres');
+
+  final chapitres = <Chapitre>[];
+  for (final e in bruts) {
+    try {
+      final m = e as Map<String, dynamic>;
+      final matiere = (m['matiere'] ?? '').toString().trim();
+      final nom = (m['nom'] ?? '').toString().trim();
+      if (matiere.isEmpty || nom.isEmpty) continue;
+      chapitres.add(Chapitre(matiere: matiere, nom: nom, maitrise: 0, etape: 0));
+    } catch (_) {
+      // ligne malformee : ignore
+    }
+  }
+  return ChapitresExtraction(chapitres, warnings);
+}
+
+/// Transforme la reponse TEXTE de l'IA en liste de DS. Meme tolerance que
+/// pour les colles (fences, texte autour, JSON tronque).
+DsExtraction parseDsExtraction(String text) {
+  final (bruts, warnings) = _objetsJson(text, 'ds');
+
+  final ds = <Ds>[];
+  for (final e in bruts) {
+    try {
+      final m = e as Map<String, dynamic>;
+      final date = (m['date'] ?? '').toString();
+      final dp = date.split('-').map(int.parse).toList();
+      final titre = (m['titre'] ?? '').toString().trim();
+      ds.add(Ds(
+        matiere: (m['matiere'] ?? '?').toString(),
+        titre: titre.isEmpty ? 'DS' : titre,
+        date: DateTime(dp[0], dp[1], dp[2]),
+      ));
+    } catch (_) {
+      // ligne malformee : ignore
+    }
+  }
+  ds.sort((a, b) => a.date.compareTo(b.date));
+  return DsExtraction(ds, warnings);
 }

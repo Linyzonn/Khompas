@@ -11,6 +11,7 @@ import '../models.dart';
 import '../store.dart';
 import 'dialogs.dart';
 import 'import.dart';
+import 'import_ds.dart';
 
 /// Onglet "Agenda" : toutes les khôlles et DS, groupes par semaine.
 class AgendaScreen extends StatelessWidget {
@@ -147,6 +148,16 @@ class AgendaScreen extends StatelessWidget {
                 Navigator.pop(context);
                 final d = await editDsDialog(context);
                 if (d != null) AppModel.instance.addDs(d);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.event_note),
+              title: const Text('Importer un planning de DS (IA, gratuit)'),
+              subtitle: const Text('Tous les DS du semestre en une fois'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const ImportDsScreen()));
               },
             ),
             ListTile(

@@ -2,7 +2,12 @@
 
 Le manque que toutes les prépas connaissent : un outil qui comprend VRAIMENT le fonctionnement d'une CPGE — colloscope, khôlles, programmes de colles, DS du samedi — et qui t'aide à décider quoi travailler chaque soir.
 
-## ✨ Fonctionnalités (bêta 0.3)
+## ✨ Fonctionnalités (bêta 0.5)
+
+- 🔁 **Ma semaine type** : cours (avec matière), sport, musique, asso… affichés sur l'onglet Aujourd'hui. Le plan du soir applique la règle d'or : **cours vu aujourd'hui = à revoir ce soir** (et petit bonus pour les cours du lendemain).
+- 📖 **Import du programme officiel** de ta filière (prepa.org / PDF + IA copier-coller, gratuit) : tous tes chapitres pré-remplis, onglet Chapitres.
+- 🚦 **Étapes par chapitre** : pas vu → vu en cours → revu chez moi → exos faits → DS/DNS passé, en plus de la maîtrise 0-4. Les chapitres « vus en cours mais pas revus » remontent en premier dans le plan du soir.
+- 🗓️ **Import du planning de DS** en une fois (photo/PDF + IA par copier-coller, gratuit) : Agenda → ➕ → « Importer un planning de DS ».
 
 - 🤝 **Partage par code de classe** (serveur Khompas) : un élève envoie les photos du colloscope une fois → code à 6 caractères → chaque camarade entre le code + son numéro de groupe et reçoit ses khôlles. Sans photo, sans clé API. Une extraction par groupe, en cache pour toute la classe (~1 € par classe entière). Mise en route du serveur : [server/README-SERVEUR.md](server/README-SERVEUR.md).
 
