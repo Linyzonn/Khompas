@@ -27,7 +27,10 @@ gratuite : **0 €**. Avec une clé Claude payante : ~1 € par classe entière 
    - **Payante (qualité maximale)** : https://console.anthropic.com → ~5 $ de
      crédits minimum (≈ une centaine d'extractions) → variable
      `ANTHROPIC_API_KEY`.
-   Si les deux sont présentes, Gemini (gratuit) est prioritaire. Pour changer de
+   Si les deux sont présentes, Gemini (gratuit) est prioritaire. Le serveur
+   essaie plusieurs modèles Gemini dans l'ordre (voir `MODELES_GEMINI` dans
+   `main.ts`) et saute ceux que Google a retirés (404) ; la variable
+   `GEMINI_MODEL` permet d'imposer un modèle précis sans toucher au code. Pour changer de
    moteur plus tard : change la variable, c'est tout — et `?force=1` sur la
    route groupe permet de re-extraire un groupe déjà en cache avec le nouveau
    moteur. (Les clés ne quittent jamais le serveur.)

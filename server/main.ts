@@ -17,7 +17,14 @@
 // Pour changer de moteur : il suffit de changer la variable, pas le code.
 // (Apres un changement, ?force=1 permet de re-extraire un groupe deja en cache.)
 const MODELE_CLAUDE = 'claude-sonnet-4-6';
-const MODELE_GEMINI_DEFAUT = 'gemini-2.5-flash';
+// Google retire regulierement ses anciens modeles (le 2.5-flash est deja
+// mort pour les nouveaux comptes) : on essaie ces modeles dans l'ordre et on
+// saute automatiquement ceux qui repondent 404. GEMINI_MODEL force un modele.
+const MODELES_GEMINI = [
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+];
 const MAX_PHOTOS = 5;
 const MAX_B64_PAR_PHOTO = 4_000_000; // ~3 Mo une fois decode (photo ou PDF)
 const CHUNK = 60_000; // Deno KV limite chaque valeur a 64 Ko
@@ -142,38 +149,51 @@ async function extraireGemini(
   pieces: Piece[],
   groupe: number,
 ): Promise<string> {
-  const modele = Deno.env.get('GEMINI_MODEL') ?? MODELE_GEMINI_DEFAUT;
+  const forceModele = Deno.env.get('GEMINI_MODEL');
+  const modeles = forceModele ? [forceModele] : MODELES_GEMINI;
   const parts: unknown[] = pieces.map((p) => ({
     inline_data: { mime_type: p.mime, data: p.b64 },
   }));
   parts.push({ text: promptColloscope(groupe) });
   const body = JSON.stringify({
     contents: [{ parts }],
-    // Marge large : sur Gemini 2.5, la reflexion interne compte dans la sortie.
+    // Marge large : la reflexion interne du modele compte dans la sortie.
     generationConfig: { maxOutputTokens: 16384 },
   });
-  for (let essai = 0; ; essai++) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cle}`,
-      { method: 'POST', headers: { 'content-type': 'application/json' }, body },
-    );
-    if (res.ok) {
-      const data = await res.json() as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[];
-      };
-      return (data.candidates?.[0]?.content?.parts ?? [])
-        .map((p) => p.text ?? '')
-        .join('\n');
+  let indisponibles = '';
+  for (const modele of modeles) {
+    for (let essai = 0; essai < 2; essai++) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cle}`,
+        { method: 'POST', headers: { 'content-type': 'application/json' }, body },
+      );
+      if (res.ok) {
+        const data = await res.json() as {
+          candidates?: { content?: { parts?: { text?: string }[] } }[];
+        };
+        return (data.candidates?.[0]?.content?.parts ?? [])
+          .map((p) => p.text ?? '')
+          .join('\n');
+      }
+      const texte = (await res.text()).slice(0, 300);
+      // 404 = modele retire par Google : on passe au suivant de la liste.
+      if (res.status === 404) {
+        indisponibles += `${modele} `;
+        break;
+      }
+      // Quota gratuit : ~10 requetes/minute. Si toute une classe arrive en
+      // meme temps, on encaisse un refus en retentant une fois apres 8 s.
+      if ((res.status === 429 || res.status === 503) && essai === 0) {
+        await new Promise((r) => setTimeout(r, 8000));
+        continue;
+      }
+      throw new Error(`API Gemini ${res.status} : ${texte}`);
     }
-    // Quota gratuit Gemini : ~10 requetes/minute. Si toute une classe arrive
-    // en meme temps, on encaisse un refus en retentant une fois apres 8 s.
-    if ((res.status === 429 || res.status === 503) && essai === 0) {
-      await res.text();
-      await new Promise((r) => setTimeout(r, 8000));
-      continue;
-    }
-    throw new Error(`API Gemini ${res.status} : ${(await res.text()).slice(0, 300)}`);
   }
+  throw new Error(
+    `API Gemini : aucun modèle disponible (essayés : ${indisponibles.trim()}). ` +
+      "Fixe GEMINI_MODEL dans les variables d'environnement avec un modèle actuel.",
+  );
 }
 
 async function extraireClaude(
