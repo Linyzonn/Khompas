@@ -30,13 +30,16 @@ class ApiKhompas {
         as Map<String, dynamic>)['code'] as String;
   }
 
-  /// Envoie une photo du colloscope (jpeg) pour la classe [code].
-  Future<void> envoyerPhoto(String code, int index, Uint8List jpeg) async {
+  /// Envoie une piece du colloscope (photo jpeg, ou PDF si [pdf]) pour la
+  /// classe [code].
+  Future<void> envoyerPhoto(String code, int index, Uint8List bytes,
+      {bool pdf = false}) async {
     final r = await http
         .put(
-          Uri.parse('$base/api/classes/$code/photos/$index'),
+          Uri.parse(
+              '$base/api/classes/$code/photos/$index?mime=${pdf ? 'pdf' : 'jpg'}'),
           headers: {'content-type': 'text/plain'},
-          body: base64Encode(jpeg),
+          body: base64Encode(bytes),
         )
         .timeout(const Duration(seconds: 90));
     if (r.statusCode != 200) _lance(r);

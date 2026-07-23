@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -23,7 +24,7 @@ class ImportScreen extends StatefulWidget {
 }
 
 class _ImportScreenState extends State<ImportScreen> {
-  final List<Uint8List> images = [];
+  final List<PieceColloscope> pieces = [];
   late final TextEditingController groupeCtl;
   late final TextEditingController codeCtl;
   bool busy = false;
@@ -64,7 +65,7 @@ class _ImportScreenState extends State<ImportScreen> {
       final files = await picker.pickMultiImage(
           imageQuality: 88, maxWidth: 1600, maxHeight: 1600);
       for (final f in files) {
-        images.add(await f.readAsBytes());
+        pieces.add(PieceColloscope(await f.readAsBytes()));
       }
     } else {
       final f = await picker.pickImage(
@@ -72,9 +73,23 @@ class _ImportScreenState extends State<ImportScreen> {
           imageQuality: 88,
           maxWidth: 1600,
           maxHeight: 1600);
-      if (f != null) images.add(await f.readAsBytes());
+      if (f != null) pieces.add(PieceColloscope(await f.readAsBytes()));
     }
     setState(() {});
+  }
+
+  Future<void> _pickPdf() async {
+    // Beaucoup de colloscopes circulent en PDF : on le prend tel quel,
+    // les IA (Gemini comme Claude) lisent les PDF nativement.
+    final res = await FilePicker.pickFiles(
+        type: FileType.custom, allowedExtensions: ['pdf'], withData: true);
+    final bytes = res?.files.single.bytes;
+    if (bytes == null) return;
+    if (bytes.length > 3 * 1024 * 1024) {
+      if (mounted) _snack('PDF trop lourd (3 Mo max) — exporte-le en qualité réduite ou fais des captures d\'écran.');
+      return;
+    }
+    setState(() => pieces.add(PieceColloscope(bytes, pdf: true)));
   }
 
   int? _groupeValide() {
@@ -126,9 +141,9 @@ class _ImportScreenState extends State<ImportScreen> {
   Future<void> _creerClasse() async {
     final groupe = _groupeValide();
     if (groupe == null) return;
-    if (images.isEmpty) {
+    if (pieces.isEmpty) {
       _snack(
-          "Ajoute d'abord les photos du colloscope (section « Photos » juste en dessous).");
+          "Ajoute d'abord le colloscope (photos ou PDF, section juste en dessous).");
       return;
     }
     final m = AppModel.instance;
@@ -136,9 +151,9 @@ class _ImportScreenState extends State<ImportScreen> {
       _setBusy('Création du code de classe…');
       final api = ApiKhompas(m.serverUrl);
       final code = await api.creerClasse();
-      for (var i = 0; i < images.length; i++) {
-        _setBusy('Envoi de la photo ${i + 1}/${images.length}…');
-        await api.envoyerPhoto(code, i, images[i]);
+      for (var i = 0; i < pieces.length; i++) {
+        _setBusy('Envoi du fichier ${i + 1}/${pieces.length}…');
+        await api.envoyerPhoto(code, i, pieces[i].bytes, pdf: pieces[i].pdf);
       }
       m.setCodeClasse(code);
       m.setProfil(filiere: m.filiere, groupe: groupe);
@@ -213,14 +228,14 @@ class _ImportScreenState extends State<ImportScreen> {
       return;
     }
     final groupe = _groupeValide();
-    if (groupe == null || images.isEmpty) return;
+    if (groupe == null || pieces.isEmpty) return;
 
     _setBusy('Analyse du colloscope en cours…');
     try {
       m.setProfil(filiere: m.filiere, groupe: groupe);
       final result = await extraireColloscope(
         apiKey: m.apiKey,
-        images: images,
+        pieces: pieces,
         groupe: groupe,
       );
       if (!mounted) return;
@@ -299,7 +314,11 @@ class _ImportScreenState extends State<ImportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final serveurActif = AppModel.instance.serverUrl.isNotEmpty;
+    final m = AppModel.instance;
+    final serveurActif = m.serverUrl.isNotEmpty;
+    // Avec un serveur configure, l'extraction "cle perso" est redondante :
+    // on ne la montre que s'il n'y a pas de serveur (ou si une cle existe).
+    final montrerClePerso = !serveurActif || m.apiKey.isNotEmpty;
     return Scaffold(
       appBar: AppBar(title: const Text('Importer mon colloscope')),
       body: ListView(
@@ -372,8 +391,8 @@ class _ImportScreenState extends State<ImportScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Premier de ta classe ? Ajoute les photos du colloscope '
-                      '(section suivante) puis :',
+                      'Premier de ta classe ? Ajoute les photos ou le PDF du '
+                      'colloscope (section suivante) puis :',
                       style:
                           TextStyle(fontSize: 12, color: Colors.grey.shade600),
                     ),
@@ -389,7 +408,7 @@ class _ImportScreenState extends State<ImportScreen> {
             ),
           ],
           const SizedBox(height: 20),
-          Text('Photos du colloscope',
+          Text('Photos ou PDF du colloscope',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Row(
@@ -409,28 +428,54 @@ class _ImportScreenState extends State<ImportScreen> {
                   onPressed: busy ? null : () => _pick(ImageSource.gallery),
                 ),
               ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.picture_as_pdf),
+                  label: const Text('PDF'),
+                  onPressed: busy ? null : _pickPdf,
+                ),
+              ),
             ],
           ),
-          if (images.isNotEmpty) ...[
+          if (pieces.isNotEmpty) ...[
             const SizedBox(height: 14),
             SizedBox(
               height: 110,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                itemCount: images.length,
+                itemCount: pieces.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (context, i) => Stack(
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.memory(images[i],
-                          height: 110, width: 150, fit: BoxFit.cover),
+                      child: pieces[i].pdf
+                          ? Container(
+                              height: 110,
+                              width: 150,
+                              color: Colors.grey.shade200,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.picture_as_pdf,
+                                      size: 36, color: Colors.red.shade400),
+                                  const SizedBox(height: 6),
+                                  const Text('PDF',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12)),
+                                ],
+                              ),
+                            )
+                          : Image.memory(pieces[i].bytes,
+                              height: 110, width: 150, fit: BoxFit.cover),
                     ),
                     Positioned(
                       top: 2,
                       right: 2,
                       child: InkWell(
-                        onTap: () => setState(() => images.removeAt(i)),
+                        onTap: () => setState(() => pieces.removeAt(i)),
                         child: const CircleAvatar(
                           radius: 12,
                           backgroundColor: Colors.black54,
@@ -449,20 +494,22 @@ class _ImportScreenState extends State<ImportScreen> {
             'Une photo bien à plat, nette et entière (tableau + tableau des semaines + notes du bas) donne les meilleurs résultats.',
             style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
           ),
-          const SizedBox(height: 20),
-          Text('Extraction directe — avec ta clé API',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          FilledButton.icon(
-            icon: const Icon(Icons.auto_awesome),
-            label: const Text("Lancer l'extraction"),
-            onPressed: busy || images.isEmpty ? null : _lancer,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Nécessite ta clé API dans Réglages (quelques centimes par import).',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-          ),
+          if (montrerClePerso) ...[
+            const SizedBox(height: 20),
+            Text('Extraction directe — avec ta clé API',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text("Lancer l'extraction"),
+              onPressed: busy || pieces.isEmpty ? null : _lancer,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Nécessite ta clé API dans Réglages (quelques centimes par import).',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+          ],
           const SizedBox(height: 20),
           Row(
             children: [

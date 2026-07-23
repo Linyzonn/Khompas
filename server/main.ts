@@ -19,7 +19,7 @@
 const MODELE_CLAUDE = 'claude-sonnet-4-6';
 const MODELE_GEMINI_DEFAUT = 'gemini-2.5-flash';
 const MAX_PHOTOS = 5;
-const MAX_B64_PAR_PHOTO = 2_000_000; // ~1,5 Mo de JPEG une fois decode
+const MAX_B64_PAR_PHOTO = 4_000_000; // ~3 Mo une fois decode (photo ou PDF)
 const CHUNK = 60_000; // Deno KV limite chaque valeur a 64 Ko
 const LIMITE_IP_JOUR = 30; // extractions max / appareil / jour
 const LIMITE_GLOBALE_JOUR = 200; // extractions max / jour (protege le budget)
@@ -103,13 +103,15 @@ async function limiterDebit(ip: string): Promise<string | null> {
   return null;
 }
 
-// Photos d'une classe, en base64 (reconstruites depuis les morceaux KV).
-// null = code inconnu.
-async function lirePhotos(code: string): Promise<string[] | null> {
+// Pieces d'une classe (photos jpeg ou PDF), en base64 + type MIME
+// (reconstruites depuis les morceaux KV). null = code inconnu.
+type Piece = { b64: string; mime: string };
+
+async function lirePhotos(code: string): Promise<Piece[] | null> {
   const meta = await kv.get(['class', code]);
   if (!meta.value) return null;
   const n = (meta.value as { photos: number }).photos;
-  const out: string[] = [];
+  const out: Piece[] = [];
   for (let i = 0; i < n; i++) {
     let b64 = '';
     for (let c = 0; ; c++) {
@@ -117,16 +119,19 @@ async function lirePhotos(code: string): Promise<string[] | null> {
       if (!part.value) break;
       b64 += part.value as string;
     }
-    if (b64) out.push(b64);
+    if (b64) {
+      const m = await kv.get(['mime', code, i]);
+      out.push({ b64, mime: (m.value as string | null) ?? 'image/jpeg' });
+    }
   }
   return out;
 }
 
-async function extraire(images: string[], groupe: number): Promise<string> {
+async function extraire(pieces: Piece[], groupe: number): Promise<string> {
   const cleGemini = Deno.env.get('GEMINI_API_KEY');
   const cleClaude = Deno.env.get('ANTHROPIC_API_KEY');
-  if (cleGemini) return await extraireGemini(cleGemini, images, groupe);
-  if (cleClaude) return await extraireClaude(cleClaude, images, groupe);
+  if (cleGemini) return await extraireGemini(cleGemini, pieces, groupe);
+  if (cleClaude) return await extraireClaude(cleClaude, pieces, groupe);
   throw new Error(
     "aucune clé configurée sur le serveur — ajoute GEMINI_API_KEY (gratuite, aistudio.google.com) ou ANTHROPIC_API_KEY dans les variables d'environnement.",
   );
@@ -134,12 +139,12 @@ async function extraire(images: string[], groupe: number): Promise<string> {
 
 async function extraireGemini(
   cle: string,
-  images: string[],
+  pieces: Piece[],
   groupe: number,
 ): Promise<string> {
   const modele = Deno.env.get('GEMINI_MODEL') ?? MODELE_GEMINI_DEFAUT;
-  const parts: unknown[] = images.map((b64) => ({
-    inline_data: { mime_type: 'image/jpeg', data: b64 },
+  const parts: unknown[] = pieces.map((p) => ({
+    inline_data: { mime_type: p.mime, data: p.b64 },
   }));
   parts.push({ text: promptColloscope(groupe) });
   const body = JSON.stringify({
@@ -173,12 +178,13 @@ async function extraireGemini(
 
 async function extraireClaude(
   cle: string,
-  images: string[],
+  pieces: Piece[],
   groupe: number,
 ): Promise<string> {
-  const content: unknown[] = images.map((b64) => ({
-    type: 'image',
-    source: { type: 'base64', media_type: 'image/jpeg', data: b64 },
+  const content: unknown[] = pieces.map((p) => ({
+    // PDF -> bloc "document", photo -> bloc "image".
+    type: p.mime === 'application/pdf' ? 'document' : 'image',
+    source: { type: 'base64', media_type: p.mime, data: p.b64 },
   }));
   content.push({ type: 'text', text: promptColloscope(groupe) });
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -241,10 +247,14 @@ Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
     if (!meta.value) return erreur('Code inconnu.', 404);
     const brut = await req.text();
     const b64 = brut.replace(/\s+/g, '');
-    if (!b64) return erreur('Photo vide.', 400);
+    if (!b64) return erreur('Fichier vide.', 400);
     if (b64.length > MAX_B64_PAR_PHOTO) {
-      return erreur('Photo trop lourde (1,5 Mo max).', 413);
+      return erreur('Fichier trop lourd (3 Mo max).', 413);
     }
+    const mime = url.searchParams.get('mime') === 'pdf'
+      ? 'application/pdf'
+      : 'image/jpeg';
+    await kv.set(['mime', code, i], mime, { expireIn: TTL });
     for (let c = 0; c * CHUNK < b64.length; c++) {
       await kv.set(['photo', code, i, c], b64.slice(c * CHUNK, (c + 1) * CHUNK), {
         expireIn: TTL,

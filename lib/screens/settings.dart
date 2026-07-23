@@ -237,6 +237,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: const Icon(Icons.save),
                 onPressed: () async {
                   await m.saveServerUrl(serverCtl.text);
+                  if (mounted) setState(() {});
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Serveur enregistré ✅')));
@@ -245,33 +246,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          Text(
-            'Sans serveur, deux autres options sur l\'écran d\'import : ta propre '
-            'clé API Claude ci-dessous (console.anthropic.com → API keys, quelques '
-            'centimes par import), ou l\'import GRATUIT par copier-coller avec ton '
-            'appli d\'IA (ChatGPT, Claude, Gemini).',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: keyCtl,
-            obscureText: true,
-            decoration: InputDecoration(
-              labelText: 'Clé API Anthropic (facultative)',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.save),
-                onPressed: () async {
-                  await m.saveApiKey(keyCtl.text);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Clé enregistrée ✅')));
-                  }
-                },
+          // Sans serveur (ou si une cle est deja enregistree), on propose la
+          // cle API personnelle en secours. Sinon : inutile, on masque.
+          if (m.serverUrl.isEmpty || m.apiKey.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Sans serveur, deux autres options sur l\'écran d\'import : ta propre '
+              'clé API Claude ci-dessous (console.anthropic.com → API keys, quelques '
+              'centimes par import), ou l\'import GRATUIT par copier-coller avec ton '
+              'appli d\'IA (ChatGPT, Claude, Gemini).',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: keyCtl,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Clé API Anthropic (facultative)',
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.save),
+                  onPressed: () async {
+                    await m.saveApiKey(keyCtl.text);
+                    if (mounted) setState(() {});
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Clé enregistrée ✅')));
+                    }
+                  },
+                ),
               ),
             ),
-          ),
+          ],
           const SizedBox(height: 24),
           const Divider(),
           const ListTile(

@@ -12,6 +12,13 @@ class ExtractionResult {
   ExtractionResult(this.colles, this.avertissements);
 }
 
+/// Une piece jointe du colloscope : photo (jpeg) ou document PDF.
+class PieceColloscope {
+  final Uint8List bytes;
+  final bool pdf;
+  PieceColloscope(this.bytes, {this.pdf = false});
+}
+
 /// Prompt d'extraction. Public car utilise par DEUX chemins :
 /// - l'appel API direct (extraireColloscope, avec la cle de l'utilisateur) ;
 /// - l'import "copier-coller" : l'utilisateur copie ce prompt dans SON appli
@@ -108,17 +115,18 @@ ExtractionResult parseExtraction(String text) {
 /// comme les roulements de creneaux).
 Future<ExtractionResult> extraireColloscope({
   required String apiKey,
-  required List<Uint8List> images,
+  required List<PieceColloscope> pieces,
   required int groupe,
 }) async {
   final content = <Map<String, dynamic>>[];
-  for (final img in images) {
+  for (final p in pieces) {
     content.add({
-      'type': 'image',
+      // Un PDF passe par un bloc "document", une photo par un bloc "image".
+      'type': p.pdf ? 'document' : 'image',
       'source': {
         'type': 'base64',
-        'media_type': 'image/jpeg',
-        'data': base64Encode(img),
+        'media_type': p.pdf ? 'application/pdf' : 'image/jpeg',
+        'data': base64Encode(p.bytes),
       },
     });
   }
