@@ -67,10 +67,43 @@ ExtractionResult parseExtraction(String text) {
     throw Exception("Réponse illisible de l'IA.");
   }
   clean = clean.substring(start, end + 1);
-  final j = jsonDecode(clean) as Map<String, dynamic>;
+
+  Map<String, dynamic>? j;
+  try {
+    j = jsonDecode(clean) as Map<String, dynamic>;
+  } catch (_) {
+    // JSON global casse — le plus souvent une reponse COUPEE en plein vol
+    // (limite de tokens). Plan B ci-dessous : on repeche les creneaux un par
+    // un, chaque khôlle etant un petit objet {...} autonome sans accolades
+    // imbriquees. Le dernier objet, incomplet, ne matchera pas : tant pis,
+    // l'ecran de verification permet de completer.
+    j = null;
+  }
+
+  final warnings = <String>[];
+  List<dynamic> bruts;
+  if (j != null) {
+    bruts = (j['colles'] ?? []) as List;
+    warnings.addAll(
+        ((j['avertissements'] ?? []) as List).map((e) => e.toString()));
+  } else {
+    bruts = [];
+    for (final m in RegExp(r'\{[^{}]*\}').allMatches(clean)) {
+      try {
+        bruts.add(jsonDecode(m.group(0)!));
+      } catch (_) {
+        // objet incomplet ou illisible : ignore
+      }
+    }
+    if (bruts.isEmpty) {
+      throw Exception("Réponse illisible de l'IA.");
+    }
+    warnings.add(
+        "Réponse de l'IA incomplète : les créneaux de fin d'année peuvent manquer — vérifie et relance l'extraction au besoin.");
+  }
 
   final colles = <Colle>[];
-  for (final e in (j['colles'] ?? []) as List) {
+  for (final e in bruts) {
     try {
       final m = e as Map<String, dynamic>;
       final date = (m['date'] ?? '').toString(); // YYYY-MM-DD
@@ -100,10 +133,6 @@ ExtractionResult parseExtraction(String text) {
     }
   }
   colles.sort((a, b) => a.start.compareTo(b.start));
-
-  final warnings = ((j['avertissements'] ?? []) as List)
-      .map((e) => e.toString())
-      .toList();
 
   return ExtractionResult(colles, warnings);
 }

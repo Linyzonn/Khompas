@@ -157,8 +157,9 @@ async function extraireGemini(
   parts.push({ text: promptColloscope(groupe) });
   const body = JSON.stringify({
     contents: [{ parts }],
-    // Marge large : la reflexion interne du modele compte dans la sortie.
-    generationConfig: { maxOutputTokens: 16384 },
+    // Tres large : la reflexion interne du modele compte dans la sortie, et
+    // une reponse coupee = JSON casse (vu en vrai a 16384).
+    generationConfig: { maxOutputTokens: 32768 },
   });
   let indisponibles = '';
   for (const modele of modeles) {
@@ -308,7 +309,22 @@ Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
     if (refus) return erreur(refus, 429);
     try {
       const text = await extraire(photos, groupe);
-      await kv.set(['res', code, groupe], text, { expireIn: TTL });
+      // On ne met en cache que si le JSON de la reponse est entier : une
+      // reponse tronquee cachee deviendrait une erreur permanente. Si elle
+      // est cassee, on la renvoie quand meme (l'app repeche ce qu'elle peut)
+      // mais la prochaine demande relancera une extraction propre.
+      let entiere = true;
+      try {
+        const s = text.indexOf('{');
+        const e2 = text.lastIndexOf('}');
+        if (s < 0 || e2 <= s) throw new Error('pas de JSON');
+        JSON.parse(text.slice(s, e2 + 1));
+      } catch (_) {
+        entiere = false;
+      }
+      if (entiere) {
+        await kv.set(['res', code, groupe], text, { expireIn: TTL });
+      }
       return json({ text });
     } catch (e) {
       return erreur(
