@@ -232,6 +232,19 @@ async function extraireClaude(
 }
 
 Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
+  try {
+    return await gerer(req, info);
+  } catch (e) {
+    // Quoi qu'il arrive, repondre AVEC les en-tetes CORS : sans eux, le
+    // navigateur masque tout derriere un "Failed to fetch" indebogable.
+    return erreur(
+      `Erreur interne : ${String(e instanceof Error ? e.message : e).slice(0, 200)}`,
+      500,
+    );
+  }
+});
+
+async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { headers: cors() });
   const url = new URL(req.url);
   const p = url.pathname.replace(/\/+$/, '');
@@ -300,6 +313,18 @@ Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
       const cache = await kv.get(['res', code, groupe]);
       if (cache.value) return json({ text: cache.value, cache: true });
     }
+    // Erreur laissee par un travail precedent ? On la remonte (une fois).
+    const errKey = ['err', code, groupe];
+    const errPrec = await kv.get(errKey);
+    if (errPrec.value) {
+      await kv.delete(errKey);
+      return erreur(`Extraction échouée : ${errPrec.value}`, 502);
+    }
+    // Extraction deja en cours (par toi ou un camarade) ? L'app repassera.
+    const pendKey = ['pending', code, groupe];
+    const pend = await kv.get(pendKey);
+    if (pend.value) return json({ statut: 'en_cours' }, 202);
+
     const photos = await lirePhotos(code);
     if (photos === null) return erreur('Code inconnu.', 404);
     if (photos.length === 0) {
@@ -307,32 +332,47 @@ Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
     }
     const refus = await limiterDebit(ip);
     if (refus) return erreur(refus, 429);
-    try {
-      const text = await extraire(photos, groupe);
-      // On ne met en cache que si le JSON de la reponse est entier : une
-      // reponse tronquee cachee deviendrait une erreur permanente. Si elle
-      // est cassee, on la renvoie quand meme (l'app repeche ce qu'elle peut)
-      // mais la prochaine demande relancera une extraction propre.
-      let entiere = true;
-      try {
-        const s = text.indexOf('{');
-        const e2 = text.lastIndexOf('}');
-        if (s < 0 || e2 <= s) throw new Error('pas de JSON');
-        JSON.parse(text.slice(s, e2 + 1));
-      } catch (_) {
-        entiere = false;
-      }
-      if (entiere) {
-        await kv.set(['res', code, groupe], text, { expireIn: TTL });
-      }
-      return json({ text });
-    } catch (e) {
-      return erreur(
-        `Extraction impossible : ${e instanceof Error ? e.message : String(e)}`,
-        502,
-      );
+
+    // Une extraction dure 1 a 3 minutes : trop long pour une seule requete
+    // HTTP (les passerelles coupent -> "Failed to fetch" cote navigateur).
+    // On lance donc le travail EN TACHE DE FOND et on repond tout de suite ;
+    // l'app re-interroge toutes les 5 s jusqu'a ce que le cache soit rempli.
+    if (force) {
+      // Sans cette purge, les sondages suivants (sans force) renverraient
+      // l'ancienne version pendant que la nouvelle se calcule.
+      await kv.delete(['res', code, groupe]);
     }
+    await kv.set(pendKey, 1, { expireIn: 4 * 60 * 1000 });
+    (async () => {
+      try {
+        const text = await extraire(photos, groupe);
+        let entiere = true;
+        try {
+          const s = text.indexOf('{');
+          const e2 = text.lastIndexOf('}');
+          if (s < 0 || e2 <= s) throw new Error('pas de JSON');
+          JSON.parse(text.slice(s, e2 + 1));
+        } catch (_) {
+          entiere = false;
+        }
+        // Reponse entiere : cache longue duree. Reponse tronquee : on la
+        // stocke quand meme (l'app en tire le maximum et avertit) mais
+        // seulement 10 min, pour qu'un nouvel essai reparte de zero.
+        await kv.set(['res', code, groupe], text, {
+          expireIn: entiere ? TTL : 10 * 60 * 1000,
+        });
+      } catch (e) {
+        await kv.set(
+          errKey,
+          String(e instanceof Error ? e.message : e).slice(0, 300),
+          { expireIn: 10 * 60 * 1000 },
+        );
+      } finally {
+        await kv.delete(pendKey);
+      }
+    })();
+    return json({ statut: 'lancee' }, 202);
   }
 
   return erreur('Route inconnue.', 404);
-});
+}

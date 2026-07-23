@@ -46,18 +46,33 @@ class ApiKhompas {
   }
 
   /// Recupere les kholles du groupe [groupe] de la classe [code].
-  /// Premiere demande d'un groupe : le serveur lance l'extraction (jusqu'a
-  /// ~2 min). Ensuite c'est en cache, quasi instantane.
-  /// [force] ignore le cache (si l'extraction precedente etait mauvaise).
+  /// Si le groupe est deja en cache : instantane. Sinon le serveur lance
+  /// l'extraction EN TACHE DE FOND (reponse 202) et on re-interroge toutes
+  /// les 5 s — aucune requete longue, rien que les passerelles puissent
+  /// couper. [force] ignore le cache (si l'extraction etait mauvaise).
   Future<ExtractionResult> groupe(String code, int groupe,
       {bool force = false}) async {
-    final r = await http
-        .get(Uri.parse(
-            '$base/api/classes/$code/groupe/$groupe${force ? '?force=1' : ''}'))
-        .timeout(const Duration(minutes: 3));
-    if (r.statusCode != 200) _lance(r);
-    final text = (jsonDecode(utf8.decode(r.bodyBytes))
-        as Map<String, dynamic>)['text'] as String;
-    return parseExtraction(text);
+    final deadline = DateTime.now().add(const Duration(minutes: 4));
+    var premiere = true;
+    while (true) {
+      final query = (force && premiere) ? '?force=1' : '';
+      premiere = false;
+      final r = await http
+          .get(Uri.parse('$base/api/classes/$code/groupe/$groupe$query'))
+          .timeout(const Duration(seconds: 45));
+      if (r.statusCode == 202) {
+        // Extraction en cours cote serveur : on repasse dans 5 s.
+        if (DateTime.now().isAfter(deadline)) {
+          throw Exception(
+              "l'extraction prend trop de temps — réessaie dans une minute, le serveur continue de travailler.");
+        }
+        await Future.delayed(const Duration(seconds: 5));
+        continue;
+      }
+      if (r.statusCode != 200) _lance(r);
+      final text = (jsonDecode(utf8.decode(r.bodyBytes))
+          as Map<String, dynamic>)['text'] as String;
+      return parseExtraction(text);
+    }
   }
 }
