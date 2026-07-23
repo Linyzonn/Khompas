@@ -1,0 +1,22 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+pubspec.lock
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Contexte perso et archives : à garder dans le dossier, PAS sur GitHub
+CONTEXTE-KHOMPAS.md
+Khompas-*.zip
+.claude/
+
+# Windows / OneDrive
+desktop.ini
+Thumbs.db

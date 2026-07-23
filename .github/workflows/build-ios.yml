@@ -1,0 +1,32 @@
+name: Build IPA (iOS, non signé)
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      # Le dépôt ne contient que lib/ + pubspec : on génère le squelette iOS ici.
+      # (flutter create ne touche jamais aux fichiers existants.)
+      - name: Générer le squelette iOS
+        run: flutter create . --platforms=ios --project-name khompas
+      # Sans ces deux clés, l'app crashe à l'ouverture de l'appareil photo.
+      - name: Permissions caméra / photos (Info.plist)
+        run: |
+          plutil -insert NSCameraUsageDescription -string "Khompas photographie ton colloscope pour l’importer." ios/Runner/Info.plist
+          plutil -insert NSPhotoLibraryUsageDescription -string "Khompas lit tes captures d’écran de colloscope pour les importer." ios/Runner/Info.plist
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+      - name: Empaqueter en IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -qry Khompas-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: khompas-ios-unsigned
+          path: Khompas-unsigned.ipa

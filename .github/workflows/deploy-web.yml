@@ -1,0 +1,44 @@
+name: Déployer la version web (GitHub Pages)
+# Se lance tout seul à chaque push sur main : la version PC/navigateur
+# est toujours à jour sur https://<ton-pseudo>.github.io/khompas/
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Générer le squelette web
+        run: flutter create . --platforms=web --project-name khompas
+      - run: flutter pub get
+      # ⚠️ « /khompas/ » doit être exactement le nom du dépôt GitHub.
+      # Si tu appelles ton dépôt autrement, change cette ligne.
+      - run: flutter build web --release --base-href /khompas/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
