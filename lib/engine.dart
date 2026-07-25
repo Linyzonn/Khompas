@@ -67,14 +67,27 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
   // le cours du jour le soir meme, et preparer celui du lendemain.
   final coursAujourdhui = <String>{};
   final coursDemain = <String>{};
+  final demain = now.add(const Duration(days: 1));
   for (final r in m.routinesLe(now)) {
     if (r.matiere.trim().isNotEmpty) {
       coursAujourdhui.add(r.matiere.trim().toLowerCase());
     }
   }
-  for (final r in m.routinesLe(now.add(const Duration(days: 1)))) {
+  for (final r in m.routinesLe(demain)) {
     if (r.matiere.trim().isNotEmpty) {
       coursDemain.add(r.matiere.trim().toLowerCase());
+    }
+  }
+  // Les evenements ponctuels a matiere (TP info, oral blanc...) comptent
+  // comme des cours du jour / du lendemain.
+  for (final e in m.evenementsLe(now)) {
+    if (e.matiere.trim().isNotEmpty) {
+      coursAujourdhui.add(e.matiere.trim().toLowerCase());
+    }
+  }
+  for (final e in m.evenementsLe(demain)) {
+    if (e.matiere.trim().isNotEmpty) {
+      coursDemain.add(e.matiere.trim().toLowerCase());
     }
   }
 

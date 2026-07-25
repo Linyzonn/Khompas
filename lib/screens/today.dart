@@ -53,6 +53,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final aRendre = m.devoirsARendre().take(4).toList();
     final minSem = m.minutesSemaine();
     final edtJour = m.routinesLe(now);
+    final evtsJour = m.evenementsLe(now);
     final plage = m.plageSansCours(now);
 
     final entete = Padding(
@@ -75,15 +76,16 @@ class _TodayScreenState extends State<TodayScreen> {
     final droite = <Widget>[
       if (m.dateConcours != null && m.dateConcours!.isAfter(now))
         _blocConcours(m),
-      _blocJournee(edtJour, plage),
+      _blocJournee(edtJour, evtsJour, plage),
       _blocHeures(minSem),
     ];
     final centre = _heroSoir(context, suggestions, minSem);
+    final vueSemaine = _blocVueSemaine(context, m, now);
 
     return LayoutBuilder(
       builder: (context, contraintes) {
         if (contraintes.maxWidth >= 900) {
-          // ---- Cockpit large : gauche / CENTRE / droite ----
+          // ---- Cockpit large : gauche / CENTRE / droite + semaine dessous ----
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -100,6 +102,7 @@ class _TodayScreenState extends State<TodayScreen> {
                     SizedBox(width: 300, child: Column(children: droite)),
                   ],
                 ),
+                vueSemaine,
               ],
             ),
           );
@@ -107,7 +110,14 @@ class _TodayScreenState extends State<TodayScreen> {
         // ---- Telephone : session du soir d'abord, blocs ensuite ----
         return ListView(
           padding: const EdgeInsets.all(16),
-          children: [entete, centre, const SizedBox(height: 4), ...gauche, ...droite],
+          children: [
+            entete,
+            centre,
+            const SizedBox(height: 4),
+            ...gauche,
+            ...droite,
+            vueSemaine,
+          ],
         );
       },
     );
@@ -302,23 +312,203 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
-  Widget _blocJournee(List<Routine> edtJour, PlageSansCours? plage) {
+  Widget _blocJournee(
+      List<Routine> edtJour, List<Evenement> evtsJour, PlageSansCours? plage) {
+    // EDT + evenements ponctuels du jour, fusionnes et tries par heure.
+    final lignes = <(int, Widget)>[
+      if (plage == null)
+        for (final r in edtJour) (r.debutMin, _ligneCreneau(context, r)),
+      for (final e in evtsJour) (e.debutMin, _ligneEvenement(e)),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
     return _carte(
       accent: Colors.amber.shade700,
       icone: Icons.wb_sunny_outlined,
       titre: 'Ta journée',
-      enfant: plage != null
+      enfant: (plage != null && lignes.isEmpty)
           ? Text('🏖 ${plage.titre} — pas de cours.',
               style: const TextStyle(fontSize: 13))
-          : edtJour.isEmpty
+          : lignes.isEmpty
               ? Text(
                   'Rien à l\'emploi du temps. (Réglages → Mon emploi du temps.)',
                   style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600))
               : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (final r in edtJour) _ligneCreneau(context, r),
+                    if (plage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text('🏖 ${plage.titre} — pas de cours.',
+                            style: const TextStyle(fontSize: 12.5)),
+                      ),
+                    for (final l in lignes) l.$2,
                   ],
                 ),
+    );
+  }
+
+  Widget _ligneEvenement(Evenement e) {
+    final couleur = e.matiere.isEmpty
+        ? Colors.blueGrey
+        : Color(subjectColor(e.matiere));
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Icon(Icons.star, size: 12, color: couleur),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(e.titre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w500)),
+                Text(
+                  '${e.labelHeure}${e.matiere.isEmpty ? '' : ' · ${e.matiere}'} · ponctuel',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------- Vue semaine ----------
+
+  Widget _blocVueSemaine(BuildContext context, AppModel m, DateTime now) {
+    final lundi = mondayOf(now);
+    return _carte(
+      accent: Colors.blueGrey,
+      icone: Icons.view_week_outlined,
+      titre: 'Ma semaine',
+      enfant: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < 7; i++)
+              _colonneJour(context, m, lundi.add(Duration(days: i)), now),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _colonneJour(
+      BuildContext context, AppModel m, DateTime d, DateTime now) {
+    final estAujourdhui =
+        d.year == now.year && d.month == now.month && d.day == now.day;
+    final plage = m.plageSansCours(d);
+    final items = <(int, String, Color, bool)>[];
+    if (plage == null) {
+      for (final r in m.routinesLe(d)) {
+        items.add((
+          r.debutMin,
+          '${r.debutMin ~/ 60}h ${r.titre}',
+          r.matiere.isEmpty ? Colors.blueGrey : Color(subjectColor(r.matiere)),
+          false,
+        ));
+      }
+    }
+    for (final e in m.evenementsLe(d)) {
+      items.add((
+        e.debutMin,
+        '⭐ ${e.debutMin ~/ 60}h ${e.titre}',
+        e.matiere.isEmpty ? Colors.blueGrey : Color(subjectColor(e.matiere)),
+        false,
+      ));
+    }
+    for (final c in m.colles) {
+      if (c.start.year == d.year &&
+          c.start.month == d.month &&
+          c.start.day == d.day) {
+        items.add((
+          c.start.hour * 60 + c.start.minute,
+          '🎤 ${frHeure(c.start)} ${c.matiere}${c.salle.isEmpty ? '' : ' s.${c.salle}'}',
+          Color(subjectColor(c.matiere)),
+          true,
+        ));
+      }
+    }
+    for (final ds in m.ds) {
+      if (ds.date.year == d.year &&
+          ds.date.month == d.month &&
+          ds.date.day == d.day) {
+        items.add(
+            (0, '📝 ${ds.titre} ${ds.matiere}', Color(subjectColor(ds.matiere)), true));
+      }
+    }
+    for (final dev in m.devoirsARendre()) {
+      if (dev.dateRendu.year == d.year &&
+          dev.dateRendu.month == d.month &&
+          dev.dateRendu.day == d.day) {
+        items.add((
+          1,
+          '📥 ${dev.titre} ${dev.matiere}',
+          Color(subjectColor(dev.matiere)),
+          true,
+        ));
+      }
+    }
+    items.sort((a, b) => a.$1.compareTo(b.$1));
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: 112,
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: estAujourdhui
+            ? scheme.primary.withOpacity(0.08)
+            : plage != null
+                ? Colors.grey.withOpacity(0.08)
+                : null,
+        border: estAujourdhui
+            ? Border.all(color: scheme.primary.withOpacity(0.4))
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${frJour(d)[0].toUpperCase()}${frJour(d).substring(1, 3)} ${d.day}',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: estAujourdhui ? scheme.primary : null),
+          ),
+          const SizedBox(height: 4),
+          if (plage != null)
+            Text('🏖 ${plage.titre}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade600))
+          else if (items.isEmpty)
+            Text('—', style: TextStyle(color: Colors.grey.shade400)),
+          for (final it in items.take(7))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 1),
+              child: Text(
+                it.$2,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 10,
+                    color: it.$3,
+                    fontWeight: it.$4 ? FontWeight.w700 : FontWeight.w400),
+              ),
+            ),
+          if (items.length > 7)
+            Text('+${items.length - 7}',
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+        ],
+      ),
     );
   }
 

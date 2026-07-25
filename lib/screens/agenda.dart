@@ -29,6 +29,8 @@ class AgendaScreen extends StatelessWidget {
       // Un devoir non rendu reste visible meme en retard.
       for (final d in m.devoirs)
         if (!d.dateRendu.isBefore(debut) || !d.rendu) _Event.devoir(d),
+      for (final e in m.evenements)
+        if (!e.date.isBefore(debut)) _Event.evenement(e),
     ]..sort((a, b) => a.date.compareTo(b.date));
 
     // Groupement par semaine (lundi).
@@ -154,6 +156,16 @@ class AgendaScreen extends StatelessWidget {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.star_outline),
+              title: const Text('Ajouter un événement ponctuel'),
+              subtitle: const Text('Sport, TP info, oral blanc, sortie…'),
+              onTap: () async {
+                Navigator.pop(context);
+                final ev = await editEvenementDialog(context);
+                if (ev != null) AppModel.instance.addEvenement(ev);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.assignment_turned_in),
               title: const Text('Ajouter un DM / DNS à rendre'),
               onTap: () async {
@@ -222,6 +234,34 @@ class AgendaScreen extends StatelessWidget {
           itemBuilder: (_) => [
             const PopupMenuItem(value: 'edit', child: Text('Modifier / programme')),
             const PopupMenuItem(value: 'note', child: Text('Saisir la note')),
+            const PopupMenuItem(value: 'delete', child: Text('Supprimer')),
+          ],
+        ),
+      );
+    }
+    if (e.evenement != null) {
+      final ev = e.evenement!;
+      return ListTile(
+        leading: CircleAvatar(
+          backgroundColor: color.withOpacity(0.18),
+          child: Icon(Icons.star_outline, color: color, size: 20),
+        ),
+        title: Text(ev.titre),
+        subtitle: Text(
+          '${frJour(ev.date)} ${ev.date.day} · ${ev.labelHeure}'
+          '${ev.matiere.isEmpty ? '' : ' · ${ev.matiere}'}',
+        ),
+        trailing: PopupMenuButton<String>(
+          onSelected: (v) async {
+            if (v == 'edit') {
+              final edited = await editEvenementDialog(context, initial: ev);
+              if (edited != null) m.updateEvenement(edited);
+            } else if (v == 'delete') {
+              m.deleteEvenement(ev.id);
+            }
+          },
+          itemBuilder: (_) => [
+            const PopupMenuItem(value: 'edit', child: Text('Modifier')),
             const PopupMenuItem(value: 'delete', child: Text('Supprimer')),
           ],
         ),
@@ -314,22 +354,33 @@ class _Event {
   final Colle? colle;
   final Ds? ds;
   final Devoir? devoir;
+  final Evenement? evenement;
   _Event.colle(Colle c)
       : date = c.start,
         matiere = c.matiere,
         colle = c,
         ds = null,
-        devoir = null;
+        devoir = null,
+        evenement = null;
   _Event.ds(Ds d)
       : date = d.date,
         matiere = d.matiere,
         colle = null,
         ds = d,
-        devoir = null;
+        devoir = null,
+        evenement = null;
   _Event.devoir(Devoir d)
       : date = d.dateRendu,
         matiere = d.matiere,
         colle = null,
         ds = null,
-        devoir = d;
+        devoir = d,
+        evenement = null;
+  _Event.evenement(Evenement e)
+      : date = e.date,
+        matiere = e.matiere.isEmpty ? e.titre : e.matiere,
+        colle = null,
+        ds = null,
+        devoir = null,
+        evenement = e;
 }

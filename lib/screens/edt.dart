@@ -31,27 +31,33 @@ class _EdtScreenState extends State<EdtScreen> {
       case 'MP':
       case 'MP2I':
       case 'MPI':
-        base.addAll(['Maths', 'Physique', 'Info', 'Français', 'Anglais', 'TIPE']);
+        base.addAll(
+            ['Maths', 'Physique', 'Info', 'Français', 'Anglais', 'TIPE']);
         break;
       case 'PCSI':
       case 'PC':
-        base.addAll(
-            ['Maths', 'Physique', 'Chimie', 'Français', 'Anglais', 'TIPE']);
+        base.addAll([
+          'Maths', 'Physique', 'Chimie', 'Info', 'Français', 'Anglais', 'TIPE'
+        ]);
         break;
       case 'PSI':
       case 'PTSI':
       case 'PT':
-        base.addAll(
-            ['Maths', 'Physique', 'SII', 'Français', 'Anglais', 'TIPE']);
+        // En PSI, la matiere s'appelle bien Physique-Chimie.
+        base.addAll([
+          'Maths', 'Physique-Chimie', 'SII', 'Info', 'Français', 'Anglais',
+          'TIPE'
+        ]);
         break;
       case 'BCPST':
-        base.addAll(['Maths', 'Physique', 'SVT', 'Français', 'Anglais']);
+        base.addAll(
+            ['Maths', 'Physique', 'SVT', 'Info', 'Français', 'Anglais']);
         break;
       case 'ECG':
         base.addAll(['Maths', 'ESH', 'Culture G', 'Anglais', 'LV2']);
         break;
       default:
-        base.addAll(['Maths', 'Physique', 'Français', 'Anglais']);
+        base.addAll(['Maths', 'Physique', 'Info', 'Français', 'Anglais']);
     }
     base.addAll(AppModel.instance.matieres);
     return base.toList();

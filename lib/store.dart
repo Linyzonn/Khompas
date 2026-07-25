@@ -26,6 +26,7 @@ class AppModel extends ChangeNotifier {
   List<Devoir> devoirs = [];
   List<Seance> seances = [];
   List<Bilan> bilans = [];
+  List<Evenement> evenements = [];
   // Calendrier interne : periodes sans cours (vacances, semaines de
   // revisions) + lundi de reference d'une "semaine A" pour le roulement A/B.
   List<PlageSansCours> sansCours = [];
@@ -108,6 +109,9 @@ class AppModel extends ChangeNotifier {
         bilans = ((j['bilans'] ?? []) as List)
             .map((e) => Bilan.fromJson(e as Map<String, dynamic>))
             .toList();
+        evenements = ((j['evenements'] ?? []) as List)
+            .map((e) => Evenement.fromJson(e as Map<String, dynamic>))
+            .toList();
         sansCours = ((j['sansCours'] ?? []) as List)
             .map((e) => PlageSansCours.fromJson(e as Map<String, dynamic>))
             .toList();
@@ -142,6 +146,7 @@ class AppModel extends ChangeNotifier {
         'objectifs': objectifs,
         'dateConcours': dateConcours?.toIso8601String(),
         'bilans': bilans.map((b) => b.toJson()).toList(),
+        'evenements': evenements.map((e) => e.toJson()).toList(),
         'sansCours': sansCours.map((p) => p.toJson()).toList(),
         'refSemaineA': refSemaineA?.toIso8601String(),
         'methodeTravail': methodeTravail,
@@ -294,6 +299,9 @@ class AppModel extends ChangeNotifier {
       final newBilans = ((decoded['bilans'] ?? []) as List)
           .map((e) => Bilan.fromJson(e as Map<String, dynamic>))
           .toList();
+      final newEvenements = ((decoded['evenements'] ?? []) as List)
+          .map((e) => Evenement.fromJson(e as Map<String, dynamic>))
+          .toList();
       final newSansCours = ((decoded['sansCours'] ?? []) as List)
           .map((e) => PlageSansCours.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -316,6 +324,7 @@ class AppModel extends ChangeNotifier {
       objectifs = newObjectifs;
       dateConcours = newDateConcours;
       bilans = newBilans;
+      evenements = newEvenements;
       sansCours = newSansCours;
       refSemaineA = newRefSemaineA;
       methodeTravail = newMethode;
@@ -608,6 +617,42 @@ class AppModel extends ChangeNotifier {
     methodeTravail = methode;
     _touch();
   }
+
+  // ---------- Evenements ponctuels ----------
+
+  void addEvenement(Evenement e) {
+    evenements.add(e);
+    // Menage : on ne garde pas les evenements passes depuis > 60 jours.
+    final limite = DateTime.now().subtract(const Duration(days: 60));
+    evenements.removeWhere((x) => x.date.isBefore(limite));
+    evenements.sort((a, b) => a.date != b.date
+        ? a.date.compareTo(b.date)
+        : a.debutMin.compareTo(b.debutMin));
+    _touch();
+  }
+
+  void updateEvenement(Evenement e) {
+    final i = evenements.indexWhere((x) => x.id == e.id);
+    if (i >= 0) evenements[i] = e;
+    evenements.sort((a, b) => a.date != b.date
+        ? a.date.compareTo(b.date)
+        : a.debutMin.compareTo(b.debutMin));
+    _touch();
+  }
+
+  void deleteEvenement(String id) {
+    evenements.removeWhere((x) => x.id == id);
+    _touch();
+  }
+
+  /// Evenements ponctuels d'une date, tries par heure.
+  List<Evenement> evenementsLe(DateTime d) => evenements
+      .where((e) =>
+          e.date.year == d.year &&
+          e.date.month == d.month &&
+          e.date.day == d.day)
+      .toList()
+    ..sort((a, b) => a.debutMin.compareTo(b.debutMin));
 
   // ---------- Bilans de journee ----------
 

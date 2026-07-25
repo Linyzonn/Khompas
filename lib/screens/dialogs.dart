@@ -303,6 +303,138 @@ Future<Devoir?> editDevoirDialog(BuildContext context, {Devoir? initial}) async 
   );
 }
 
+/// Editeur d'evenement ponctuel (sport aux dates annoncees tard, TP info
+/// une semaine sur trois, oral blanc, sortie...).
+Future<Evenement?> editEvenementDialog(BuildContext context,
+    {Evenement? initial}) async {
+  final m = AppModel.instance;
+  final titreCtl = TextEditingController(text: initial?.titre ?? '');
+  final matiereCtl = TextEditingController(text: initial?.matiere ?? '');
+  var date = initial?.date ?? DateTime.now().add(const Duration(days: 1));
+  var time = TimeOfDay(
+      hour: (initial?.debutMin ?? 960) ~/ 60,
+      minute: (initial?.debutMin ?? 960) % 60);
+  var duree = initial?.dureeMin ?? 60;
+
+  return showDialog<Evenement>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: Text(
+            initial == null ? 'Événement ponctuel' : 'Modifier l\'événement'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: titreCtl,
+                decoration: const InputDecoration(
+                    labelText: 'Titre (Sport, TP info, Oral blanc…)'),
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              TextField(
+                controller: matiereCtl,
+                decoration: const InputDecoration(
+                  labelText: 'Matière (facultatif)',
+                  helperText:
+                      'Avec une matière, le plan du soir en tient compte.',
+                  helperMaxLines: 2,
+                ),
+              ),
+              if (m.matieres.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Wrap(
+                    spacing: 6,
+                    children: [
+                      for (final mat in m.matieres)
+                        ActionChip(
+                          label:
+                              Text(mat, style: const TextStyle(fontSize: 12)),
+                          onPressed: () =>
+                              setState(() => matiereCtl.text = mat),
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.event, size: 18),
+                      label: Text(frDateCourte(date)),
+                      onPressed: () async {
+                        final d = await showDatePicker(
+                          context: context,
+                          initialDate: date,
+                          firstDate: DateTime(2023),
+                          lastDate: DateTime(2032),
+                        );
+                        if (d != null) setState(() => date = d);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.schedule, size: 18),
+                      label: Text(time.format(context)),
+                      onPressed: () async {
+                        final t = await showTimePicker(
+                            context: context, initialTime: time);
+                        if (t != null) setState(() => time = t);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Text('Durée : '),
+                  const SizedBox(width: 8),
+                  DropdownButton<int>(
+                    value: duree,
+                    items: [
+                      for (final d
+                          in ({30, 60, 90, 120, 180, 240, duree}.toList()
+                            ..sort()))
+                        DropdownMenuItem(value: d, child: Text(_labelDuree(d))),
+                    ],
+                    onChanged: (v) => setState(() => duree = v ?? 60),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              if (titreCtl.text.trim().isEmpty) return;
+              final e = initial ??
+                  Evenement(titre: '', date: date, debutMin: 0);
+              e
+                ..titre = titreCtl.text.trim()
+                ..matiere = matiereCtl.text.trim()
+                ..date = DateTime(date.year, date.month, date.day)
+                ..debutMin = time.hour * 60 + time.minute
+                ..dureeMin = duree;
+              Navigator.pop(context, e);
+            },
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 /// Saisie d'une note /20. Retourne -1 pour "effacer la note".
 Future<double?> noteDialog(BuildContext context, {double? current}) async {
   final ctl = TextEditingController(text: current?.toString() ?? '');

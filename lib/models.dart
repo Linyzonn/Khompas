@@ -212,6 +212,50 @@ class Devoir {
       );
 }
 
+/// Un evenement PONCTUEL (pas de schema recurrent) : seance de sport dont la
+/// date tombe tard, TP info une semaine sur trois, sortie, oral blanc...
+class Evenement {
+  String id;
+  String titre;
+  String matiere; // facultatif — s'il y en a une, le moteur la voit
+  DateTime date; // jour
+  int debutMin;
+  int dureeMin;
+
+  Evenement({
+    String? id,
+    required this.titre,
+    this.matiere = '',
+    required this.date,
+    required this.debutMin,
+    this.dureeMin = 60,
+  }) : id = id ?? _newId();
+
+  String get labelHeure {
+    String h(int m) =>
+        '${m ~/ 60}h${(m % 60) == 0 ? '' : (m % 60).toString().padLeft(2, '0')}';
+    return '${h(debutMin)}–${h(debutMin + dureeMin)}';
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'titre': titre,
+        'matiere': matiere,
+        'date': date.toIso8601String(),
+        'debutMin': debutMin,
+        'dureeMin': dureeMin,
+      };
+
+  static Evenement fromJson(Map<String, dynamic> j) => Evenement(
+        id: j['id'] as String?,
+        titre: (j['titre'] ?? '') as String,
+        matiere: (j['matiere'] ?? '') as String,
+        date: DateTime.parse(j['date'] as String),
+        debutMin: (j['debutMin'] ?? 480) as int,
+        dureeMin: (j['dureeMin'] ?? 60) as int,
+      );
+}
+
 /// Une periode SANS COURS du calendrier interne : vacances, ou semaine de
 /// revisions avant les concours (3/2 et 5/2). L'emploi du temps s'y tait.
 class PlageSansCours {
