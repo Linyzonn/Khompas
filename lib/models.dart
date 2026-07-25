@@ -121,6 +121,13 @@ class Ds {
       );
 }
 
+/// Filieres proposees (onboarding + Reglages).
+const List<String> kFilieres = [
+  'MPSI', 'PCSI', 'PTSI', 'MP2I', 'BCPST',
+  'MP', 'PC', 'PSI', 'PT', 'MPI',
+  'ECG', 'Hypokhâgne', 'Khâgne', 'Autre',
+];
+
 /// Etapes de progression d'un chapitre (le workflow prepa).
 const List<String> kEtapesChapitre = [
   'pas vu', 'vu en cours', 'revu chez moi', 'exos faits', 'DS/DNS passé',
@@ -128,13 +135,15 @@ const List<String> kEtapesChapitre = [
 
 /// Un chapitre du programme, avec :
 /// - [etape] : ou tu en es dans le workflow (0 = pas vu ... 4 = DS/DNS passe) ;
-/// - [maitrise] : a quel point tu le tiens (0 = fragile ... 4 = maitrise).
+/// - [maitrise] : a quel point tu le tiens (0 = fragile ... 4 = maitrise) ;
+/// - [dernierRevu] : derniere revision "concours" (mode revisions).
 class Chapitre {
   String id;
   String matiere;
   String nom;
   int maitrise; // 0 = pas vu, 4 = maitrise
   int etape; // index dans kEtapesChapitre
+  DateTime? dernierRevu;
 
   Chapitre({
     String? id,
@@ -142,6 +151,7 @@ class Chapitre {
     required this.nom,
     this.maitrise = 2,
     this.etape = 0,
+    this.dernierRevu,
   }) : id = id ?? _newId();
 
   Map<String, dynamic> toJson() => {
@@ -150,6 +160,7 @@ class Chapitre {
         'nom': nom,
         'maitrise': maitrise,
         'etape': etape,
+        'dernierRevu': dernierRevu?.toIso8601String(),
       };
 
   static Chapitre fromJson(Map<String, dynamic> j) => Chapitre(
@@ -158,12 +169,162 @@ class Chapitre {
         nom: (j['nom'] ?? '') as String,
         maitrise: (j['maitrise'] ?? 2) as int,
         etape: (j['etape'] ?? 0) as int,
+        dernierRevu: j['dernierRevu'] == null
+            ? null
+            : DateTime.tryParse(j['dernierRevu'] as String),
+      );
+}
+
+/// Un devoir a RENDRE (DM, DNS...) : ce qui pilote souvent les soirees.
+class Devoir {
+  String id;
+  String matiere;
+  String titre;
+  DateTime dateRendu;
+  bool rendu;
+  String remarque;
+
+  Devoir({
+    String? id,
+    required this.matiere,
+    this.titre = 'DM',
+    required this.dateRendu,
+    this.rendu = false,
+    this.remarque = '',
+  }) : id = id ?? _newId();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'matiere': matiere,
+        'titre': titre,
+        'dateRendu': dateRendu.toIso8601String(),
+        'rendu': rendu,
+        'remarque': remarque,
+      };
+
+  static Devoir fromJson(Map<String, dynamic> j) => Devoir(
+        id: j['id'] as String?,
+        matiere: (j['matiere'] ?? '') as String,
+        titre: (j['titre'] ?? 'DM') as String,
+        dateRendu: DateTime.parse(j['dateRendu'] as String),
+        rendu: (j['rendu'] ?? false) as bool,
+        remarque: (j['remarque'] ?? '') as String,
+      );
+}
+
+/// Une periode SANS COURS du calendrier interne : vacances, ou semaine de
+/// revisions avant les concours (3/2 et 5/2). L'emploi du temps s'y tait.
+class PlageSansCours {
+  String id;
+  String titre;
+  DateTime debut;
+  DateTime fin; // incluse
+
+  PlageSansCours({
+    String? id,
+    required this.titre,
+    required this.debut,
+    required this.fin,
+  }) : id = id ?? _newId();
+
+  bool contient(DateTime d) {
+    final jour = DateTime(d.year, d.month, d.day);
+    return !jour.isBefore(DateTime(debut.year, debut.month, debut.day)) &&
+        !jour.isAfter(DateTime(fin.year, fin.month, fin.day));
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'titre': titre,
+        'debut': debut.toIso8601String(),
+        'fin': fin.toIso8601String(),
+      };
+
+  static PlageSansCours fromJson(Map<String, dynamic> j) => PlageSansCours(
+        id: j['id'] as String?,
+        titre: (j['titre'] ?? '') as String,
+        debut: DateTime.parse(j['debut'] as String),
+        fin: DateTime.parse(j['fin'] as String),
+      );
+}
+
+/// Types de creneau pour le bilan de journee.
+const List<String> kTypesBilan = ['Cours', 'Exos', 'TP'];
+
+/// Bilan d'un creneau de la journee : qu'a-t-on fait pendant ce cours ?
+/// (cours magistral -> quel chapitre, exos, TP). Nourrit les chapitres
+/// ("vu en cours") et donc le plan du soir.
+class Bilan {
+  String id;
+  DateTime jour; // date (minuit)
+  String routineId;
+  String matiere;
+  String type; // valeur de kTypesBilan
+  String? chapitreId; // si type == Cours
+
+  Bilan({
+    String? id,
+    required this.jour,
+    required this.routineId,
+    required this.matiere,
+    required this.type,
+    this.chapitreId,
+  }) : id = id ?? _newId();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'jour': jour.toIso8601String(),
+        'routineId': routineId,
+        'matiere': matiere,
+        'type': type,
+        'chapitreId': chapitreId,
+      };
+
+  static Bilan fromJson(Map<String, dynamic> j) => Bilan(
+        id: j['id'] as String?,
+        jour: DateTime.parse(j['jour'] as String),
+        routineId: (j['routineId'] ?? '') as String,
+        matiere: (j['matiere'] ?? '') as String,
+        type: (j['type'] ?? 'Cours') as String,
+        chapitreId: j['chapitreId'] as String?,
+      );
+}
+
+/// Une seance de travail reellement effectuee (plan du soir coche).
+class Seance {
+  String id;
+  String matiere;
+  DateTime date;
+  int minutes;
+
+  Seance({
+    String? id,
+    required this.matiere,
+    required this.date,
+    required this.minutes,
+  }) : id = id ?? _newId();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'matiere': matiere,
+        'date': date.toIso8601String(),
+        'minutes': minutes,
+      };
+
+  static Seance fromJson(Map<String, dynamic> j) => Seance(
+        id: j['id'] as String?,
+        matiere: (j['matiere'] ?? '') as String,
+        date: DateTime.parse(j['date'] as String),
+        minutes: (j['minutes'] ?? 0) as int,
       );
 }
 
 /// Un evenement recurrent de la semaine type : cours qui finit tard, sport,
 /// musique, association... Affiche sur l'onglet Aujourd'hui pour avoir la
 /// journee complete en tete et calibrer le travail du soir.
+/// Alternance de semaines pour un creneau d'emploi du temps.
+const List<String> kSemainesLabels = ['Toutes', 'Semaine A', 'Semaine B'];
+
 class Routine {
   String id;
   String titre;
@@ -173,6 +334,8 @@ class Routine {
   // Matiere associee (facultatif) : "Cours de Maths" -> 'Maths'. Le moteur
   // du soir s'en sert : cours vu aujourd'hui = a revoir ce soir.
   String matiere;
+  // 0 = toutes les semaines, 1 = semaines A, 2 = semaines B (roulement).
+  int semaines;
 
   Routine({
     String? id,
@@ -181,6 +344,7 @@ class Routine {
     required this.debutMin,
     this.dureeMin = 60,
     this.matiere = '',
+    this.semaines = 0,
   }) : id = id ?? _newId();
 
   String get labelHeure {
@@ -196,6 +360,7 @@ class Routine {
         'debutMin': debutMin,
         'dureeMin': dureeMin,
         'matiere': matiere,
+        'semaines': semaines,
       };
 
   static Routine fromJson(Map<String, dynamic> j) => Routine(
@@ -205,6 +370,7 @@ class Routine {
         debutMin: (j['debutMin'] ?? 1080) as int,
         dureeMin: (j['dureeMin'] ?? 60) as int,
         matiere: (j['matiere'] ?? '') as String,
+        semaines: (j['semaines'] ?? 0) as int,
       );
 }
 

@@ -45,6 +45,48 @@ class ApiKhompas {
     if (r.statusCode != 200) _lance(r);
   }
 
+  // ---------- Comptes anonymes ----------
+
+  /// Cree un compte anonyme, retourne sa CLE (18 caracteres) — a garder
+  /// precieusement : c'est elle qui permet de retrouver ses donnees.
+  Future<String> creerCompte(
+      {required String filiere, required bool cinqDemi}) async {
+    final r = await http
+        .post(
+          Uri.parse('$base/api/comptes'),
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode({'filiere': filiere, 'cinqDemi': cinqDemi}),
+        )
+        .timeout(const Duration(seconds: 30));
+    if (r.statusCode != 200) _lance(r);
+    return (jsonDecode(utf8.decode(r.bodyBytes))
+        as Map<String, dynamic>)['cle'] as String;
+  }
+
+  /// Envoie la sauvegarde complete du compte (remplace la precedente).
+  Future<void> envoyerCompte(String cle, String data) async {
+    final r = await http
+        .put(
+          Uri.parse('$base/api/compte/data'),
+          headers: {'content-type': 'text/plain', 'x-khompas-cle': cle},
+          body: data,
+        )
+        .timeout(const Duration(seconds: 45));
+    if (r.statusCode != 200) _lance(r);
+  }
+
+  /// Donnees du compte, ou null si le compte n'a encore rien envoye.
+  Future<String?> recupererCompte(String cle) async {
+    final r = await http.get(
+      Uri.parse('$base/api/compte/data'),
+      headers: {'x-khompas-cle': cle},
+    ).timeout(const Duration(seconds: 45));
+    if (r.statusCode == 404) return null;
+    if (r.statusCode != 200) _lance(r);
+    return (jsonDecode(utf8.decode(r.bodyBytes))
+        as Map<String, dynamic>)['data'] as String;
+  }
+
   /// Recupere les kholles du groupe [groupe] de la classe [code].
   /// Si le groupe est deja en cache : instantane. Sinon le serveur lance
   /// l'extraction EN TACHE DE FOND (reponse 202) et on re-interroge toutes

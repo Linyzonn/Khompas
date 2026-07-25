@@ -214,6 +214,95 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
   );
 }
 
+/// Editeur de devoir a rendre (DM / DNS).
+Future<Devoir?> editDevoirDialog(BuildContext context, {Devoir? initial}) async {
+  final m = AppModel.instance;
+  final matiereCtl = TextEditingController(text: initial?.matiere ?? '');
+  final titreCtl = TextEditingController(text: initial?.titre ?? 'DM');
+  final remCtl = TextEditingController(text: initial?.remarque ?? '');
+  var date = initial?.dateRendu ?? DateTime.now().add(const Duration(days: 7));
+
+  return showDialog<Devoir>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: Text(initial == null ? 'Devoir à rendre' : 'Modifier le devoir'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: matiereCtl,
+                decoration: const InputDecoration(labelText: 'Matière'),
+              ),
+              if (m.matieres.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Wrap(
+                    spacing: 6,
+                    children: [
+                      for (final mat in m.matieres)
+                        ActionChip(
+                          label: Text(mat, style: const TextStyle(fontSize: 12)),
+                          onPressed: () => setState(() => matiereCtl.text = mat),
+                        ),
+                    ],
+                  ),
+                ),
+              TextField(
+                controller: titreCtl,
+                decoration:
+                    const InputDecoration(labelText: 'Titre (DM 3, DNS…)'),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.event, size: 18),
+                label: Text('À rendre le ${frDateCourte(date)}'),
+                onPressed: () async {
+                  final d = await showDatePicker(
+                    context: context,
+                    initialDate: date,
+                    firstDate: DateTime(2023),
+                    lastDate: DateTime(2032),
+                  );
+                  if (d != null) setState(() => date = d);
+                },
+              ),
+              TextField(
+                controller: remCtl,
+                decoration: const InputDecoration(
+                    labelText: 'Remarque (facultatif — ex. exos 1 à 4)'),
+                maxLines: 2,
+                minLines: 1,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              if (matiereCtl.text.trim().isEmpty) return;
+              final d = initial ?? Devoir(matiere: '', dateRendu: date);
+              d
+                ..matiere = matiereCtl.text.trim()
+                ..titre =
+                    titreCtl.text.trim().isEmpty ? 'DM' : titreCtl.text.trim()
+                ..dateRendu = DateTime(date.year, date.month, date.day)
+                ..remarque = remCtl.text.trim();
+              Navigator.pop(context, d);
+            },
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 /// Saisie d'une note /20. Retourne -1 pour "effacer la note".
 Future<double?> noteDialog(BuildContext context, {double? current}) async {
   final ctl = TextEditingController(text: current?.toString() ?? '');

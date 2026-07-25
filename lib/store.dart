@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -5,7 +6,12 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'api_client.dart';
 import 'models.dart';
+
+/// Serveur Khompas par defaut (celui de la beta) : les camarades n'ont
+/// aucune URL a configurer. Modifiable dans Reglages.
+const String kServeurDefaut = 'https://khompas.linyzonn.deno.net';
 
 /// Etat global de l'app, persiste dans un fichier JSON local.
 /// (La cle API, plus sensible, vit dans SharedPreferences.)
@@ -17,6 +23,19 @@ class AppModel extends ChangeNotifier {
   List<Ds> ds = [];
   List<Chapitre> chapitres = [];
   List<Routine> routines = [];
+  List<Devoir> devoirs = [];
+  List<Seance> seances = [];
+  List<Bilan> bilans = [];
+  // Calendrier interne : periodes sans cours (vacances, semaines de
+  // revisions) + lundi de reference d'une "semaine A" pour le roulement A/B.
+  List<PlageSansCours> sansCours = [];
+  DateTime? refSemaineA;
+  // Methode de travail du soir : 'checklist' | 'pomo25' | 'pomo50'.
+  String methodeTravail = 'checklist';
+  // Objectif de moyenne par matiere (facultatif, toujours formule en positif).
+  Map<String, double> objectifs = {};
+  // Date des ecrits : non nulle = MODE REVISIONS CONCOURS actif.
+  DateTime? dateConcours;
   String filiere = 'PCSI';
   int groupe = 1;
   // Code de partage du colloscope de ma classe (serveur Khompas).
@@ -27,7 +46,16 @@ class AppModel extends ChangeNotifier {
   String apiKey = '';
   // URL du serveur Khompas (beta) — vide = fonctions serveur masquees.
   String serverUrl = '';
+  // Cle du compte anonyme (18 caracteres) — vide = pas de compte.
+  String compteCle = '';
+  // 5/2 : refait sa 2e annee -> adapte l'import du programme (chapitres
+  // deja vus) et, plus tard, le plan de travail.
+  bool cinqDemi = false;
+  // Premier lancement termine (ecran de bienvenue passe) ?
+  bool onboarded = false;
   bool loaded = false;
+
+  Timer? _pushTimer;
 
   // ---------- Persistance ----------
 
@@ -40,7 +68,9 @@ class AppModel extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       apiKey = prefs.getString('apiKey') ?? '';
-      serverUrl = prefs.getString('serverUrl') ?? '';
+      serverUrl = prefs.getString('serverUrl') ?? kServeurDefaut;
+      compteCle = prefs.getString('compteCle') ?? '';
+      onboarded = prefs.getBool('onboarded') ?? false;
       String? raw;
       if (kIsWeb) {
         // Version web (PC) : pas de systeme de fichiers, la base vit dans
@@ -64,9 +94,31 @@ class AppModel extends ChangeNotifier {
         routines = ((j['routines'] ?? []) as List)
             .map((e) => Routine.fromJson(e as Map<String, dynamic>))
             .toList();
+        devoirs = ((j['devoirs'] ?? []) as List)
+            .map((e) => Devoir.fromJson(e as Map<String, dynamic>))
+            .toList();
+        seances = ((j['seances'] ?? []) as List)
+            .map((e) => Seance.fromJson(e as Map<String, dynamic>))
+            .toList();
+        objectifs = ((j['objectifs'] ?? {}) as Map)
+            .map((k, v) => MapEntry(k.toString(), (v as num).toDouble()));
+        dateConcours = j['dateConcours'] == null
+            ? null
+            : DateTime.tryParse(j['dateConcours'] as String);
+        bilans = ((j['bilans'] ?? []) as List)
+            .map((e) => Bilan.fromJson(e as Map<String, dynamic>))
+            .toList();
+        sansCours = ((j['sansCours'] ?? []) as List)
+            .map((e) => PlageSansCours.fromJson(e as Map<String, dynamic>))
+            .toList();
+        refSemaineA = j['refSemaineA'] == null
+            ? null
+            : DateTime.tryParse(j['refSemaineA'] as String);
+        methodeTravail = (j['methodeTravail'] ?? 'checklist') as String;
         filiere = (j['filiere'] ?? 'PCSI') as String;
         groupe = (j['groupe'] ?? 1) as int;
         codeClasse = (j['codeClasse'] ?? '') as String;
+        cinqDemi = (j['cinqDemi'] ?? false) as bool;
         prios = ((j['prios'] ?? {}) as Map)
             .map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
       }
@@ -85,9 +137,18 @@ class AppModel extends ChangeNotifier {
         'ds': ds.map((d) => d.toJson()).toList(),
         'chapitres': chapitres.map((c) => c.toJson()).toList(),
         'routines': routines.map((r) => r.toJson()).toList(),
+        'devoirs': devoirs.map((d) => d.toJson()).toList(),
+        'seances': seances.map((s) => s.toJson()).toList(),
+        'objectifs': objectifs,
+        'dateConcours': dateConcours?.toIso8601String(),
+        'bilans': bilans.map((b) => b.toJson()).toList(),
+        'sansCours': sansCours.map((p) => p.toJson()).toList(),
+        'refSemaineA': refSemaineA?.toIso8601String(),
+        'methodeTravail': methodeTravail,
         'filiere': filiere,
         'groupe': groupe,
         'codeClasse': codeClasse,
+        'cinqDemi': cinqDemi,
         'prios': prios,
       };
 
@@ -104,6 +165,81 @@ class AppModel extends ChangeNotifier {
     } catch (_) {
       // Stockage indisponible : l'app reste utilisable, sans persistance.
     }
+    _programmerPush();
+  }
+
+  // ---------- Compte (synchronisation) ----------
+
+  /// Envoi automatique vers le compte, quelques secondes apres la derniere
+  /// modification (debounce). Echec silencieux : hors ligne, la prochaine
+  /// modification retentera.
+  void _programmerPush() {
+    if (compteCle.isEmpty || serverUrl.isEmpty) return;
+    _pushTimer?.cancel();
+    _pushTimer = Timer(const Duration(seconds: 3), () async {
+      try {
+        await ApiKhompas(serverUrl).envoyerCompte(compteCle, exportJson());
+      } catch (_) {
+        // hors ligne / serveur indisponible : tant pis pour cette fois
+      }
+    });
+  }
+
+  Future<void> saveCompteCle(String cle) async {
+    compteCle = cle.trim().toUpperCase();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('compteCle', compteCle);
+    notifyListeners();
+  }
+
+  /// Dissocie l'appareil du compte (les donnees restent locales ET sur le
+  /// serveur — seule la cle locale est oubliee).
+  Future<void> deconnecterCompte() async {
+    compteCle = '';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('compteCle');
+    notifyListeners();
+  }
+
+  /// Connecte l'appareil a un compte existant : enregistre la cle et
+  /// RESTAURE les donnees du compte (remplace les donnees locales).
+  /// Retourne un resume, ou une explication si le compte est encore vide.
+  Future<String> connecterCompte(String cle) async {
+    final propre = cle.trim().toUpperCase();
+    final data = await ApiKhompas(serverUrl).recupererCompte(propre);
+    await saveCompteCle(propre);
+    if (data == null || data.trim().isEmpty) {
+      // Compte vide : on y envoie au contraire les donnees locales.
+      _programmerPush();
+      return 'compte encore vide — tes données locales vont y être envoyées';
+    }
+    return importJson(data);
+  }
+
+  /// Envoi immediat (bouton Reglages).
+  Future<void> pousserCompte() async {
+    await ApiKhompas(serverUrl).envoyerCompte(compteCle, exportJson());
+  }
+
+  /// Recuperation immediate (bouton Reglages) : remplace les donnees locales.
+  Future<String> tirerCompte() async {
+    final data = await ApiKhompas(serverUrl).recupererCompte(compteCle);
+    if (data == null || data.trim().isEmpty) {
+      throw Exception('aucune donnée sur ce compte pour le moment.');
+    }
+    return importJson(data);
+  }
+
+  void setCinqDemi(bool v) {
+    cinqDemi = v;
+    _touch();
+  }
+
+  Future<void> setOnboarded() async {
+    onboarded = true;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarded', true);
+    notifyListeners();
   }
 
   // ---------- Sauvegarde / restauration ----------
@@ -144,18 +280,49 @@ class AppModel extends ChangeNotifier {
       final newRoutines = ((decoded['routines'] ?? []) as List)
           .map((e) => Routine.fromJson(e as Map<String, dynamic>))
           .toList();
+      final newDevoirs = ((decoded['devoirs'] ?? []) as List)
+          .map((e) => Devoir.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final newSeances = ((decoded['seances'] ?? []) as List)
+          .map((e) => Seance.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final newObjectifs = ((decoded['objectifs'] ?? {}) as Map)
+          .map((k, v) => MapEntry(k.toString(), (v as num).toDouble()));
+      final newDateConcours = decoded['dateConcours'] == null
+          ? null
+          : DateTime.tryParse(decoded['dateConcours'] as String);
+      final newBilans = ((decoded['bilans'] ?? []) as List)
+          .map((e) => Bilan.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final newSansCours = ((decoded['sansCours'] ?? []) as List)
+          .map((e) => PlageSansCours.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final newRefSemaineA = decoded['refSemaineA'] == null
+          ? null
+          : DateTime.tryParse(decoded['refSemaineA'] as String);
+      final newMethode = (decoded['methodeTravail'] ?? methodeTravail) as String;
       final newFiliere = (decoded['filiere'] ?? filiere) as String;
       final newGroupe = ((decoded['groupe'] ?? groupe) as num).toInt();
       final newCodeClasse = (decoded['codeClasse'] ?? codeClasse) as String;
+      final newCinqDemi = (decoded['cinqDemi'] ?? cinqDemi) as bool;
       final newPrios = ((decoded['prios'] ?? {}) as Map)
           .map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
       colles = newColles;
       ds = newDs;
       chapitres = newChapitres;
       routines = newRoutines;
+      devoirs = newDevoirs;
+      seances = newSeances;
+      objectifs = newObjectifs;
+      dateConcours = newDateConcours;
+      bilans = newBilans;
+      sansCours = newSansCours;
+      refSemaineA = newRefSemaineA;
+      methodeTravail = newMethode;
       filiere = newFiliere;
       groupe = newGroupe;
       codeClasse = newCodeClasse;
+      cinqDemi = newCinqDemi;
       prios = newPrios;
     } catch (_) {
       throw Exception('sauvegarde illisible ou incomplète — rien n\'a été modifié.');
@@ -293,6 +460,71 @@ class AppModel extends ChangeNotifier {
     _touch();
   }
 
+  // ---------- Devoirs a rendre (DM / DNS) ----------
+
+  void addDevoir(Devoir d) {
+    devoirs.add(d);
+    devoirs.sort((a, b) => a.dateRendu.compareTo(b.dateRendu));
+    _touch();
+  }
+
+  void updateDevoir(Devoir d) {
+    final i = devoirs.indexWhere((e) => e.id == d.id);
+    if (i >= 0) devoirs[i] = d;
+    devoirs.sort((a, b) => a.dateRendu.compareTo(b.dateRendu));
+    _touch();
+  }
+
+  void deleteDevoir(String id) {
+    devoirs.removeWhere((e) => e.id == id);
+    _touch();
+  }
+
+  /// Devoirs pas encore rendus (les rendus recents restent visibles ailleurs).
+  List<Devoir> devoirsARendre() =>
+      devoirs.where((d) => !d.rendu).toList()
+        ..sort((a, b) => a.dateRendu.compareTo(b.dateRendu));
+
+  // ---------- Seances de travail (plan du soir coche) ----------
+
+  void addSeance(String matiere, int minutes) {
+    seances.add(Seance(matiere: matiere, date: DateTime.now(), minutes: minutes));
+    // On ne garde que ~6 mois d'historique, largement assez pour les stats.
+    final limite = DateTime.now().subtract(const Duration(days: 190));
+    seances.removeWhere((s) => s.date.isBefore(limite));
+    _touch();
+  }
+
+  /// Minutes travaillees cette semaine, par matiere (+ cle '' = total).
+  Map<String, int> minutesSemaine() {
+    final lundi = mondayOf(DateTime.now());
+    final out = <String, int>{'': 0};
+    for (final s in seances) {
+      if (s.date.isBefore(lundi)) continue;
+      out[s.matiere] = (out[s.matiere] ?? 0) + s.minutes;
+      out[''] = out['']! + s.minutes;
+    }
+    return out;
+  }
+
+  // ---------- Objectifs (facultatifs, jamais culpabilisants) ----------
+
+  void setObjectif(String matiere, double? obj) {
+    if (obj == null) {
+      objectifs.remove(matiere);
+    } else {
+      objectifs[matiere] = obj;
+    }
+    _touch();
+  }
+
+  // ---------- Mode revisions concours ----------
+
+  void setDateConcours(DateTime? d) {
+    dateConcours = d;
+    _touch();
+  }
+
   // ---------- Semaine type (routines) ----------
 
   void addRoutine(Routine r) {
@@ -318,10 +550,98 @@ class AppModel extends ChangeNotifier {
         a.jour != b.jour ? a.jour.compareTo(b.jour) : a.debutMin.compareTo(b.debutMin));
   }
 
-  /// Routines d'un jour de semaine (1 = lundi ... 7 = dimanche), triees.
-  List<Routine> routinesDu(int weekday) =>
+  /// Toutes les routines d'un jour de semaine (pour l'ecran d'edition,
+  /// sans tenir compte du calendrier ni du roulement).
+  List<Routine> routinesJourBrut(int weekday) =>
       routines.where((r) => r.jour == weekday).toList()
         ..sort((a, b) => a.debutMin.compareTo(b.debutMin));
+
+  // ---------- Calendrier interne ----------
+
+  /// La plage sans cours qui couvre [d], ou null (vacances, revisions...).
+  PlageSansCours? plageSansCours(DateTime d) {
+    for (final p in sansCours) {
+      if (p.contient(d)) return p;
+    }
+    return null;
+  }
+
+  /// Semaine A ou B ? true = A. Sans reference definie, tout est "A".
+  bool semaineEstA(DateTime d) {
+    if (refSemaineA == null) return true;
+    final diff = mondayOf(d).difference(mondayOf(refSemaineA!)).inDays;
+    return (diff ~/ 7) % 2 == 0;
+  }
+
+  /// L'emploi du temps REEL d'une date : jour de semaine + roulement A/B
+  /// + rien pendant les vacances / semaines de revisions.
+  List<Routine> routinesLe(DateTime d) {
+    if (plageSansCours(d) != null) return [];
+    final estA = semaineEstA(d);
+    return routines
+        .where((r) =>
+            r.jour == d.weekday &&
+            (r.semaines == 0 ||
+                (r.semaines == 1 && estA) ||
+                (r.semaines == 2 && !estA)))
+        .toList()
+      ..sort((a, b) => a.debutMin.compareTo(b.debutMin));
+  }
+
+  void addPlageSansCours(PlageSansCours p) {
+    sansCours.add(p);
+    sansCours.sort((a, b) => a.debut.compareTo(b.debut));
+    _touch();
+  }
+
+  void deletePlageSansCours(String id) {
+    sansCours.removeWhere((p) => p.id == id);
+    _touch();
+  }
+
+  void setRefSemaineA(DateTime? d) {
+    refSemaineA = d;
+    _touch();
+  }
+
+  Future<void> saveMethodeTravail(String methode) async {
+    methodeTravail = methode;
+    _touch();
+  }
+
+  // ---------- Bilans de journee ----------
+
+  Bilan? bilanPour(DateTime jour, String routineId) {
+    final j = DateTime(jour.year, jour.month, jour.day);
+    for (final b in bilans) {
+      if (b.routineId == routineId &&
+          b.jour.year == j.year &&
+          b.jour.month == j.month &&
+          b.jour.day == j.day) {
+        return b;
+      }
+    }
+    return null;
+  }
+
+  /// Enregistre (ou remplace) le bilan d'un creneau, et si c'est un COURS
+  /// avec un chapitre : le chapitre passe au moins en "vu en cours".
+  void setBilan(Bilan b) {
+    bilans.removeWhere((e) =>
+        e.routineId == b.routineId &&
+        e.jour.year == b.jour.year &&
+        e.jour.month == b.jour.month &&
+        e.jour.day == b.jour.day);
+    bilans.add(b);
+    // On garde ~2 mois d'historique, assez pour les stats a venir.
+    final limite = DateTime.now().subtract(const Duration(days: 60));
+    bilans.removeWhere((e) => e.jour.isBefore(limite));
+    if (b.chapitreId != null) {
+      final i = chapitres.indexWhere((c) => c.id == b.chapitreId);
+      if (i >= 0 && chapitres[i].etape < 1) chapitres[i].etape = 1;
+    }
+    _touch();
+  }
 
   void setPrio(String matiere, int p) {
     prios[matiere] = p;

@@ -3,8 +3,12 @@ import 'package:flutter/material.dart';
 import '../engine.dart';
 import '../models.dart';
 import '../store.dart';
+import 'minuteur.dart';
 
-/// Onglet "Aujourd'hui" : prochaine khôlle + plan de la soiree + semaine.
+/// Onglet "Aujourd'hui" : le TABLEAU DE BORD de la journee de prepa.
+/// De haut en bas : compte a rebours concours, prochaine kholle, la journee
+/// (emploi du temps du jour + bilan par creneau), le plan du soir (duree
+/// libre + methode checklist/pomodoro), les devoirs a rendre, la semaine.
 class TodayScreen extends StatefulWidget {
   const TodayScreen({super.key});
 
@@ -15,12 +19,26 @@ class TodayScreen extends StatefulWidget {
 class _TodayScreenState extends State<TodayScreen> {
   int minutes = 120;
 
+  static const _durees = [
+    (45, '45 min'),
+    (60, '1 h'),
+    (90, '1 h 30'),
+    (120, '2 h'),
+    (180, '3 h'),
+  ];
+
+  String _labelMin(int min) {
+    if (min < 60) return '$min min';
+    if (min % 60 == 0) return '${min ~/ 60} h';
+    return '${min ~/ 60} h ${(min % 60).toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = AppModel.instance;
+    final now = DateTime.now();
     final prochaine = m.prochaineColle();
     final suggestions = suggere(m, minutes);
-    final now = DateTime.now();
     final lundi = mondayOf(now);
     final dimanche = lundi.add(const Duration(days: 7));
     final semaineColles = m.colles
@@ -30,61 +48,101 @@ class _TodayScreenState extends State<TodayScreen> {
         .where((d) => d.date.isAfter(lundi.subtract(const Duration(days: 1))) &&
             d.date.isBefore(dimanche))
         .toList();
-
-    final routinesJour = m.routinesDu(now.weekday);
+    final aRendre = m.devoirsARendre().take(4).toList();
+    final minSem = m.minutesSemaine();
+    final edtJour = m.routinesLe(now);
+    final plage = m.plageSansCours(now);
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // ---- En-tete ----
+        Text(
+          '${frDate(now)[0].toUpperCase()}${frDate(now).substring(1)}'
+          '${m.refSemaineA != null ? ' · semaine ${m.semaineEstA(now) ? 'A' : 'B'}' : ''}',
+          style: Theme.of(context)
+              .textTheme
+              .titleSmall
+              ?.copyWith(color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 10),
+        if (m.dateConcours != null && m.dateConcours!.isAfter(now)) ...[
+          _concoursBanner(context, m),
+          const SizedBox(height: 10),
+        ],
         if (prochaine != null) _prochaineCard(context, prochaine),
-        if (prochaine == null) _emptyCard(context),
-        if (routinesJour.isNotEmpty) ...[
-          const SizedBox(height: 12),
+        if (prochaine == null && m.dateConcours == null) _emptyCard(context),
+
+        // ---- Ta journee (EDT du jour + bilans) ----
+        const SizedBox(height: 20),
+        _titre(context, Icons.wb_sunny_outlined, 'Ta journée'),
+        const SizedBox(height: 8),
+        if (plage != null)
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
+              child: Text('🏖 ${plage.titre} — pas de cours. '
+                  'Le plan du soir reste à ton service.'),
+            ),
+          )
+        else if (edtJour.isEmpty)
+          Text(
+            'Rien dans ton emploi du temps aujourd\'hui. '
+            '(Réglages → Ma semaine type pour le remplir.)',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+          )
+        else
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.loop, size: 16),
-                      const SizedBox(width: 6),
-                      Text("Aujourd'hui aussi :",
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Colors.grey.shade700)),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  for (final r in routinesJour)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text('• ${r.titre} · ${r.labelHeure}',
-                          style: const TextStyle(fontSize: 13)),
-                    ),
-                ],
+                children: [for (final r in edtJour) _ligneCreneau(context, r)],
               ),
             ),
           ),
-        ],
+
+        // ---- Ce soir ----
         const SizedBox(height: 20),
-        Text('Ce soir, tu as…', style: Theme.of(context).textTheme.titleMedium),
+        _titre(context, Icons.nightlight_outlined, 'Ce soir, tu as…'),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
+          runSpacing: 4,
           children: [
-            for (final e in const [
-              (60, '1 h'),
-              (90, '1 h 30'),
-              (120, '2 h'),
-              (180, '3 h'),
-            ])
+            for (final e in _durees)
               ChoiceChip(
                 label: Text(e.$2),
                 selected: minutes == e.$1,
                 onSelected: (_) => setState(() => minutes = e.$1),
+              ),
+            ChoiceChip(
+              label: Text(_durees.any((e) => e.$1 == minutes)
+                  ? 'Autre…'
+                  : 'Autre : ${_labelMin(minutes)}'),
+              selected: !_durees.any((e) => e.$1 == minutes),
+              onSelected: (_) => _dureePerso(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Text('Méthode : ',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            const SizedBox(width: 4),
+            for (final me in const [
+              ('checklist', '✅ Checklist'),
+              ('pomo25', '🍅 25/5'),
+              ('pomo50', '🍅 50/10'),
+            ])
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ChoiceChip(
+                  label: Text(me.$2, style: const TextStyle(fontSize: 12)),
+                  visualDensity: VisualDensity.compact,
+                  selected: m.methodeTravail == me.$1,
+                  onSelected: (_) => m.saveMethodeTravail(me.$1),
+                ),
               ),
           ],
         ),
@@ -98,28 +156,416 @@ class _TodayScreenState extends State<TodayScreen> {
                 style: TextStyle(color: Colors.grey.shade600),
               ),
             ),
+          )
+        else if (m.methodeTravail == 'checklist')
+          ...[for (final s in suggestions) _suggestionCard(context, s)]
+        else
+          ..._planPomodoro(context, suggestions),
+        if ((minSem[''] ?? 0) > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Déjà travaillé cette semaine : ${_labelMin(minSem['']!)} 💪',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
           ),
-        for (final s in suggestions) _suggestionCard(context, s),
+
+        // ---- A rendre ----
+        if (aRendre.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _titre(context, Icons.assignment_turned_in_outlined, 'À rendre'),
+          const SizedBox(height: 8),
+          for (final d in aRendre)
+            _miniEvent(
+              color: Color(subjectColor(d.matiere)),
+              titre:
+                  '${d.dateRendu.isBefore(DateTime(now.year, now.month, now.day)) ? '⚠ ' : ''}${d.titre} ${d.matiere}',
+              sousTitre: 'à rendre ${frDate(d.dateRendu)}',
+              passe: false,
+            ),
+        ],
+
+        // ---- Cette semaine ----
         const SizedBox(height: 20),
-        Text('Cette semaine', style: Theme.of(context).textTheme.titleMedium),
+        _titre(context, Icons.calendar_view_week_outlined, 'Cette semaine'),
         const SizedBox(height: 8),
         if (semaineColles.isEmpty && semaineDs.isEmpty)
           Text('Rien au programme cette semaine 🎉',
               style: TextStyle(color: Colors.grey.shade600)),
-        for (final c in semaineColles) _miniEvent(
-              color: Color(subjectColor(c.matiere)),
-              titre: 'Khôlle ${c.matiere}',
-              sousTitre:
-                  '${frJour(c.start)} ${frHeure(c.start)}${c.salle.isEmpty ? '' : ' · salle ${c.salle}'}',
-              passe: c.end.isBefore(now),
-            ),
-        for (final d in semaineDs) _miniEvent(
-              color: Color(subjectColor(d.matiere)),
-              titre: '${d.titre} ${d.matiere}',
-              sousTitre: frDate(d.date),
-              passe: d.date.isBefore(DateTime(now.year, now.month, now.day)),
-            ),
+        for (final c in semaineColles)
+          _miniEvent(
+            color: Color(subjectColor(c.matiere)),
+            titre: 'Khôlle ${c.matiere}',
+            sousTitre:
+                '${frJour(c.start)} ${frHeure(c.start)}${c.salle.isEmpty ? '' : ' · salle ${c.salle}'}',
+            passe: c.end.isBefore(now),
+          ),
+        for (final d in semaineDs)
+          _miniEvent(
+            color: Color(subjectColor(d.matiere)),
+            titre: '${d.titre} ${d.matiere}',
+            sousTitre: frDate(d.date),
+            passe: d.date.isBefore(DateTime(now.year, now.month, now.day)),
+          ),
       ],
+    );
+  }
+
+  Widget _titre(BuildContext context, IconData icone, String texte) {
+    return Row(
+      children: [
+        Icon(icone, size: 18, color: Colors.grey.shade600),
+        const SizedBox(width: 6),
+        Text(texte, style: Theme.of(context).textTheme.titleMedium),
+      ],
+    );
+  }
+
+  // ---------- Duree personnalisee ----------
+
+  Future<void> _dureePerso() async {
+    final ctl = TextEditingController(text: minutes.toString());
+    final v = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ce soir, en minutes'),
+        content: TextField(
+          controller: ctl,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+              border: OutlineInputBorder(), hintText: 'ex. 75'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(context, int.tryParse(ctl.text.trim())),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    if (v != null && v >= 15 && v <= 600) setState(() => minutes = v);
+  }
+
+  // ---------- Bilan de journee ----------
+
+  Widget _ligneCreneau(BuildContext context, Routine r) {
+    final m = AppModel.instance;
+    final bilan = m.bilanPour(DateTime.now(), r.id);
+    String? chapitreNom;
+    if (bilan?.chapitreId != null) {
+      final i = m.chapitres.indexWhere((c) => c.id == bilan!.chapitreId);
+      if (i >= 0) chapitreNom = m.chapitres[i].nom;
+    }
+    return ListTile(
+      dense: true,
+      leading: r.matiere.isEmpty
+          ? const Icon(Icons.loop, size: 18)
+          : CircleAvatar(
+              radius: 12,
+              backgroundColor:
+                  Color(subjectColor(r.matiere)).withOpacity(0.18),
+              child: Text(
+                r.matiere.characters.first.toUpperCase(),
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(subjectColor(r.matiere))),
+              ),
+            ),
+      title: Text(r.titre),
+      subtitle: Text(
+        bilan == null
+            ? r.labelHeure
+            : '${r.labelHeure} · ${bilan.type}${chapitreNom == null ? '' : ' — $chapitreNom'}',
+      ),
+      trailing: r.matiere.isEmpty
+          ? null
+          : bilan == null
+              ? OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact),
+                  onPressed: () => _bilanSheet(r),
+                  child: const Text('Bilan ?', style: TextStyle(fontSize: 12)),
+                )
+              : IconButton(
+                  tooltip: 'Modifier le bilan',
+                  icon: const Icon(Icons.check_circle,
+                      color: Colors.green, size: 20),
+                  onPressed: () => _bilanSheet(r),
+                ),
+    );
+  }
+
+  Future<void> _bilanSheet(Routine r) async {
+    final m = AppModel.instance;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${r.titre} — qu\'avez-vous fait ?',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ActionChip(
+                    avatar: const Icon(Icons.menu_book, size: 16),
+                    label: const Text('Cours'),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _choisirChapitre(r);
+                    },
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.edit, size: 16),
+                    label: const Text('Exos'),
+                    onPressed: () {
+                      m.setBilan(Bilan(
+                          jour: DateTime.now(),
+                          routineId: r.id,
+                          matiere: r.matiere,
+                          type: 'Exos'));
+                      Navigator.pop(context);
+                    },
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.science, size: 16),
+                    label: const Text('TP'),
+                    onPressed: () {
+                      m.setBilan(Bilan(
+                          jour: DateTime.now(),
+                          routineId: r.id,
+                          matiere: r.matiere,
+                          type: 'TP'));
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Cours → tu choisiras le chapitre vu : il passera en « vu en cours » et le plan du soir proposera de le revoir.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _choisirChapitre(Routine r) async {
+    final m = AppModel.instance;
+    final chapitres = m.chapitres.where((c) => c.matiere == r.matiere).toList();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Quel chapitre a été vu en ${r.matiere} ?',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final c in chapitres)
+                      ListTile(
+                        dense: true,
+                        title: Text(c.nom),
+                        subtitle: c.etape == 0
+                            ? const Text('nouveau — passera en « vu en cours »',
+                                style: TextStyle(fontSize: 11))
+                            : null,
+                        onTap: () {
+                          m.setBilan(Bilan(
+                            jour: DateTime.now(),
+                            routineId: r.id,
+                            matiere: r.matiere,
+                            type: 'Cours',
+                            chapitreId: c.id,
+                          ));
+                          Navigator.pop(context);
+                        },
+                      ),
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.add, size: 18),
+                      title: const Text('Nouveau chapitre…'),
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await _nouveauChapitre(r);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _nouveauChapitre(Routine r) async {
+    final ctl = TextEditingController();
+    final nom = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Nouveau chapitre — ${r.matiere}'),
+        content: TextField(
+          controller: ctl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+              border: OutlineInputBorder(), hintText: 'ex. Séries entières'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, ctl.text.trim()),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+    if (nom == null || nom.isEmpty) return;
+    final m = AppModel.instance;
+    final c = Chapitre(matiere: r.matiere, nom: nom, maitrise: 2, etape: 1);
+    m.addChapitre(c);
+    m.setBilan(Bilan(
+      jour: DateTime.now(),
+      routineId: r.id,
+      matiere: r.matiere,
+      type: 'Cours',
+      chapitreId: c.id,
+    ));
+  }
+
+  // ---------- Plan Pomodoro ----------
+
+  List<BlocPomodoro> _blocsPomodoro(List<Suggestion> suggestions) {
+    final m = AppModel.instance;
+    final travail = m.methodeTravail == 'pomo50' ? 50 : 25;
+    final pause = m.methodeTravail == 'pomo50' ? 10 : 5;
+    final blocs = <BlocPomodoro>[];
+    for (final s in suggestions) {
+      var reste = s.minutes;
+      while (reste >= 15) {
+        final w = reste >= travail ? travail : reste;
+        if (blocs.isNotEmpty) {
+          blocs.add(BlocPomodoro('Pause', '', pause, pause: true));
+        }
+        blocs.add(BlocPomodoro(s.titre, s.matiere, w,
+            chapitreId: s.chapitreId));
+        reste -= w;
+      }
+    }
+    return blocs;
+  }
+
+  List<Widget> _planPomodoro(
+      BuildContext context, List<Suggestion> suggestions) {
+    final blocs = _blocsPomodoro(suggestions);
+    var num = 0;
+    return [
+      FilledButton.icon(
+        icon: const Icon(Icons.play_arrow),
+        label: Text(
+            'Lancer le minuteur (${blocs.where((b) => !b.pause).length} 🍅)'),
+        onPressed: blocs.isEmpty
+            ? null
+            : () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => MinuteurScreen(blocs: blocs)),
+                ),
+      ),
+      const SizedBox(height: 8),
+      for (final b in blocs)
+        b.pause
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text('   ☕ Pause ${b.minutes} min',
+                    style:
+                        TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+              )
+            : Card(
+                child: ListTile(
+                  dense: true,
+                  leading: CircleAvatar(
+                    radius: 14,
+                    backgroundColor:
+                        Color(subjectColor(b.matiere)).withOpacity(0.18),
+                    child: Text('${++num}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(subjectColor(b.matiere)))),
+                  ),
+                  title: Text('${b.matiere} · ${b.minutes} min',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13)),
+                  subtitle: Text(b.label,
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+    ];
+  }
+
+  // ---------- Cartes ----------
+
+  Widget _concoursBanner(BuildContext context, AppModel m) {
+    final jours = m.dateConcours!.difference(DateTime.now()).inDays + 1;
+    final commences = m.chapitres.where((c) => c.etape > 0).length;
+    final jamaisRevus = m.chapitres
+        .where((c) => c.etape > 0 && c.dernierRevu == null)
+        .length;
+    return Card(
+      color: Theme.of(context).colorScheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            const Text('🎯', style: TextStyle(fontSize: 26)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('J-$jours avant les écrits',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text(
+                    commences == 0
+                        ? 'Ajoute tes chapitres pour lancer la rotation.'
+                        : '$jamaisRevus chapitre(s) sur $commences encore jamais revus — le plan du soir les fait tourner.',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -145,7 +591,8 @@ class _TodayScreenState extends State<TodayScreen> {
           children: [
             CircleAvatar(
               backgroundColor: color,
-              child: const Icon(Icons.record_voice_over, color: Colors.white, size: 20),
+              child: const Icon(Icons.record_voice_over,
+                  color: Colors.white, size: 20),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -153,7 +600,8 @@ class _TodayScreenState extends State<TodayScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Prochaine khôlle : ${c.matiere}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 3),
                   Text(
                     '${frDate(c.start)} · ${frHeure(c.start)}'
@@ -165,7 +613,8 @@ class _TodayScreenState extends State<TodayScreen> {
               ),
             ),
             Chip(
-              label: Text(quand, style: const TextStyle(fontWeight: FontWeight.bold)),
+              label: Text(quand,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
               backgroundColor: color.withOpacity(0.2),
               side: BorderSide.none,
             ),
@@ -199,12 +648,33 @@ class _TodayScreenState extends State<TodayScreen> {
           backgroundColor: color.withOpacity(0.18),
           child: Text(
             '${s.minutes >= 60 ? '${s.minutes ~/ 60}h' : ''}${s.minutes % 60 == 0 ? '' : (s.minutes % 60).toString().padLeft(2, '0')}',
-            style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13),
+            style: TextStyle(
+                color: color, fontWeight: FontWeight.bold, fontSize: 13),
           ),
         ),
-        title: Text(s.matiere, style: const TextStyle(fontWeight: FontWeight.w600)),
+        title:
+            Text(s.matiere, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text('${s.raison}\n${s.titre}'),
         isThreeLine: true,
+        trailing: IconButton(
+          tooltip: 'Fait ! (enregistre la séance)',
+          icon: const Icon(Icons.check_circle_outline),
+          onPressed: () {
+            final m = AppModel.instance;
+            m.addSeance(s.matiere, s.minutes);
+            if (s.chapitreId != null) {
+              final i = m.chapitres.indexWhere((c) => c.id == s.chapitreId);
+              if (i >= 0) {
+                m.chapitres[i].dernierRevu = DateTime.now();
+                m.updateChapitre(m.chapitres[i]);
+              }
+            }
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                  'Séance ${s.matiere} enregistrée (+${_labelMin(s.minutes)}) ✅'),
+            ));
+          },
+        ),
       ),
     );
   }
@@ -231,9 +701,11 @@ class _TodayScreenState extends State<TodayScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(titre, style: const TextStyle(fontWeight: FontWeight.w500)),
+                    Text(titre,
+                        style: const TextStyle(fontWeight: FontWeight.w500)),
                     Text(sousTitre,
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                        style: TextStyle(
+                            color: Colors.grey.shade600, fontSize: 12)),
                   ],
                 ),
               ),

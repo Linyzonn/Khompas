@@ -26,6 +26,9 @@ class AgendaScreen extends StatelessWidget {
         if (!c.end.isBefore(debut)) _Event.colle(c),
       for (final d in m.ds)
         if (!d.date.isBefore(debut)) _Event.ds(d),
+      // Un devoir non rendu reste visible meme en retard.
+      for (final d in m.devoirs)
+        if (!d.dateRendu.isBefore(debut) || !d.rendu) _Event.devoir(d),
     ]..sort((a, b) => a.date.compareTo(b.date));
 
     // Groupement par semaine (lundi).
@@ -151,6 +154,15 @@ class AgendaScreen extends StatelessWidget {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.assignment_turned_in),
+              title: const Text('Ajouter un DM / DNS à rendre'),
+              onTap: () async {
+                Navigator.pop(context);
+                final d = await editDevoirDialog(context);
+                if (d != null) AppModel.instance.addDevoir(d);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.event_note),
               title: const Text('Importer un planning de DS (IA, gratuit)'),
               subtitle: const Text('Tous les DS du semestre en une fois'),
@@ -215,6 +227,54 @@ class AgendaScreen extends StatelessWidget {
         ),
       );
     }
+    if (e.devoir != null) {
+      final d = e.devoir!;
+      final enRetard = !d.rendu &&
+          d.dateRendu.isBefore(DateTime.now().subtract(const Duration(days: 1)));
+      return ListTile(
+        leading: CircleAvatar(
+          backgroundColor: color.withOpacity(0.18),
+          child: Icon(Icons.assignment_turned_in, color: color, size: 20),
+        ),
+        title: Text(
+          '${d.titre} ${d.matiere}',
+          style: d.rendu
+              ? const TextStyle(decoration: TextDecoration.lineThrough)
+              : null,
+        ),
+        subtitle: Text(
+          '${enRetard ? '⚠ ' : ''}À rendre ${frDate(d.dateRendu)}'
+          '${d.remarque.isEmpty ? '' : '\n${d.remarque}'}',
+        ),
+        isThreeLine: d.remarque.isNotEmpty,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Checkbox(
+              value: d.rendu,
+              onChanged: (v) {
+                d.rendu = v ?? false;
+                m.updateDevoir(d);
+              },
+            ),
+            PopupMenuButton<String>(
+              onSelected: (v) async {
+                if (v == 'edit') {
+                  final edited = await editDevoirDialog(context, initial: d);
+                  if (edited != null) m.updateDevoir(edited);
+                } else if (v == 'delete') {
+                  m.deleteDevoir(d.id);
+                }
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'edit', child: Text('Modifier')),
+                const PopupMenuItem(value: 'delete', child: Text('Supprimer')),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
     final d = e.ds!;
     return ListTile(
       leading: CircleAvatar(
@@ -253,14 +313,23 @@ class _Event {
   final String matiere;
   final Colle? colle;
   final Ds? ds;
+  final Devoir? devoir;
   _Event.colle(Colle c)
       : date = c.start,
         matiere = c.matiere,
         colle = c,
-        ds = null;
+        ds = null,
+        devoir = null;
   _Event.ds(Ds d)
       : date = d.date,
         matiere = d.matiere,
         colle = null,
-        ds = d;
+        ds = d,
+        devoir = null;
+  _Event.devoir(Devoir d)
+      : date = d.dateRendu,
+        matiere = d.matiere,
+        colle = null,
+        ds = null,
+        devoir = d;
 }

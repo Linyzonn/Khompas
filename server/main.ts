@@ -38,7 +38,7 @@ const kv = await Deno.openKv();
 
 function cors(h: Headers = new Headers()): Headers {
   h.set('access-control-allow-origin', '*');
-  h.set('access-control-allow-headers', 'content-type');
+  h.set('access-control-allow-headers', 'content-type, x-khompas-cle');
   h.set('access-control-allow-methods', 'GET,POST,PUT,OPTIONS');
   return h;
 }
@@ -372,6 +372,87 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
       }
     })();
     return json({ statut: 'lancee' }, 202);
+  }
+
+  // ---------- Comptes anonymes (cle secrete, pas d'email/mot de passe) ----------
+  // La cle = id (6 car.) + secret (12 car.). L'app l'envoie dans l'en-tete
+  // x-khompas-cle ; le serveur stocke le profil et les donnees (chunkees).
+
+  const compteAuth = async (): Promise<string | null> => {
+    const cle = (req.headers.get('x-khompas-cle') ?? '').trim().toUpperCase();
+    if (cle.length !== 18) return null;
+    const id = cle.slice(0, 6);
+    const acc = await kv.get(['acc', id]);
+    if (!acc.value) return null;
+    if ((acc.value as { secret: string }).secret !== cle.slice(6)) return null;
+    return id;
+  };
+
+  if (p === '/api/comptes' && req.method === 'POST') {
+    // Garde-fou : 10 creations de compte max par appareil et par jour.
+    const jour = new Date().toISOString().slice(0, 10);
+    const kC = ['rlc', ip, jour];
+    const nb = ((await kv.get(kC)).value as number | null) ?? 0;
+    if (nb >= 10) {
+      return erreur('Trop de comptes créés depuis cet appareil aujourd\'hui.', 429);
+    }
+    await kv.set(kC, nb + 1, { expireIn: 2 * 24 * 3600 * 1000 });
+    let corps: { filiere?: string; cinqDemi?: boolean } = {};
+    try {
+      corps = await req.json();
+    } catch (_) {
+      // corps vide tolere
+    }
+    for (let essai = 0; essai < 5; essai++) {
+      const id = genCode();
+      const secret = genCode() + genCode(); // 12 caracteres
+      const ok = await kv.atomic()
+        .check({ key: ['acc', id], versionstamp: null })
+        .set(['acc', id], {
+          secret,
+          filiere: (corps.filiere ?? '').toString().slice(0, 30),
+          cinqDemi: !!corps.cinqDemi,
+          cree: Date.now(),
+        }, { expireIn: TTL })
+        .commit();
+      if (ok.ok) return json({ cle: id + secret });
+    }
+    return erreur('Impossible de créer le compte, réessaie.', 500);
+  }
+
+  if (p === '/api/compte/data' && req.method === 'PUT') {
+    const id = await compteAuth();
+    if (!id) return erreur('Clé de compte invalide.', 401);
+    const corps = await req.text();
+    if (!corps.trim()) return erreur('Données vides.', 400);
+    if (corps.length > 256_000) return erreur('Données trop volumineuses.', 413);
+    let n = 0;
+    for (; n * CHUNK < corps.length; n++) {
+      await kv.set(['accd', id, n], corps.slice(n * CHUNK, (n + 1) * CHUNK), {
+        expireIn: TTL,
+      });
+    }
+    const maj = Date.now();
+    // meta.chunks borne la lecture : d'eventuels vieux chunks au-dela sont
+    // simplement ignores (pas besoin de les supprimer).
+    await kv.set(['accm', id], { maj, chunks: n }, { expireIn: TTL });
+    return json({ version: maj });
+  }
+
+  if (p === '/api/compte/data' && req.method === 'GET') {
+    const id = await compteAuth();
+    if (!id) return erreur('Clé de compte invalide.', 401);
+    const meta = await kv.get(['accm', id]);
+    if (!meta.value) {
+      return erreur('Aucune donnée sur ce compte pour le moment.', 404);
+    }
+    const { maj, chunks } = meta.value as { maj: number; chunks: number };
+    let data = '';
+    for (let i = 0; i < chunks; i++) {
+      const part = await kv.get(['accd', id, i]);
+      data += (part.value as string | null) ?? '';
+    }
+    return json({ version: maj, data });
   }
 
   return erreur('Route inconnue.', 404);

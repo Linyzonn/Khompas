@@ -20,7 +20,8 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
   final matiereCtl = TextEditingController();
   // 5/2 : tout le programme a deja ete vu -> les chapitres arrivent
   // "vus en cours" avec une maitrise moyenne, au lieu de "pas vu".
-  bool cinqDemi = false;
+  // Pre-rempli depuis le profil (onboarding / Reglages).
+  bool cinqDemi = AppModel.instance.cinqDemi;
 
   static const _matieresCourantes = [
     'Maths', 'Physique', 'Chimie', 'SII', 'Informatique', 'Français', 'Anglais',

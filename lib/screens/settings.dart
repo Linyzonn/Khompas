@@ -8,7 +8,10 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../api_client.dart';
+import '../models.dart';
 import '../store.dart';
+import 'calendrier.dart';
 import 'routines.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -22,11 +25,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController keyCtl;
   late final TextEditingController serverCtl;
   late final TextEditingController groupeCtl;
-  static const filieres = [
-    'MPSI', 'PCSI', 'PTSI', 'MP2I', 'BCPST',
-    'MP', 'PC', 'PSI', 'PT', 'MPI',
-    'ECG', 'Hypokhâgne', 'Khâgne', 'Autre',
-  ];
 
   @override
   void initState() {
@@ -116,6 +114,192 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // ---------- Mode revisions concours ----------
+
+  Future<void> _choisirConcours() async {
+    final m = AppModel.instance;
+    final d = await showDatePicker(
+      context: context,
+      initialDate:
+          m.dateConcours ?? DateTime.now().add(const Duration(days: 60)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
+    );
+    if (d != null) {
+      m.setDateConcours(DateTime(d.year, d.month, d.day));
+      if (mounted) setState(() {});
+    }
+  }
+
+  // ---------- Compte ----------
+
+  void _snack(String msg, {int secondes = 4}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: Duration(seconds: secondes),
+      content: Text(msg),
+    ));
+  }
+
+  String _msg(Object e) => e.toString().replaceFirst('Exception: ', '');
+
+  Future<void> _creerCompte() async {
+    final m = AppModel.instance;
+    try {
+      final cle = await ApiKhompas(m.serverUrl)
+          .creerCompte(filiere: m.filiere, cinqDemi: m.cinqDemi);
+      await m.saveCompteCle(cle);
+      try {
+        await m.pousserCompte();
+      } catch (_) {
+        // le push automatique reessaiera
+      }
+      if (!mounted) return;
+      setState(() {});
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Ta clé de compte 🔑'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: SelectableText(
+                  cle,
+                  style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2),
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'NOTE-LA précieusement : c\'est elle — et elle seule — qui '
+                'permet de retrouver tes données ailleurs. Elle reste visible '
+                'ici (icône copier).',
+                style: TextStyle(fontSize: 13),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: cle));
+              },
+              child: const Text('Copier'),
+            ),
+            FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('C\'est noté')),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) _snack('Création impossible : ${_msg(e)}', secondes: 6);
+    }
+  }
+
+  Future<void> _connecterCompte() async {
+    final m = AppModel.instance;
+    final ctl = TextEditingController();
+    final cle = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ma clé de compte'),
+        content: TextField(
+          controller: ctl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(
+              border: OutlineInputBorder(), hintText: '18 caractères'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, ctl.text),
+              child: const Text('Se connecter')),
+        ],
+      ),
+    );
+    if (cle == null || cle.trim().isEmpty || !mounted) return;
+    try {
+      final resume = await m.connecterCompte(cle);
+      if (!mounted) return;
+      setState(() {
+        groupeCtl.text = m.groupe.toString();
+      });
+      _snack('Compte connecté ✅ ($resume)');
+    } catch (e) {
+      if (mounted) _snack('Connexion impossible : ${_msg(e)}', secondes: 6);
+    }
+  }
+
+  Future<void> _pousser() async {
+    try {
+      await AppModel.instance.pousserCompte();
+      if (mounted) _snack('Données envoyées au compte ✅');
+    } catch (e) {
+      if (mounted) _snack('Envoi impossible : ${_msg(e)}', secondes: 6);
+    }
+  }
+
+  Future<void> _tirer() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Récupérer du compte ?'),
+        content: const Text(
+            'Les données de cet appareil seront REMPLACÉES par celles du compte '
+            '(la dernière version envoyée, depuis n\'importe quel appareil).'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Récupérer')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final resume = await AppModel.instance.tirerCompte();
+      if (!mounted) return;
+      setState(() {
+        groupeCtl.text = AppModel.instance.groupe.toString();
+      });
+      _snack('Données récupérées ✅ ($resume)');
+    } catch (e) {
+      if (mounted) _snack('Récupération impossible : ${_msg(e)}', secondes: 6);
+    }
+  }
+
+  Future<void> _dissocier() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Dissocier cet appareil ?'),
+        content: const Text(
+            'Tes données restent sur cet appareil ET sur le compte — seule la '
+            'clé locale est oubliée. Assure-toi de l\'avoir notée quelque part !'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Dissocier')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await AppModel.instance.deconnecterCompte();
+    if (mounted) setState(() {});
+  }
+
   // ---------- UI ----------
 
   @override
@@ -129,11 +313,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text('Mon profil', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: filieres.contains(m.filiere) ? m.filiere : 'Autre',
+            value: kFilieres.contains(m.filiere) ? m.filiere : 'Autre',
             decoration: const InputDecoration(
                 labelText: 'Filière', border: OutlineInputBorder()),
             items: [
-              for (final f in filieres) DropdownMenuItem(value: f, child: Text(f)),
+              for (final f in kFilieres) DropdownMenuItem(value: f, child: Text(f)),
             ],
             onChanged: (v) {
               if (v != null) {
@@ -152,6 +336,96 @@ class _SettingsScreenState extends State<SettingsScreen> {
               if (g != null) m.setProfil(filiere: m.filiere, groupe: g);
             },
           ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Je suis 5/2'),
+            subtitle: const Text(
+                'Je refais ma 2e année — adapte l\'import du programme (chapitres déjà vus).'),
+            value: m.cinqDemi,
+            onChanged: (v) {
+              m.setCinqDemi(v);
+              setState(() {});
+            },
+          ),
+          const SizedBox(height: 24),
+          Text('Compte', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          if (m.serverUrl.isEmpty)
+            Text(
+              'Renseigne d\'abord l\'URL du serveur (plus bas) pour activer les comptes.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            )
+          else if (m.compteCle.isEmpty) ...[
+            Text(
+              'Un compte = tes données sauvegardées en ligne et synchronisées '
+              'entre ton téléphone et ton PC. Gratuit et anonyme : une simple '
+              'clé secrète, pas d\'email ni de mot de passe.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.cloud_done),
+                    label: const Text('Créer un compte'),
+                    onPressed: _creerCompte,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.key),
+                    label: const Text('J\'ai une clé'),
+                    onPressed: _connecterCompte,
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.cloud_done),
+              title: Text('Clé : ${m.compteCle.substring(0, 6)}••••••••••••'),
+              subtitle: const Text(
+                  'Tes modifications sont envoyées automatiquement au compte.'),
+              trailing: IconButton(
+                tooltip: 'Copier la clé complète',
+                icon: const Icon(Icons.copy),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: m.compteCle));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text(
+                            'Clé copiée ✅ Garde-la précieusement (c\'est elle qui donne accès à tes données).')));
+                  }
+                },
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.cloud_upload),
+                    label: const Text('Envoyer'),
+                    onPressed: _pousser,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.cloud_download),
+                    label: const Text('Récupérer'),
+                    onPressed: _tirer,
+                  ),
+                ),
+              ],
+            ),
+            TextButton(
+              onPressed: _dissocier,
+              child: const Text('Dissocier cet appareil'),
+            ),
+          ],
           const SizedBox(height: 24),
           Text('Priorité des matières',
               style: Theme.of(context).textTheme.titleMedium),
@@ -198,6 +472,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const RoutinesScreen())),
           ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.calendar_month),
+            title: const Text('Calendrier'),
+            subtitle: const Text(
+                'Roulement semaines A/B, vacances, semaines de révisions'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const CalendrierScreen())),
+          ),
+          const SizedBox(height: 24),
+          Text('Concours', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          if (m.dateConcours == null) ...[
+            Text(
+              'À l\'approche des écrits, active le mode révisions : le plan du '
+              'soir bascule sur la rotation de TOUS tes chapitres (jamais revus '
+              'd\'abord, puis les plus anciens), avec le compte à rebours J-X.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.flag),
+              label: const Text('Fixer la date des écrits'),
+              onPressed: _choisirConcours,
+            ),
+          ] else
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.flag),
+              title: Text(
+                  'Mode révisions actif — écrits le ${frDateCourte(m.dateConcours!)}'),
+              subtitle:
+                  const Text('Appuie pour changer la date. Le plan du soir fait tourner tes chapitres.'),
+              onTap: _choisirConcours,
+              trailing: TextButton(
+                onPressed: () {
+                  m.setDateConcours(null);
+                  setState(() {});
+                },
+                child: const Text('Désactiver'),
+              ),
+            ),
           const SizedBox(height: 24),
           Text('Mes données', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
@@ -296,7 +613,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Khompas — bêta 0.5'),
+            title: Text('Khompas — bêta 0.8'),
             subtitle: Text(
                 'Le compagnon de ta prépa. Tes données restent sur ton téléphone.'),
           ),

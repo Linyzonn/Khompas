@@ -7,49 +7,75 @@ class Suggestion {
   final String titre;
   final String raison;
   final int minutes;
-  Suggestion(this.matiere, this.titre, this.raison, this.minutes);
+  // Chapitre vise (mode revisions) : permet de le marquer "revu" d'un tap.
+  final String? chapitreId;
+  Suggestion(this.matiere, this.titre, this.raison, this.minutes,
+      {this.chapitreId});
 }
 
 /// Moteur "Que faire ce soir ?" — volontairement TRANSPARENT :
 /// des regles simples et explicables, pas une boite noire.
 ///
-/// Score d'une matiere =
-///   urgence (khôlle/DS proche) x priorite utilisateur x fragilite (chapitres)
+/// Deux regimes :
+/// - normal : score = urgence (kholle/DS/DM proche) x priorite x fragilite,
+///   avec bonus cours du jour / du lendemain (Ma semaine type) ;
+/// - REVISIONS CONCOURS (date des ecrits fixee) : on fait tourner les
+///   chapitres — jamais revus d'abord, puis les plus anciens.
 List<Suggestion> suggere(AppModel m, int minutesDispo) {
+  if (m.dateConcours != null &&
+      DateTime.now().isBefore(m.dateConcours!) &&
+      m.chapitres.any((c) => c.etape > 0)) {
+    return _suggereRevisions(m, minutesDispo);
+  }
+  return _suggereNormal(m, minutesDispo);
+}
+
+List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
   final now = DateTime.now();
   final horizon = now.add(const Duration(days: 10));
 
-  // Prochaine echeance par matiere (khôlle ou DS) dans les 10 jours.
+  // Prochaine echeance par matiere (kholle, DS ou devoir a rendre).
   final Map<String, _Echeance> echeances = {};
   for (final c in m.collesAvenir()) {
     if (c.start.isAfter(horizon)) continue;
     final e = echeances[c.matiere];
     if (e == null || c.start.isBefore(e.date)) {
-      echeances[c.matiere] =
-          _Echeance(c.start, 'Khôlle ${c.kholleur.isEmpty ? '' : 'avec ${c.kholleur} '}', c.programme);
+      echeances[c.matiere] = _Echeance(c.start,
+          'Khôlle ${c.kholleur.isEmpty ? '' : 'avec ${c.kholleur} '}', c.programme);
     }
   }
   for (final d in m.ds) {
     if (d.date.isBefore(now) || d.date.isAfter(horizon)) continue;
     final e = echeances[d.matiere];
     if (e == null || d.date.isBefore(e.date)) {
-      // Espace final : le type est concatene directement avec "demain",
-      // "dans X jours"... (sinon on affichait "DSdemain").
+      // Espace final : le type est concatene directement avec "demain"...
       echeances[d.matiere] = _Echeance(d.date, '${d.titre} ', '');
     }
   }
+  for (final d in m.devoirsARendre()) {
+    // Un DM en retard reste affiche (jusqu'a 5 jours) : il faut le rendre !
+    if (d.dateRendu.isBefore(now.subtract(const Duration(days: 5)))) continue;
+    if (d.dateRendu.isAfter(horizon)) continue;
+    final e = echeances[d.matiere];
+    if (e == null || d.dateRendu.isBefore(e.date)) {
+      echeances[d.matiere] = _Echeance(d.dateRendu, '${d.titre} à rendre ', '');
+    }
+  }
 
-  // Matieres ayant cours aujourd'hui / demain (routines etiquetees d'une
-  // matiere dans "Ma semaine type") : regle d'or de la prepa — revoir le
-  // cours du jour le soir meme, et preparer celui du lendemain.
+  // Matieres ayant cours aujourd'hui / demain — via l'emploi du temps REEL
+  // (roulement A/B et vacances compris) : regle d'or de la prepa — revoir
+  // le cours du jour le soir meme, et preparer celui du lendemain.
   final coursAujourdhui = <String>{};
   final coursDemain = <String>{};
-  final demainJour = now.weekday % 7 + 1;
-  for (final r in m.routines) {
-    final matR = r.matiere.trim();
-    if (matR.isEmpty) continue;
-    if (r.jour == now.weekday) coursAujourdhui.add(matR.toLowerCase());
-    if (r.jour == demainJour) coursDemain.add(matR.toLowerCase());
+  for (final r in m.routinesLe(now)) {
+    if (r.matiere.trim().isNotEmpty) {
+      coursAujourdhui.add(r.matiere.trim().toLowerCase());
+    }
+  }
+  for (final r in m.routinesLe(now.add(const Duration(days: 1)))) {
+    if (r.matiere.trim().isNotEmpty) {
+      coursDemain.add(r.matiere.trim().toLowerCase());
+    }
   }
 
   // Score par matiere.
@@ -69,9 +95,16 @@ List<Suggestion> suggere(AppModel m, int minutesDispo) {
     final e = echeances[mat];
     if (e != null) {
       final jours = e.date.difference(now).inHours / 24.0;
-      if (jours <= 1.2) {
+      // Les DS et devoirs sont dates a minuit : pas d'heure a afficher.
+      final heure = (e.date.hour == 0 && e.date.minute == 0)
+          ? ''
+          : ' ${frHeure(e.date)}';
+      if (jours < 0) {
+        urgence = 4.5;
+        raison = '${e.type}EN RETARD — rends-le vite';
+      } else if (jours <= 1.2) {
         urgence = 4;
-        raison = '${e.type}demain (${frJour(e.date)} ${frHeure(e.date)})';
+        raison = '${e.type}demain (${frJour(e.date)}$heure)';
       } else if (jours <= 2.5) {
         urgence = 3;
         raison = '${e.type}dans ${jours.ceil()} jours';
@@ -158,6 +191,68 @@ List<Suggestion> suggere(AppModel m, int minutesDispo) {
     }
 
     out.add(Suggestion(mat, quoi, raisons[mat] ?? '', mins));
+  }
+  return out;
+}
+
+/// MODE REVISIONS CONCOURS : couvrir tout le programme avant les ecrits.
+/// Rotation des chapitres commences : jamais revus d'abord (les plus
+/// fragiles en premier), puis les revus les plus anciens.
+List<Suggestion> _suggereRevisions(AppModel m, int minutesDispo) {
+  final now = DateTime.now();
+  final jours = m.dateConcours!.difference(now).inDays + 1;
+  final out = <Suggestion>[];
+  var reste = minutesDispo;
+
+  // Un DS / concours blanc dans les 2 jours garde la priorite absolue.
+  final aujourdHui = DateTime(now.year, now.month, now.day);
+  Ds? prochainDs;
+  for (final d in m.ds) {
+    final dj = DateTime(d.date.year, d.date.month, d.date.day)
+        .difference(aujourdHui)
+        .inDays;
+    if (dj < 0 || dj > 2) continue;
+    if (prochainDs == null || d.date.isBefore(prochainDs.date)) prochainDs = d;
+  }
+  if (prochainDs != null && reste >= 30) {
+    final mins = reste >= 90 ? 60 : 30;
+    out.add(Suggestion(
+      prochainDs.matiere,
+      'Prépa ${prochainDs.titre} : annales et points faibles',
+      '${prochainDs.titre} ${frJour(prochainDs.date)} — priorité',
+      mins,
+    ));
+    reste -= mins;
+  }
+
+  final aReviser = m.chapitres.where((c) => c.etape > 0).toList()
+    ..sort((a, b) {
+      if (a.dernierRevu == null && b.dernierRevu != null) return -1;
+      if (a.dernierRevu != null && b.dernierRevu == null) return 1;
+      if (a.dernierRevu == null && b.dernierRevu == null) {
+        return a.maitrise.compareTo(b.maitrise); // plus fragile d'abord
+      }
+      final cmp = a.dernierRevu!.compareTo(b.dernierRevu!); // plus ancien d'abord
+      return cmp != 0 ? cmp : a.maitrise.compareTo(b.maitrise);
+    });
+
+  // Blocs de ~1 h par chapitre.
+  var i = 0;
+  while (reste >= 30 && i < aReviser.length) {
+    final c = aReviser[i];
+    final mins = reste >= 75 ? 60 : (reste ~/ 15) * 15;
+    final quandRevu = c.dernierRevu == null
+        ? 'jamais revu'
+        : 'revu il y a ${now.difference(c.dernierRevu!).inDays} j';
+    out.add(Suggestion(
+      c.matiere,
+      'Réviser : ${c.nom}',
+      'J-$jours · $quandRevu',
+      mins,
+      chapitreId: c.id,
+    ));
+    reste -= mins;
+    i++;
   }
   return out;
 }

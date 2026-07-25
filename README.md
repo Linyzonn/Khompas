@@ -2,7 +2,19 @@
 
 Le manque que toutes les prépas connaissent : un outil qui comprend VRAIMENT le fonctionnement d'une CPGE — colloscope, khôlles, programmes de colles, DS du samedi — et qui t'aide à décider quoi travailler chaque soir.
 
-## ✨ Fonctionnalités (bêta 0.5)
+## ✨ Fonctionnalités (bêta 0.8)
+
+- 🗓️ **Calendrier interne** : roulement des semaines **A/B**, **vacances** et **semaines de révisions** (3/2-5/2) — l'emploi du temps et le plan du soir savent quelle semaine tu vis (Réglages → Calendrier).
+- ☀️ **Tableau de bord** : la journée du jour (créneaux réels, semaine A/B affichée) et un **bilan par créneau** — Cours (→ quel chapitre, qui passe en « vu en cours »), Exos ou TP.
+- 🍅 **Méthodes de travail** : checklist cochable, ou **Pomodoro 25/5 · 50/10** avec contenu assigné à chaque tomate et **minuteur intégré** (les séances se comptent toutes seules).
+- ⏱️ **Durée personnalisée** pour « Ce soir » (en plus des présélections).
+
+- 📥 **DM / DNS à rendre** : suivis dans l'Agenda (case « rendu »), rappelés sur Aujourd'hui (⚠ si en retard), et **pris en compte par le plan du soir** au même titre qu'une khôlle qui arrive.
+- ✅ **Plan du soir cochable** : un ✓ sur une suggestion = séance enregistrée ; total d'heures de la semaine affiché. En mode révisions, le ✓ marque aussi le chapitre « revu ».
+- 🎯 **Objectifs de moyenne bienveillants** (facultatifs) : suggérés à un niveau réaliste (ta moyenne + 0,5), formulés uniquement en positif.
+- 🏁 **Mode révisions concours** : fixe la date des écrits (Réglages) → bandeau J-X et le plan du soir bascule sur la **rotation de tous tes chapitres** (jamais revus d'abord, puis les plus anciens) — un DS/concours blanc imminent garde la priorité.
+
+- 👤 **Comptes anonymes à clé secrète** (pas d'email, pas de mot de passe) : données sauvegardées en ligne et **synchronisées automatiquement** entre téléphone et PC. Écran de bienvenue au premier lancement (filière, groupe, 5/2). Le serveur de la bêta est préconfiguré — rien à saisir.
 
 - 🔁 **Ma semaine type** : cours (avec matière), sport, musique, asso… affichés sur l'onglet Aujourd'hui. Le plan du soir applique la règle d'or : **cours vu aujourd'hui = à revoir ce soir** (et petit bonus pour les cours du lendemain).
 - 📖 **Import du programme officiel** de ta filière (prepa.org / PDF + IA copier-coller, gratuit) : tous tes chapitres pré-remplis, onglet Chapitres.

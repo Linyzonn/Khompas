@@ -76,6 +76,16 @@ class GradesScreen extends StatelessWidget {
     final mc = m.moyenneColles(mat);
     final md = m.moyenneDs(mat);
     final t = _tendance(mat);
+    final obj = m.objectifs[mat];
+    final notesToutes = <double>[
+      for (final c in m.colles)
+        if (c.matiere == mat && c.note != null) c.note!,
+      for (final d in m.ds)
+        if (d.matiere == mat && d.note != null) d.note!,
+    ];
+    final avgGlobal = notesToutes.isEmpty
+        ? null
+        : notesToutes.reduce((a, b) => a + b) / notesToutes.length;
     final now = DateTime.now();
     final collesPassees = m.colles
         .where((c) => c.matiere == mat && c.start.isBefore(now))
@@ -100,6 +110,16 @@ class GradesScreen extends StatelessWidget {
               padding: const EdgeInsets.only(left: 6),
               child: Icon(_tendIcon(t.$1), size: 18, color: _tendColor(t.$1)),
             ),
+          IconButton(
+            tooltip: 'Objectif de moyenne (facultatif)',
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+              obj == null ? Icons.flag_outlined : Icons.flag,
+              size: 18,
+              color: obj == null ? Colors.grey : color,
+            ),
+            onPressed: () => _objectifDialog(context, mat, avgGlobal),
+          ),
         ],
       ),
       subtitle: Text(
@@ -114,6 +134,14 @@ class GradesScreen extends StatelessWidget {
             child: Text(
               '${_tendLabel(t.$1)} : ${t.$2.toStringAsFixed(1)}/20 sur les 3 dernières notes, '
               'contre ${t.$3.toStringAsFixed(1)}/20 en moyenne générale.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+          ),
+        if (obj != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Text(
+              _ligneObjectif(obj, avgGlobal),
               style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
             ),
           ),
@@ -161,6 +189,83 @@ class GradesScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  String _fmt(double v) => v.toStringAsFixed(v == v.roundToDouble() ? 0 : 1);
+
+  /// Toujours formule en positif : un objectif doit motiver, pas demoraliser.
+  String _ligneObjectif(double obj, double? avg) {
+    if (avg == null) {
+      return '🎯 Objectif ${_fmt(obj)}/20 — saisis tes premières notes pour suivre ta route.';
+    }
+    if (avg >= obj) {
+      return '🎯 Objectif ${_fmt(obj)}/20 atteint (${_fmt(avg)}) — bravo ! Tu peux viser un cran plus haut.';
+    }
+    final ecart = obj - avg;
+    if (ecart <= 1) {
+      return '🎯 ${_fmt(avg)} → ${_fmt(obj)} : plus que ${_fmt(ecart)} pt, ça se joue sur une khôlle.';
+    }
+    return '🎯 Cap sur ${_fmt(obj)}/20 — chapitre par chapitre, sans pression.';
+  }
+
+  Future<void> _objectifDialog(
+      BuildContext context, String mat, double? avg) async {
+    final m = AppModel.instance;
+    // Suggestion volontairement REALISTE : moyenne actuelle + 0,5 point
+    // (un objectif inatteignable demoralise plus qu'il ne motive).
+    final suggestion = m.objectifs[mat] ??
+        (avg == null ? 12.0 : (((avg + 0.5) * 2).roundToDouble() / 2).clamp(1.0, 20.0));
+    final ctl = TextEditingController(text: _fmt(suggestion));
+    final existant = m.objectifs[mat] != null;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Objectif — $mat'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              avg == null
+                  ? 'Facultatif. Un objectif réaliste motive ; un objectif inatteignable démoralise.'
+                  : 'Facultatif. Suggestion réaliste : ta moyenne actuelle (${_fmt(avg)}) + 0,5. Un objectif inatteignable démoralise plus qu\'il ne motive.',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                  labelText: 'Objectif /20', border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          if (existant)
+            TextButton(
+              onPressed: () {
+                m.setObjectif(mat, null);
+                Navigator.pop(context);
+              },
+              child: const Text('Retirer'),
+            ),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              final v = double.tryParse(ctl.text.replaceAll(',', '.'));
+              if (v != null && v > 0 && v <= 20) {
+                m.setObjectif(mat, v);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
     );
   }
 

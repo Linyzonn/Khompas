@@ -41,17 +41,18 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
               child: Text(_jours[jour - 1],
                   style: Theme.of(context).textTheme.titleSmall),
             ),
-            if (m.routinesDu(jour).isEmpty)
+            if (m.routinesJourBrut(jour).isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Text('—',
                     style: TextStyle(color: Colors.grey.shade400)),
               ),
-            for (final r in m.routinesDu(jour))
+            for (final r in m.routinesJourBrut(jour))
               ListTile(
                 dense: true,
                 leading: const Icon(Icons.loop, size: 18),
-                title: Text(r.titre),
+                title: Text(
+                    '${r.titre}${r.semaines == 0 ? '' : ' (${r.semaines == 1 ? 'sem. A' : 'sem. B'})'}'),
                 subtitle: Text(
                     '${r.labelHeure}${r.matiere.isEmpty ? '' : ' · ${r.matiere}'}'),
                 onTap: () => _edit(initial: r),
@@ -77,6 +78,7 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
     final titreCtl = TextEditingController(text: initial?.titre ?? '');
     final matiereCtl = TextEditingController(text: initial?.matiere ?? '');
     var jour = initial?.jour ?? 1;
+    var semaines = initial?.semaines ?? 0;
     var time = TimeOfDay(
         hour: (initial?.debutMin ?? 1080) ~/ 60,
         minute: (initial?.debutMin ?? 1080) % 60);
@@ -139,6 +141,18 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
                 ],
                 onChanged: (v) => setLocal(() => jour = v ?? 1),
               ),
+              // Roulement A/B (la reference de semaine A se regle dans
+              // Reglages -> Calendrier).
+              DropdownButton<int>(
+                value: semaines,
+                isExpanded: true,
+                items: [
+                  for (var s = 0; s < kSemainesLabels.length; s++)
+                    DropdownMenuItem(
+                        value: s, child: Text(kSemainesLabels[s])),
+                ],
+                onChanged: (v) => setLocal(() => semaines = v ?? 0),
+              ),
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -188,6 +202,7 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
         debutMin: time.hour * 60 + time.minute,
         dureeMin: duree,
         matiere: matiereCtl.text.trim(),
+        semaines: semaines,
       ));
     } else {
       initial
@@ -195,7 +210,8 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
         ..jour = jour
         ..debutMin = time.hour * 60 + time.minute
         ..dureeMin = duree
-        ..matiere = matiereCtl.text.trim();
+        ..matiere = matiereCtl.text.trim()
+        ..semaines = semaines;
       m.updateRoutine(initial);
     }
     setState(() {});

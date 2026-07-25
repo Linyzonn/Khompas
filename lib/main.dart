@@ -5,6 +5,7 @@ import 'screens/agenda.dart';
 import 'screens/chapters.dart';
 import 'screens/grades.dart';
 import 'screens/import.dart';
+import 'screens/onboarding.dart';
 import 'screens/settings.dart';
 import 'screens/today.dart';
 import 'store.dart';
@@ -34,7 +35,29 @@ class KhompasApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: const RootScaffold(),
+      home: const Gate(),
+    );
+  }
+}
+
+/// Aiguillage de demarrage : chargement -> ecran de bienvenue (premier
+/// lancement) -> app.
+class Gate extends StatelessWidget {
+  const Gate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: AppModel.instance,
+      builder: (context, _) {
+        final m = AppModel.instance;
+        if (!m.loaded) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        if (!m.onboarded) return const OnboardingScreen();
+        return const RootScaffold();
+      },
     );
   }
 }
