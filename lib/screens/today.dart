@@ -5,10 +5,12 @@ import '../models.dart';
 import '../store.dart';
 import 'minuteur.dart';
 
-/// Onglet "Aujourd'hui" : le TABLEAU DE BORD de la journee de prepa.
-/// De haut en bas : compte a rebours concours, prochaine kholle, la journee
-/// (emploi du temps du jour + bilan par creneau), le plan du soir (duree
-/// libre + methode checklist/pomodoro), les devoirs a rendre, la semaine.
+/// Onglet "Aujourd'hui" — le COCKPIT :
+/// - grand ecran : blocs a gauche (kholle, a rendre, semaine), LA SESSION DU
+///   SOIR au centre (le plus important), blocs a droite (concours, journee,
+///   heures) ;
+/// - telephone : session du soir d'abord, blocs ensuite.
+/// Cartes nettes a barre d'accent coloree (pas de fonds delaves).
 class TodayScreen extends StatefulWidget {
   const TodayScreen({super.key});
 
@@ -53,273 +55,446 @@ class _TodayScreenState extends State<TodayScreen> {
     final edtJour = m.routinesLe(now);
     final plage = m.plageSansCours(now);
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // ---- En-tete ----
-        Text(
-          '${frDate(now)[0].toUpperCase()}${frDate(now).substring(1)}'
-          '${m.refSemaineA != null ? ' · semaine ${m.semaineEstA(now) ? 'A' : 'B'}' : ''}',
-          style: Theme.of(context)
-              .textTheme
-              .titleSmall
-              ?.copyWith(color: Colors.grey.shade600),
-        ),
-        const SizedBox(height: 10),
-        // ---- Tuiles du tableau de bord (2 par ligne) ----
-        LayoutBuilder(
-          builder: (context, contraintes) {
-            final w = (contraintes.maxWidth - 10) / 2;
-            final joursConcours = m.dateConcours == null
-                ? null
-                : m.dateConcours!.difference(now).inDays + 1;
-            return Wrap(
-              spacing: 10,
-              runSpacing: 10,
+    final entete = Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(
+        '${frDate(now)[0].toUpperCase()}${frDate(now).substring(1)}'
+        '${m.refSemaineA != null ? ' · semaine ${m.semaineEstA(now) ? 'A' : 'B'}' : ''}',
+        style: Theme.of(context)
+            .textTheme
+            .titleSmall
+            ?.copyWith(color: Colors.grey.shade600),
+      ),
+    );
+
+    final gauche = <Widget>[
+      _blocProchaine(prochaine),
+      _blocARendre(aRendre, now),
+      _blocSemaine(semaineColles, semaineDs, now),
+    ];
+    final droite = <Widget>[
+      if (m.dateConcours != null && m.dateConcours!.isAfter(now))
+        _blocConcours(m),
+      _blocJournee(edtJour, plage),
+      _blocHeures(minSem),
+    ];
+    final centre = _heroSoir(context, suggestions, minSem);
+
+    return LayoutBuilder(
+      builder: (context, contraintes) {
+        if (contraintes.maxWidth >= 900) {
+          // ---- Cockpit large : gauche / CENTRE / droite ----
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (prochaine != null)
-                  _tuile(
-                    w,
-                    Color(subjectColor(prochaine.matiere)),
-                    Icons.record_voice_over,
-                    'Prochaine khôlle',
-                    prochaine.matiere,
-                    '${frJour(prochaine.start)} ${frHeure(prochaine.start)}'
-                    '${prochaine.salle.isEmpty ? '' : ' · salle ${prochaine.salle}'}',
-                  )
-                else
-                  _tuile(w, Colors.grey, Icons.record_voice_over,
-                      'Prochaine khôlle', '—', 'importe ton colloscope'),
-                if (joursConcours != null && joursConcours > 0)
-                  _tuile(w, Colors.deepPurple, Icons.flag, 'Concours',
-                      'J-$joursConcours', 'avant les écrits')
-                else
-                  _tuile(
-                    w,
-                    Colors.teal,
-                    Icons.timer_outlined,
-                    'Cette semaine',
-                    _labelMin(minSem[''] ?? 0),
-                    'de travail perso',
-                  ),
-                _tuile(
-                  w,
-                  Colors.orange,
-                  Icons.assignment_turned_in_outlined,
-                  'À rendre',
-                  '${aRendre.length}',
-                  aRendre.isEmpty
-                      ? 'rien en attente 🎉'
-                      : '${aRendre.first.titre} ${aRendre.first.matiere} ${frDateCourte(aRendre.first.dateRendu)}',
-                ),
-                _tuile(
-                  w,
-                  Colors.indigo,
-                  Icons.school_outlined,
-                  'Cette semaine',
-                  '${semaineColles.length + semaineDs.length}',
-                  'khôlles et DS',
+                entete,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: 280, child: Column(children: gauche)),
+                    const SizedBox(width: 14),
+                    Expanded(child: centre),
+                    const SizedBox(width: 14),
+                    SizedBox(width: 300, child: Column(children: droite)),
+                  ],
                 ),
               ],
-            );
-          },
-        ),
-        if (m.dateConcours != null && m.dateConcours!.isAfter(now)) ...[
-          const SizedBox(height: 10),
-          _concoursBanner(context, m),
-        ],
-
-        // ---- Ta journee (EDT du jour + bilans) ----
-        const SizedBox(height: 20),
-        _titre(context, Icons.wb_sunny_outlined, 'Ta journée'),
-        const SizedBox(height: 8),
-        if (plage != null)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Text('🏖 ${plage.titre} — pas de cours. '
-                  'Le plan du soir reste à ton service.'),
             ),
-          )
-        else if (edtJour.isEmpty)
-          Text(
-            'Rien dans ton emploi du temps aujourd\'hui. '
-            '(Réglages → Mon emploi du temps pour le remplir.)',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-          )
-        else
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(
-                children: [for (final r in edtJour) _ligneCreneau(context, r)],
-              ),
-            ),
-          ),
-
-        // ---- Ce soir ----
-        const SizedBox(height: 20),
-        _titre(context, Icons.nightlight_outlined, 'Ce soir, tu as…'),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          children: [
-            for (final e in _durees)
-              ChoiceChip(
-                label: Text(e.$2),
-                selected: minutes == e.$1,
-                onSelected: (_) => setState(() => minutes = e.$1),
-              ),
-            ChoiceChip(
-              label: Text(_durees.any((e) => e.$1 == minutes)
-                  ? 'Autre…'
-                  : 'Autre : ${_labelMin(minutes)}'),
-              selected: !_durees.any((e) => e.$1 == minutes),
-              onSelected: (_) => _dureePerso(),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Text('Méthode : ',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-            const SizedBox(width: 4),
-            for (final me in const [
-              ('checklist', '✅ Checklist'),
-              ('pomo25', '🍅 25/5'),
-              ('pomo50', '🍅 50/10'),
-            ])
-              Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: ChoiceChip(
-                  label: Text(me.$2, style: const TextStyle(fontSize: 12)),
-                  visualDensity: VisualDensity.compact,
-                  selected: m.methodeTravail == me.$1,
-                  onSelected: (_) => m.saveMethodeTravail(me.$1),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (suggestions.isEmpty)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Importe ton colloscope et ajoute quelques chapitres : je te proposerai un plan de travail pour chaque soirée.',
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-            ),
-          )
-        else if (m.methodeTravail == 'checklist')
-          ...[for (final s in suggestions) _suggestionCard(context, s)]
-        else
-          ..._planPomodoro(context, suggestions),
-        if ((minSem[''] ?? 0) > 0)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              'Déjà travaillé cette semaine : ${_labelMin(minSem['']!)} 💪',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-          ),
-
-        // ---- A rendre ----
-        if (aRendre.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          _titre(context, Icons.assignment_turned_in_outlined, 'À rendre'),
-          const SizedBox(height: 8),
-          for (final d in aRendre)
-            _miniEvent(
-              color: Color(subjectColor(d.matiere)),
-              titre:
-                  '${d.dateRendu.isBefore(DateTime(now.year, now.month, now.day)) ? '⚠ ' : ''}${d.titre} ${d.matiere}',
-              sousTitre: 'à rendre ${frDate(d.dateRendu)}',
-              passe: false,
-            ),
-        ],
-
-        // ---- Cette semaine ----
-        const SizedBox(height: 20),
-        _titre(context, Icons.calendar_view_week_outlined, 'Cette semaine'),
-        const SizedBox(height: 8),
-        if (semaineColles.isEmpty && semaineDs.isEmpty)
-          Text('Rien au programme cette semaine 🎉',
-              style: TextStyle(color: Colors.grey.shade600)),
-        for (final c in semaineColles)
-          _miniEvent(
-            color: Color(subjectColor(c.matiere)),
-            titre: 'Khôlle ${c.matiere}',
-            sousTitre:
-                '${frJour(c.start)} ${frHeure(c.start)}${c.salle.isEmpty ? '' : ' · salle ${c.salle}'}',
-            passe: c.end.isBefore(now),
-          ),
-        for (final d in semaineDs)
-          _miniEvent(
-            color: Color(subjectColor(d.matiere)),
-            titre: '${d.titre} ${d.matiere}',
-            sousTitre: frDate(d.date),
-            passe: d.date.isBefore(DateTime(now.year, now.month, now.day)),
-          ),
-      ],
+          );
+        }
+        // ---- Telephone : session du soir d'abord, blocs ensuite ----
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [entete, centre, const SizedBox(height: 4), ...gauche, ...droite],
+        );
+      },
     );
   }
 
-  Widget _tuile(double largeur, Color couleur, IconData icone, String titre,
-      String valeur, String sous) {
-    return SizedBox(
-      width: largeur,
-      child: Card(
-        margin: EdgeInsets.zero,
-        color: couleur.withOpacity(0.10),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(icone, size: 15, color: couleur),
-                  const SizedBox(width: 5),
-                  Expanded(
-                    child: Text(titre,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: couleur)),
-                  ),
-                ],
+  // ---------- Carte a barre d'accent ----------
+
+  Widget _carte({
+    required Color accent,
+    required IconData icone,
+    required String titre,
+    required Widget enfant,
+  }) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 5, color: accent),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(icone, size: 15, color: accent),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            titre.toUpperCase(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 11,
+                                letterSpacing: 0.5,
+                                fontWeight: FontWeight.w700,
+                                color: accent),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    enfant,
+                  ],
+                ),
               ),
-              const SizedBox(height: 6),
-              Text(valeur,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 19, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 2),
-              Text(sous,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style:
-                      TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _titre(BuildContext context, IconData icone, String texte) {
-    return Row(
-      children: [
-        Icon(icone, size: 18, color: Colors.grey.shade600),
-        const SizedBox(width: 6),
-        Text(texte, style: Theme.of(context).textTheme.titleMedium),
-      ],
+  // ---------- Blocs lateraux ----------
+
+  Widget _blocProchaine(Colle? c) {
+    if (c == null) {
+      return _carte(
+        accent: Colors.grey,
+        icone: Icons.record_voice_over,
+        titre: 'Prochaine khôlle',
+        enfant: Text('Aucune à venir — importe ton colloscope.',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+      );
+    }
+    final color = Color(subjectColor(c.matiere));
+    final diff = c.start.difference(DateTime.now());
+    final quand = diff.isNegative
+        ? 'en cours'
+        : diff.inHours < 36
+            ? 'demain'
+            : 'J-${diff.inDays + 1}';
+    return _carte(
+      accent: color,
+      icone: Icons.record_voice_over,
+      titre: 'Prochaine khôlle · $quand',
+      enfant: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(c.matiere,
+              style:
+                  const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 3),
+          Text(
+            '${frDate(c.start)} · ${frHeure(c.start)}'
+            '${c.salle.isEmpty ? '' : ' · salle ${c.salle}'}'
+            '${c.kholleur.isEmpty ? '' : '\n${c.kholleur}'}',
+            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+          ),
+          if (c.programme.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('📋 ${c.programme}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _blocARendre(List<Devoir> aRendre, DateTime now) {
+    return _carte(
+      accent: Colors.orange,
+      icone: Icons.assignment_turned_in_outlined,
+      titre: 'À rendre',
+      enfant: aRendre.isEmpty
+          ? Text('Rien en attente 🎉',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final d in aRendre)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Text(
+                      '${d.dateRendu.isBefore(DateTime(now.year, now.month, now.day)) ? '⚠ ' : ''}'
+                      '${d.titre} ${d.matiere} — ${frDateCourte(d.dateRendu)}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Widget _blocSemaine(
+      List<Colle> semaineColles, List<Ds> semaineDs, DateTime now) {
+    return _carte(
+      accent: Colors.indigo,
+      icone: Icons.calendar_view_week_outlined,
+      titre: 'Cette semaine',
+      enfant: (semaineColles.isEmpty && semaineDs.isEmpty)
+          ? Text('Rien au programme 🎉',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final c in semaineColles)
+                  _miniLigne(
+                    Color(subjectColor(c.matiere)),
+                    'Khôlle ${c.matiere}',
+                    '${frJour(c.start)} ${frHeure(c.start)}${c.salle.isEmpty ? '' : ' · s.${c.salle}'}',
+                    c.end.isBefore(now),
+                  ),
+                for (final d in semaineDs)
+                  _miniLigne(
+                    Color(subjectColor(d.matiere)),
+                    '${d.titre} ${d.matiere}',
+                    frJour(d.date),
+                    d.date
+                        .isBefore(DateTime(now.year, now.month, now.day)),
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Widget _blocConcours(AppModel m) {
+    final jours = m.dateConcours!.difference(DateTime.now()).inDays + 1;
+    final commences = m.chapitres.where((c) => c.etape > 0).length;
+    final jamaisRevus = m.chapitres
+        .where((c) => c.etape > 0 && c.dernierRevu == null)
+        .length;
+    return _carte(
+      accent: Colors.deepPurple,
+      icone: Icons.flag,
+      titre: 'Concours',
+      enfant: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('J-$jours',
+              style:
+                  const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(
+            commences == 0
+                ? 'Ajoute tes chapitres pour lancer la rotation.'
+                : '$jamaisRevus/$commences chapitres jamais revus — le plan du soir les fait tourner.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _blocJournee(List<Routine> edtJour, PlageSansCours? plage) {
+    return _carte(
+      accent: Colors.amber.shade700,
+      icone: Icons.wb_sunny_outlined,
+      titre: 'Ta journée',
+      enfant: plage != null
+          ? Text('🏖 ${plage.titre} — pas de cours.',
+              style: const TextStyle(fontSize: 13))
+          : edtJour.isEmpty
+              ? Text(
+                  'Rien à l\'emploi du temps. (Réglages → Mon emploi du temps.)',
+                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600))
+              : Column(
+                  children: [
+                    for (final r in edtJour) _ligneCreneau(context, r),
+                  ],
+                ),
+    );
+  }
+
+  Widget _blocHeures(Map<String, int> minSem) {
+    final total = minSem[''] ?? 0;
+    final parMatiere = minSem.entries
+        .where((e) => e.key.isNotEmpty && e.value > 0)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final maxV = parMatiere.isEmpty ? 1 : parMatiere.first.value;
+    return _carte(
+      accent: Colors.teal,
+      icone: Icons.timer_outlined,
+      titre: 'Travail cette semaine',
+      enfant: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(total == 0 ? '—' : _labelMin(total),
+              style:
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          if (total == 0)
+            Text('Coche tes sessions du soir pour compter.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          for (final e in parMatiere.take(4)) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                SizedBox(
+                  width: 74,
+                  child: Text(e.key,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11.5)),
+                ),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: e.value / maxV,
+                      minHeight: 6,
+                      color: Color(subjectColor(e.key)),
+                      backgroundColor: Colors.grey.withOpacity(0.15),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(_labelMin(e.value),
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.grey.shade600)),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _miniLigne(Color color, String titre, String sous, bool passe) {
+    return Opacity(
+      opacity: passe ? 0.45 : 1,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            Container(
+                width: 8,
+                height: 8,
+                decoration:
+                    BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(titre,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w500)),
+            ),
+            Text(sous,
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------- LE CENTRE : la session du soir ----------
+
+  Widget _heroSoir(BuildContext context, List<Suggestion> suggestions,
+      Map<String, int> minSem) {
+    final m = AppModel.instance;
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: scheme.primary.withOpacity(0.35), width: 1.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.nightlight, size: 20, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text('Ce soir, tu as…',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final e in _durees)
+                  ChoiceChip(
+                    label: Text(e.$2),
+                    selected: minutes == e.$1,
+                    onSelected: (_) => setState(() => minutes = e.$1),
+                  ),
+                ChoiceChip(
+                  label: Text(_durees.any((e) => e.$1 == minutes)
+                      ? 'Autre…'
+                      : 'Autre : ${_labelMin(minutes)}'),
+                  selected: !_durees.any((e) => e.$1 == minutes),
+                  onSelected: (_) => _dureePerso(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('Méthode : ',
+                    style:
+                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                for (final me in const [
+                  ('checklist', '✅ Checklist'),
+                  ('pomo25', '🍅 25/5'),
+                  ('pomo50', '🍅 50/10'),
+                ])
+                  ChoiceChip(
+                    label: Text(me.$2, style: const TextStyle(fontSize: 12)),
+                    visualDensity: VisualDensity.compact,
+                    selected: m.methodeTravail == me.$1,
+                    onSelected: (_) => m.saveMethodeTravail(me.$1),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (suggestions.isEmpty)
+              Text(
+                'Importe ton colloscope et ajoute quelques chapitres : je te proposerai un plan pour chaque soirée.',
+                style: TextStyle(color: Colors.grey.shade600),
+              )
+            else if (m.methodeTravail == 'checklist')
+              ...[for (final s in suggestions) _suggestionCard(context, s)]
+            else
+              ..._planPomodoro(context, suggestions),
+            if ((minSem[''] ?? 0) > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Déjà travaillé cette semaine : ${_labelMin(minSem['']!)} 💪',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -363,43 +538,62 @@ class _TodayScreenState extends State<TodayScreen> {
       final i = m.chapitres.indexWhere((c) => c.id == bilan!.chapitreId);
       if (i >= 0) chapitreNom = m.chapitres[i].nom;
     }
-    return ListTile(
-      dense: true,
-      leading: r.matiere.isEmpty
-          ? const Icon(Icons.loop, size: 18)
-          : CircleAvatar(
-              radius: 12,
-              backgroundColor:
-                  Color(subjectColor(r.matiere)).withOpacity(0.18),
-              child: Text(
-                r.matiere.characters.first.toUpperCase(),
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Color(subjectColor(r.matiere))),
-              ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: r.matiere.isEmpty
+                  ? Colors.blueGrey
+                  : Color(subjectColor(r.matiere)),
+              shape: BoxShape.circle,
             ),
-      title: Text(r.titre),
-      subtitle: Text(
-        bilan == null
-            ? r.labelHeure
-            : '${r.labelHeure} · ${bilan.type}${chapitreNom == null ? '' : ' — $chapitreNom'}',
-      ),
-      trailing: r.matiere.isEmpty
-          ? null
-          : bilan == null
-              ? OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact),
-                  onPressed: () => _bilanSheet(r),
-                  child: const Text('Bilan ?', style: TextStyle(fontSize: 12)),
-                )
-              : IconButton(
-                  tooltip: 'Modifier le bilan',
-                  icon: const Icon(Icons.check_circle,
-                      color: Colors.green, size: 20),
-                  onPressed: () => _bilanSheet(r),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(r.titre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w500)),
+                Text(
+                  bilan == null
+                      ? r.labelHeure
+                      : '${bilan.type}${chapitreNom == null ? '' : ' — $chapitreNom'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
+              ],
+            ),
+          ),
+          if (r.matiere.isNotEmpty)
+            bilan == null
+                ? OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 8)),
+                    onPressed: () => _bilanSheet(r),
+                    child:
+                        const Text('Bilan ?', style: TextStyle(fontSize: 11)),
+                  )
+                : IconButton(
+                    tooltip: 'Modifier le bilan',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.check_circle,
+                        color: Colors.green, size: 18),
+                    onPressed: () => _bilanSheet(r),
+                  ),
+        ],
+      ),
     );
   }
 
@@ -576,8 +770,8 @@ class _TodayScreenState extends State<TodayScreen> {
         if (blocs.isNotEmpty) {
           blocs.add(BlocPomodoro('Pause', '', pause, pause: true));
         }
-        blocs.add(BlocPomodoro(s.titre, s.matiere, w,
-            chapitreId: s.chapitreId));
+        blocs.add(
+            BlocPomodoro(s.titre, s.matiere, w, chapitreId: s.chapitreId));
         reste -= w;
       }
     }
@@ -611,6 +805,11 @@ class _TodayScreenState extends State<TodayScreen> {
                         TextStyle(fontSize: 12, color: Colors.grey.shade500)),
               )
             : Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+                ),
                 child: ListTile(
                   dense: true,
                   leading: CircleAvatar(
@@ -633,47 +832,17 @@ class _TodayScreenState extends State<TodayScreen> {
     ];
   }
 
-  // ---------- Cartes ----------
-
-  Widget _concoursBanner(BuildContext context, AppModel m) {
-    final jours = m.dateConcours!.difference(DateTime.now()).inDays + 1;
-    final commences = m.chapitres.where((c) => c.etape > 0).length;
-    final jamaisRevus = m.chapitres
-        .where((c) => c.etape > 0 && c.dernierRevu == null)
-        .length;
-    return Card(
-      color: Theme.of(context).colorScheme.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            const Text('🎯', style: TextStyle(fontSize: 26)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('J-$jours avant les écrits',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16)),
-                  Text(
-                    commences == 0
-                        ? 'Ajoute tes chapitres pour lancer la rotation.'
-                        : '$jamaisRevus chapitre(s) sur $commences encore jamais revus — le plan du soir les fait tourner.',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // ---------- Cartes du plan checklist ----------
 
   Widget _suggestionCard(BuildContext context, Suggestion s) {
     final color = Color(subjectColor(s.matiere));
     return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+      ),
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: color.withOpacity(0.18),
@@ -709,40 +878,4 @@ class _TodayScreenState extends State<TodayScreen> {
       ),
     );
   }
-
-  Widget _miniEvent({
-    required Color color,
-    required String titre,
-    required String sousTitre,
-    required bool passe,
-  }) =>
-      Opacity(
-        opacity: passe ? 0.45 : 1,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(titre,
-                        style: const TextStyle(fontWeight: FontWeight.w500)),
-                    Text(sousTitre,
-                        style: TextStyle(
-                            color: Colors.grey.shade600, fontSize: 12)),
-                  ],
-                ),
-              ),
-              if (passe) const Icon(Icons.check, size: 16, color: Colors.grey),
-            ],
-          ),
-        ),
-      );
 }
