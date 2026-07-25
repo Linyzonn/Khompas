@@ -12,7 +12,7 @@ import '../api_client.dart';
 import '../models.dart';
 import '../store.dart';
 import 'calendrier.dart';
-import 'routines.dart';
+import 'edt.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -460,17 +460,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           const SizedBox(height: 24),
-          Text('Ma semaine type', style: Theme.of(context).textTheme.titleMedium),
+          Text('Mon emploi du temps',
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.loop),
-            title: const Text('Cours tardifs, sport, activités…'),
+            leading: const Icon(Icons.grid_on),
+            title: const Text('Remplir mon emploi du temps'),
             subtitle: const Text(
-                'Ce qui revient chaque semaine, affiché sur Aujourd\'hui'),
+                'Tableau lundi→samedi : cours, repas, sport… avec semaines A/B'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const RoutinesScreen())),
+            onTap: () => Navigator.push(
+                context, MaterialPageRoute(builder: (_) => const EdtScreen())),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,

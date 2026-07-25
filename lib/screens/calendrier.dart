@@ -30,7 +30,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
             'Si ton emploi du temps alterne une semaine sur deux, indique un '
             'lundi de semaine A : l\'app saura ensuite quelle semaine tu vis, '
             'et n\'affichera que les bons créneaux (marqués « Semaine A/B » '
-            'dans Ma semaine type).',
+            'dans Mon emploi du temps).',
             style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
           ),
           const SizedBox(height: 8),

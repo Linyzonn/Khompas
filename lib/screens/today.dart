@@ -66,12 +66,68 @@ class _TodayScreenState extends State<TodayScreen> {
               ?.copyWith(color: Colors.grey.shade600),
         ),
         const SizedBox(height: 10),
+        // ---- Tuiles du tableau de bord (2 par ligne) ----
+        LayoutBuilder(
+          builder: (context, contraintes) {
+            final w = (contraintes.maxWidth - 10) / 2;
+            final joursConcours = m.dateConcours == null
+                ? null
+                : m.dateConcours!.difference(now).inDays + 1;
+            return Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                if (prochaine != null)
+                  _tuile(
+                    w,
+                    Color(subjectColor(prochaine.matiere)),
+                    Icons.record_voice_over,
+                    'Prochaine khôlle',
+                    prochaine.matiere,
+                    '${frJour(prochaine.start)} ${frHeure(prochaine.start)}'
+                    '${prochaine.salle.isEmpty ? '' : ' · salle ${prochaine.salle}'}',
+                  )
+                else
+                  _tuile(w, Colors.grey, Icons.record_voice_over,
+                      'Prochaine khôlle', '—', 'importe ton colloscope'),
+                if (joursConcours != null && joursConcours > 0)
+                  _tuile(w, Colors.deepPurple, Icons.flag, 'Concours',
+                      'J-$joursConcours', 'avant les écrits')
+                else
+                  _tuile(
+                    w,
+                    Colors.teal,
+                    Icons.timer_outlined,
+                    'Cette semaine',
+                    _labelMin(minSem[''] ?? 0),
+                    'de travail perso',
+                  ),
+                _tuile(
+                  w,
+                  Colors.orange,
+                  Icons.assignment_turned_in_outlined,
+                  'À rendre',
+                  '${aRendre.length}',
+                  aRendre.isEmpty
+                      ? 'rien en attente 🎉'
+                      : '${aRendre.first.titre} ${aRendre.first.matiere} ${frDateCourte(aRendre.first.dateRendu)}',
+                ),
+                _tuile(
+                  w,
+                  Colors.indigo,
+                  Icons.school_outlined,
+                  'Cette semaine',
+                  '${semaineColles.length + semaineDs.length}',
+                  'khôlles et DS',
+                ),
+              ],
+            );
+          },
+        ),
         if (m.dateConcours != null && m.dateConcours!.isAfter(now)) ...[
-          _concoursBanner(context, m),
           const SizedBox(height: 10),
+          _concoursBanner(context, m),
         ],
-        if (prochaine != null) _prochaineCard(context, prochaine),
-        if (prochaine == null && m.dateConcours == null) _emptyCard(context),
 
         // ---- Ta journee (EDT du jour + bilans) ----
         const SizedBox(height: 20),
@@ -88,7 +144,7 @@ class _TodayScreenState extends State<TodayScreen> {
         else if (edtJour.isEmpty)
           Text(
             'Rien dans ton emploi du temps aujourd\'hui. '
-            '(Réglages → Ma semaine type pour le remplir.)',
+            '(Réglages → Mon emploi du temps pour le remplir.)',
             style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
           )
         else
@@ -208,6 +264,52 @@ class _TodayScreenState extends State<TodayScreen> {
             passe: d.date.isBefore(DateTime(now.year, now.month, now.day)),
           ),
       ],
+    );
+  }
+
+  Widget _tuile(double largeur, Color couleur, IconData icone, String titre,
+      String valeur, String sous) {
+    return SizedBox(
+      width: largeur,
+      child: Card(
+        margin: EdgeInsets.zero,
+        color: couleur.withOpacity(0.10),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icone, size: 15, color: couleur),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(titre,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: couleur)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(valeur,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 19, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Text(sous,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -568,77 +670,6 @@ class _TodayScreenState extends State<TodayScreen> {
       ),
     );
   }
-
-  Widget _prochaineCard(BuildContext context, Colle c) {
-    final now = DateTime.now();
-    final diff = c.start.difference(now);
-    String quand;
-    if (diff.isNegative) {
-      quand = 'en cours';
-    } else if (c.start.day == now.day && c.start.month == now.month) {
-      quand = "aujourd'hui à ${frHeure(c.start)}";
-    } else if (diff.inHours < 36) {
-      quand = 'demain à ${frHeure(c.start)}';
-    } else {
-      quand = 'J-${diff.inDays + 1}';
-    }
-    final color = Color(subjectColor(c.matiere));
-    return Card(
-      color: color.withOpacity(0.12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: color,
-              child: const Icon(Icons.record_voice_over,
-                  color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Prochaine khôlle : ${c.matiere}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${frDate(c.start)} · ${frHeure(c.start)}'
-                    '${c.salle.isEmpty ? '' : ' · salle ${c.salle}'}'
-                    '${c.kholleur.isEmpty ? '' : '\n${c.kholleur}'}',
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-            Chip(
-              label: Text(quand,
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              backgroundColor: color.withOpacity(0.2),
-              side: BorderSide.none,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _emptyCard(BuildContext context) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              const Icon(Icons.photo_camera_outlined, size: 40),
-              const SizedBox(height: 10),
-              const Text(
-                'Aucune khôlle à venir.\nCommence par importer ton colloscope : une photo suffit.',
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
 
   Widget _suggestionCard(BuildContext context, Suggestion s) {
     final color = Color(subjectColor(s.matiere));
