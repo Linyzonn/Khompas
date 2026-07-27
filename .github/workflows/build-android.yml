@@ -17,6 +17,64 @@ jobs:
       # Le dépôt ne contient que lib/ + pubspec : on génère le squelette Android ici.
       - name: Générer le squelette Android
         run: flutter create . --platforms=android --project-name khompas
+      # flutter_local_notifications exige : la permission notifications
+      # (Android 13+), les receivers du plugin, et le "core library
+      # desugaring" côté Gradle. Le squelette étant régénéré à chaque build,
+      # on injecte tout ici (pendant Info.plist côté iOS).
+      - name: Notifications locales (manifest + gradle)
+        run: |
+          python3 - <<'EOF'
+          import io, os, re
+
+          man = 'android/app/src/main/AndroidManifest.xml'
+          src = io.open(man, encoding='utf-8').read()
+          perms = (
+              '<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
+              '    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n'
+              '    <uses-permission android:name="android.permission.VIBRATE"/>\n    '
+          )
+          src = src.replace('<application', perms + '<application', 1)
+          receivers = '''
+              <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+              <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+                  <intent-filter>
+                      <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                      <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                      <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                  </intent-filter>
+              </receiver>
+          '''
+          src = src.replace('</application>', receivers + '    </application>', 1)
+          io.open(man, 'w', encoding='utf-8').write(src)
+
+          kts = 'android/app/build.gradle.kts'
+          groovy = 'android/app/build.gradle'
+          if os.path.exists(kts):
+              extra = '''
+          android {
+              compileOptions {
+                  isCoreLibraryDesugaringEnabled = true
+              }
+          }
+          dependencies {
+              coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+          }
+          '''
+              io.open(kts, 'a', encoding='utf-8').write(extra)
+          else:
+              extra = '''
+          android {
+              compileOptions {
+                  coreLibraryDesugaringEnabled true
+              }
+          }
+          dependencies {
+              coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
+          }
+          '''
+              io.open(groovy, 'a', encoding='utf-8').write(extra)
+          print('Manifest + gradle patch OK')
+          EOF
       - run: flutter pub get
       - run: flutter build apk --release
       - uses: actions/upload-artifact@v4

@@ -225,12 +225,13 @@ Règles :
 1. Un DS a une matière (Maths, Physique, Chimie, SII, Français, Anglais...), éventuellement un titre ou un numéro (DS 3, Concours blanc...), et une date.
 2. Si le document donne des numéros de semaines plutôt que des dates, convertis-les en dates concrètes (vacances comprises) ; les DS ont très souvent lieu le samedi matin.
 3. Si l'année n'est pas indiquée, utilise l'année scolaire en cours : septembre-décembre $anneeDebut, janvier-juillet $anneeFin (nous sommes le $dateDuJour).
-4. En cas de doute sur une ligne, fais ton meilleur choix ET signale-le dans "avertissements".
+4. Si le document indique un coefficient (coef 2, ×3...), mets-le dans "coeff" ; sinon omets ce champ.
+5. En cas de doute sur une ligne, fais ton meilleur choix ET signale-le dans "avertissements".
 
 Réponds UNIQUEMENT avec ce JSON, sans aucun texte autour :
 {
   "ds": [
-    {"matiere": "Maths", "titre": "DS 1", "date": "2026-09-19"}
+    {"matiere": "Maths", "titre": "DS 1", "date": "2026-09-19", "coeff": 2}
   ],
   "avertissements": ["..."]
 }
@@ -313,10 +314,16 @@ DsExtraction parseDsExtraction(String text) {
       final date = (m['date'] ?? '').toString();
       final dp = date.split('-').map(int.parse).toList();
       final titre = (m['titre'] ?? '').toString().trim();
+      final coeffRaw = m['coeff'];
+      final coeff = coeffRaw is num
+          ? coeffRaw.toDouble()
+          : double.tryParse((coeffRaw ?? '').toString().replaceAll(',', '.')) ??
+              1.0;
       ds.add(Ds(
         matiere: (m['matiere'] ?? '?').toString(),
         titre: titre.isEmpty ? 'DS' : titre,
         date: DateTime(dp[0], dp[1], dp[2]),
+        coeff: coeff <= 0 ? 1.0 : coeff,
       ));
     } catch (_) {
       // ligne malformee : ignore

@@ -1,6 +1,10 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'notifs.dart';
 import 'screens/agenda.dart';
 import 'screens/chapters.dart';
 import 'screens/grades.dart';
@@ -13,6 +17,17 @@ import 'store.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   AppModel.instance.load();
+  // Chaque changement de donnees replanifie les notifications (veille de
+  // kholle / oral / DM), avec un debounce pour grouper les rafales.
+  if (!kIsWeb) {
+    Timer? debounce;
+    AppModel.instance.addListener(() {
+      debounce?.cancel();
+      debounce = Timer(const Duration(seconds: 5), () {
+        Notifs.replanifier(AppModel.instance);
+      });
+    });
+  }
   runApp(const KhompasApp());
 }
 

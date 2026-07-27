@@ -14,6 +14,7 @@ pubspec.lock
 
 # Contexte perso et archives : à garder dans le dossier, PAS sur GitHub
 CONTEXTE-KHOMPAS.md
+REVIEW-KHOMPAS.md
 Khompas-*.zip
 .claude/
 

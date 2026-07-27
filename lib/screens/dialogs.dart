@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import 'erreurs.dart';
 
 /// "45 min", "1 h", "1 h 30"...
 String _labelDuree(int min) {
@@ -146,6 +147,7 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
   final matiereCtl = TextEditingController(text: initial?.matiere ?? '');
   final titreCtl = TextEditingController(text: initial?.titre ?? 'DS');
   var date = initial?.date ?? DateTime.now().add(const Duration(days: 3));
+  var coeff = initial?.coeff ?? 1.0;
 
   return showDialog<Ds>(
     context: context,
@@ -192,6 +194,26 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
                 if (d != null) setState(() => date = d);
               },
             ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text('Coefficient : '),
+                const SizedBox(width: 8),
+                DropdownButton<double>(
+                  value: coeff,
+                  items: [
+                    for (final c in ({0.5, 1.0, 1.5, 2.0, 3.0, coeff}.toList()
+                      ..sort()))
+                      DropdownMenuItem(
+                          value: c,
+                          child: Text(c == c.roundToDouble()
+                              ? c.toInt().toString()
+                              : c.toString())),
+                  ],
+                  onChanged: (v) => setState(() => coeff = v ?? 1.0),
+                ),
+              ],
+            ),
           ],
         ),
         actions: [
@@ -203,7 +225,8 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
               d
                 ..matiere = matiereCtl.text.trim()
                 ..titre = titreCtl.text.trim().isEmpty ? 'DS' : titreCtl.text.trim()
-                ..date = DateTime(date.year, date.month, date.day);
+                ..date = DateTime(date.year, date.month, date.day)
+                ..coeff = coeff;
               Navigator.pop(context, d);
             },
             child: const Text('Enregistrer'),
@@ -465,4 +488,95 @@ Future<double?> noteDialog(BuildContext context, {double? current}) async {
       ],
     ),
   );
+}
+
+/// Saisie de note + RECALIBRAGE : une mauvaise note (< 8) est le meilleur
+/// signal que des chapitres sont moins maitrises qu'on ne le pensait.
+/// On propose alors de les re-marquer fragiles (maitrise plafonnee a 2,
+/// revision espacee reprogrammee des demain) — sans jamais culpabiliser.
+Future<double?> noteAvecRecalibrage(BuildContext context,
+    {required String matiere, double? current}) async {
+  final note = await noteDialog(context, current: current);
+  if (note == null || note < 0 || note >= 8) return note;
+  if (!context.mounted) return note;
+
+  final m = AppModel.instance;
+  final chs = m.chapitres
+      .where((c) => c.matiere == matiere && c.etape > 0)
+      .toList();
+  if (chs.isEmpty) return note;
+
+  final choisis = <String>{};
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Ça arrive à tout le monde 💪',
+                  style:
+                      TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              Text(
+                'Quels chapitres t\'ont posé problème ? Ils repasseront en priorité dans ton plan du soir.',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 10),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final c in chs)
+                        FilterChip(
+                          label: Text(c.nom,
+                              style: const TextStyle(fontSize: 12)),
+                          selected: choisis.contains(c.id),
+                          onSelected: (sel) => setState(() =>
+                              sel ? choisis.add(c.id) : choisis.remove(c.id)),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  TextButton.icon(
+                    icon: const Text('📕', style: TextStyle(fontSize: 14)),
+                    label: const Text('Noter une erreur',
+                        style: TextStyle(fontSize: 12)),
+                    onPressed: () => ajouterErreurDialog(context,
+                        matiere: matiere),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Passer'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: choisis.isEmpty
+                        ? null
+                        : () {
+                            m.recalibrerChapitres(choisis.toList());
+                            Navigator.pop(context);
+                          },
+                    child: const Text('Reprogrammer'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  return note;
 }

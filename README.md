@@ -2,7 +2,21 @@
 
 Le manque que toutes les prépas connaissent : un outil qui comprend VRAIMENT le fonctionnement d'une CPGE — colloscope, khôlles, programmes de colles, DS du samedi — et qui t'aide à décider quoi travailler chaque soir.
 
-## ✨ Fonctionnalités (bêta 0.8)
+## ✨ Fonctionnalités (bêta 0.11)
+
+- 📕 **Cahier d'erreurs** : note chaque erreur de khôlle/DS en 20 s (matière, type, chapitre), avec stats par type — et refais-les jusqu'à les maîtriser. Avant une épreuve, le plan du soir te ressort tes erreurs non refaites de la matière.
+- 🔔 **Notifications** (iPhone/Android) : la veille à 19 h — khôlle demain (heure, salle, programme), oral demain, DM à rendre demain. Rien d'autre, pas de spam. À activer dans Réglages.
+- 🎓 **Mode oraux complet** : ton planning d'épreuves par concours (dates et salles remplies après l'admissibilité) ; une fois activé, le plan du soir bascule en préparation d'oral — travail À VOIX HAUTE, rotation quotidienne de toutes tes épreuves, TIPE et ADS compris, l'oral le plus proche en tête.
+- 📜 **Tracker d'annales** : les sujets de concours à faire/faits par matière avec ressenti /5 ; à J-45 des écrits, le plan du soir propose « une annale en conditions », matière la moins couverte d'abord.
+
+- 🔁 **Répétition espacée** : après un cours, le chapitre revient en « Rappel du jour » à J+1, puis à intervalles croissants selon ton auto-évaluation en 1 tap (😮‍💨 / 🙂 / 😎). La méthode la plus prouvée pour retenir — sans y penser.
+- 💡 **Consignes de rappel actif** sous chaque suggestion, adaptées à la matière (feuille blanche en maths, mécanismes de mémoire en chimie, press review en anglais…) : on ne « relit » jamais, on se teste.
+- 🧭 **Moteur du soir affiné** : les matières délaissées remontent toutes seules (fini le français oublié 3 semaines), un chapitre jamais consolidé ne se cache plus dans une bonne moyenne (⚠), et le soir où un DM tombe : « 📖 Lis-le ce soir (15 min) ».
+- 📉 **Mauvaise note = recalibrage bienveillant** : indique les chapitres en cause, ils repassent en priorité avec une révision dès demain.
+- 😴 **Heure limite sommeil** (Réglages) : le plan du soir se raccourcit pour finir avant — dormir, c'est consolider.
+- ⚖️ **Coefficients de DS** (éditeur + import IA) : moyennes pondérées comme dans ton lycée.
+- ⏱️ **Minuteur fiabilisé** : basé sur l'horloge (écran verrouillé = décompte toujours juste) et l'écran reste allumé pendant la session.
+- 🧪 **Tests automatiques du moteur** à chaque déploiement : la version en ligne n'est jamais remplacée par une version cassée.
 
 - 🗓️ **Calendrier interne** : roulement des semaines **A/B**, **vacances** et **semaines de révisions** (3/2-5/2) — l'emploi du temps et le plan du soir savent quelle semaine tu vis (Réglages → Calendrier).
 - ☀️ **Tableau de bord** : la journée du jour (créneaux réels, semaine A/B affichée) et un **bilan par créneau** — Cours (→ quel chapitre, qui passe en « vu en cours »), Exos ou TP.

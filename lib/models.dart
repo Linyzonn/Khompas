@@ -12,6 +12,16 @@ const List<int> kSubjectPalette = [
   0xFF0FA3B1, // sarcelle
 ];
 
+/// Hachage maison deterministe (djb2) : String.hashCode n'est pas garanti
+/// stable entre plateformes -> les couleurs differaient entre web et iPhone.
+int _djb2(String s) {
+  var h = 5381;
+  for (final c in s.codeUnits) {
+    h = ((h * 33) ^ c) & 0x7fffffff;
+  }
+  return h;
+}
+
 int subjectColor(String matiere) {
   final m = matiere.trim().toLowerCase();
   // Couleurs "canon" pour les matieres classiques de prepa.
@@ -31,7 +41,7 @@ int subjectColor(String matiere) {
     'informatique': 0xFF0FA3B1,
   };
   if (fixed.containsKey(m)) return fixed[m]!;
-  return kSubjectPalette[m.hashCode.abs() % kSubjectPalette.length];
+  return kSubjectPalette[_djb2(m) % kSubjectPalette.length];
 }
 
 String _newId() =>
@@ -93,16 +103,24 @@ class Colle {
       );
 }
 
-/// Un devoir surveille (ou concours blanc).
+/// Un devoir surveille (ou concours blanc), avec son coefficient (les
+/// lycees coefficientent presque tous les DS).
 class Ds {
   String id;
   String matiere;
   String titre;
   DateTime date;
   double? note;
+  double coeff;
 
-  Ds({String? id, required this.matiere, this.titre = 'DS', required this.date, this.note})
-      : id = id ?? _newId();
+  Ds({
+    String? id,
+    required this.matiere,
+    this.titre = 'DS',
+    required this.date,
+    this.note,
+    this.coeff = 1,
+  }) : id = id ?? _newId();
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -110,6 +128,7 @@ class Ds {
         'titre': titre,
         'date': date.toIso8601String(),
         'note': note,
+        'coeff': coeff,
       };
 
   static Ds fromJson(Map<String, dynamic> j) => Ds(
@@ -118,6 +137,7 @@ class Ds {
         titre: (j['titre'] ?? 'DS') as String,
         date: DateTime.parse(j['date'] as String),
         note: (j['note'] as num?)?.toDouble(),
+        coeff: ((j['coeff'] ?? 1) as num).toDouble(),
       );
 }
 
@@ -144,6 +164,10 @@ class Chapitre {
   int maitrise; // 0 = pas vu, 4 = maitrise
   int etape; // index dans kEtapesChapitre
   DateTime? dernierRevu;
+  // Repetition espacee : prochaine revision programmee et intervalle courant
+  // (double a chaque succes, se resserre en cas de difficulte).
+  DateTime? prochaineRevision;
+  int intervalleJours;
 
   Chapitre({
     String? id,
@@ -152,6 +176,8 @@ class Chapitre {
     this.maitrise = 2,
     this.etape = 0,
     this.dernierRevu,
+    this.prochaineRevision,
+    this.intervalleJours = 1,
   }) : id = id ?? _newId();
 
   Map<String, dynamic> toJson() => {
@@ -161,6 +187,8 @@ class Chapitre {
         'maitrise': maitrise,
         'etape': etape,
         'dernierRevu': dernierRevu?.toIso8601String(),
+        'prochaineRevision': prochaineRevision?.toIso8601String(),
+        'intervalleJours': intervalleJours,
       };
 
   static Chapitre fromJson(Map<String, dynamic> j) => Chapitre(
@@ -172,6 +200,10 @@ class Chapitre {
         dernierRevu: j['dernierRevu'] == null
             ? null
             : DateTime.tryParse(j['dernierRevu'] as String),
+        prochaineRevision: j['prochaineRevision'] == null
+            ? null
+            : DateTime.tryParse(j['prochaineRevision'] as String),
+        intervalleJours: (j['intervalleJours'] ?? 1) as int,
       );
 }
 
@@ -181,6 +213,9 @@ class Devoir {
   String matiere;
   String titre;
   DateTime dateRendu;
+  // Jour de distribution : le soir meme, le moteur propose de LIRE le DM
+  // (le conseil de prof classique — ca desamorce la procrastination).
+  DateTime dateDonne;
   bool rendu;
   String remarque;
 
@@ -189,15 +224,18 @@ class Devoir {
     required this.matiere,
     this.titre = 'DM',
     required this.dateRendu,
+    DateTime? dateDonne,
     this.rendu = false,
     this.remarque = '',
-  }) : id = id ?? _newId();
+  })  : dateDonne = dateDonne ?? DateTime.now(),
+        id = id ?? _newId();
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'matiere': matiere,
         'titre': titre,
         'dateRendu': dateRendu.toIso8601String(),
+        'dateDonne': dateDonne.toIso8601String(),
         'rendu': rendu,
         'remarque': remarque,
       };
@@ -207,6 +245,10 @@ class Devoir {
         matiere: (j['matiere'] ?? '') as String,
         titre: (j['titre'] ?? 'DM') as String,
         dateRendu: DateTime.parse(j['dateRendu'] as String),
+        dateDonne: j['dateDonne'] == null
+            ? DateTime.parse(j['dateRendu'] as String)
+                .subtract(const Duration(days: 7))
+            : DateTime.tryParse(j['dateDonne'] as String),
         rendu: (j['rendu'] ?? false) as bool,
         remarque: (j['remarque'] ?? '') as String,
       );
@@ -415,6 +457,168 @@ class Routine {
         dureeMin: (j['dureeMin'] ?? 60) as int,
         matiere: (j['matiere'] ?? '') as String,
         semaines: (j['semaines'] ?? 0) as int,
+      );
+}
+
+// ---------- Cahier d'erreurs ----------
+
+/// Types d'erreurs : le classement rend les stats possibles ("60 % de tes
+/// erreurs de maths sont du calcul").
+const List<String> kTypesErreur = [
+  'Calcul', 'Méthode', 'Cours pas su', 'Étourderie', 'Autre',
+];
+const List<String> kSourcesErreur = ['Khôlle', 'DS', 'DM', 'TD', 'Autre'];
+
+/// Une erreur notee apres une kholle / un DS / un TD. [refaite] = l'exercice
+/// a ete refait AVEC SUCCES depuis (le but du cahier d'erreurs).
+class Erreur {
+  String id;
+  String matiere;
+  String texte;
+  String type; // element de kTypesErreur
+  String source; // element de kSourcesErreur
+  String? chapitreId;
+  DateTime date;
+  bool refaite;
+
+  Erreur({
+    String? id,
+    required this.matiere,
+    required this.texte,
+    this.type = 'Autre',
+    this.source = 'Autre',
+    this.chapitreId,
+    DateTime? date,
+    this.refaite = false,
+  })  : date = date ?? DateTime.now(),
+        id = id ?? _newId();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'matiere': matiere,
+        'texte': texte,
+        'type': type,
+        'source': source,
+        'chapitreId': chapitreId,
+        'date': date.toIso8601String(),
+        'refaite': refaite,
+      };
+
+  static Erreur fromJson(Map<String, dynamic> j) => Erreur(
+        id: j['id'] as String?,
+        matiere: (j['matiere'] ?? '') as String,
+        texte: (j['texte'] ?? '') as String,
+        type: (j['type'] ?? 'Autre') as String,
+        source: (j['source'] ?? 'Autre') as String,
+        chapitreId: j['chapitreId'] as String?,
+        date: DateTime.parse(j['date'] as String),
+        refaite: (j['refaite'] ?? false) as bool,
+      );
+}
+
+// ---------- Annales et oraux (concours) ----------
+
+/// Concours suggeres selon la filiere (liste indicative, saisie libre
+/// toujours possible).
+List<String> kConcoursPour(String filiere) {
+  final f = filiere.toUpperCase();
+  if (f == 'ECG') return ['BCE', 'Ecricome'];
+  if (f == 'BCPST') return ['Agro-Veto', 'G2E', 'X-ENS A'];
+  if (f.contains('KH')) return ['ENS Ulm', 'ENS Lyon', 'BEL'];
+  return [
+    'CCINP', 'Centrale-Supélec', 'Mines-Ponts', 'X-ENS',
+    'Mines-Télécom', 'e3a-Polytech',
+  ];
+}
+
+/// Epreuves orales suggerees (filieres scientifiques).
+const List<String> kEpreuvesOrales = [
+  'Maths', 'Physique-Chimie', 'SII (manip)', 'TIPE', 'Anglais', 'ADS',
+];
+
+/// Une annale (sujet de concours) a faire ou faite. [ressenti] : 0 = pas
+/// note, sinon 1 (rate) a 5 (maitrise).
+class Annale {
+  String id;
+  String concours;
+  String matiere;
+  int annee;
+  bool fait;
+  int ressenti;
+  DateTime? dateFait;
+
+  Annale({
+    String? id,
+    required this.concours,
+    required this.matiere,
+    required this.annee,
+    this.fait = false,
+    this.ressenti = 0,
+    this.dateFait,
+  }) : id = id ?? _newId();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'concours': concours,
+        'matiere': matiere,
+        'annee': annee,
+        'fait': fait,
+        'ressenti': ressenti,
+        'dateFait': dateFait?.toIso8601String(),
+      };
+
+  static Annale fromJson(Map<String, dynamic> j) => Annale(
+        id: j['id'] as String?,
+        concours: (j['concours'] ?? '') as String,
+        matiere: (j['matiere'] ?? '') as String,
+        annee: (j['annee'] ?? 2020) as int,
+        fait: (j['fait'] ?? false) as bool,
+        ressenti: (j['ressenti'] ?? 0) as int,
+        dateFait: j['dateFait'] == null
+            ? null
+            : DateTime.parse(j['dateFait'] as String),
+      );
+}
+
+/// Une epreuve orale d'un concours. La date/heure n'est connue qu'apres
+/// l'admissibilite : tout est facultatif sauf concours + epreuve.
+class EpreuveOrale {
+  String id;
+  String concours;
+  String epreuve; // 'Maths', 'TIPE', 'SII (manip)'...
+  DateTime? date;
+  int? debutMin; // minutes depuis minuit, null = heure inconnue
+  String lieu;
+  String remarque;
+
+  EpreuveOrale({
+    String? id,
+    required this.concours,
+    required this.epreuve,
+    this.date,
+    this.debutMin,
+    this.lieu = '',
+    this.remarque = '',
+  }) : id = id ?? _newId();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'concours': concours,
+        'epreuve': epreuve,
+        'date': date?.toIso8601String(),
+        'debutMin': debutMin,
+        'lieu': lieu,
+        'remarque': remarque,
+      };
+
+  static EpreuveOrale fromJson(Map<String, dynamic> j) => EpreuveOrale(
+        id: j['id'] as String?,
+        concours: (j['concours'] ?? '') as String,
+        epreuve: (j['epreuve'] ?? '') as String,
+        date: j['date'] == null ? null : DateTime.parse(j['date'] as String),
+        debutMin: j['debutMin'] as int?,
+        lieu: (j['lieu'] ?? '') as String,
+        remarque: (j['remarque'] ?? '') as String,
       );
 }
 

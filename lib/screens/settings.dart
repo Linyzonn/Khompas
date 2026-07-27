@@ -10,9 +10,12 @@ import 'package:share_plus/share_plus.dart';
 
 import '../api_client.dart';
 import '../models.dart';
+import '../notifs.dart';
 import '../store.dart';
+import 'annales.dart';
 import 'calendrier.dart';
 import 'edt.dart';
+import 'oraux.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -127,6 +130,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (d != null) {
       m.setDateConcours(DateTime(d.year, d.month, d.day));
+      if (mounted) setState(() {});
+    }
+  }
+
+  // ---------- Heure limite de sommeil ----------
+
+  Future<void> _choisirHeureLimite() async {
+    final m = AppModel.instance;
+    final actuel = m.heureLimiteMin ?? 23 * 60;
+    final t = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: actuel ~/ 60, minute: actuel % 60),
+      helpText: 'Heure limite de travail le soir',
+    );
+    if (t != null) {
+      m.setHeureLimite(t.hour * 60 + t.minute);
       if (mounted) setState(() {});
     }
   }
@@ -516,6 +535,124 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: const Text('Désactiver'),
               ),
             ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.menu_book_outlined),
+            title: const Text('Tracker d\'annales'),
+            subtitle: Text(
+                m.annales.isEmpty
+                    ? 'Les sujets de concours à faire — le plan du soir pioche dedans à J-45.'
+                    : '${m.annales.where((a) => a.fait).length}/${m.annales.length} faites',
+                style: const TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const AnnalesScreen())),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.record_voice_over_outlined),
+            title: const Text('Mode oraux'),
+            subtitle: Text(
+                m.modeOraux
+                    ? 'ACTIF — le plan du soir prépare tes épreuves orales.'
+                    : 'Planning des épreuves par concours + bascule du plan du soir.',
+                style: const TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const OrauxScreen())),
+          ),
+          if (!kIsWeb) ...[
+            const SizedBox(height: 24),
+            Text('Notifications',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Des rappels la VEILLE au soir (19 h), et uniquement ça — pas de spam. (Sur la version web PC, les notifications n\'existent pas.)',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Activer les notifications'),
+              value: m.notifsActives,
+              onChanged: (v) async {
+                if (v) {
+                  final ok = await Notifs.demanderPermission();
+                  if (!ok) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text(
+                              'Permission refusée — autorise Khompas dans les réglages du téléphone.')));
+                    }
+                    return;
+                  }
+                }
+                await m.setPrefsNotifs(actives: v);
+                await Notifs.replanifier(m);
+                if (mounted) setState(() {});
+              },
+            ),
+            if (m.notifsActives) ...[
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Veille de khôlle / d\'oral'),
+                subtitle: const Text(
+                    'Matière, heure, salle et programme si connu.',
+                    style: TextStyle(fontSize: 12)),
+                value: m.notifVeilleKholle,
+                onChanged: (v) async {
+                  await m.setPrefsNotifs(veilleKholle: v);
+                  await Notifs.replanifier(m);
+                  if (mounted) setState(() {});
+                },
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Veille de DM / DNS à rendre'),
+                subtitle: const Text('Le filet anti-oubli.',
+                    style: TextStyle(fontSize: 12)),
+                value: m.notifVeilleDm,
+                onChanged: (v) async {
+                  await m.setPrefsNotifs(veilleDm: v);
+                  await Notifs.replanifier(m);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
+          ],
+          const SizedBox(height: 24),
+          Text('Sommeil', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            'Fixe une heure limite : le plan du soir se raccourcit tout seul '
+            'pour finir avant. Le sommeil consolide la mémoire — travailler '
+            'jusqu\'à 1h du matin fait perdre plus qu\'il ne fait gagner.',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          if (m.heureLimiteMin == null)
+            OutlinedButton.icon(
+              icon: const Icon(Icons.bedtime_outlined),
+              label: const Text('Fixer une heure limite'),
+              onPressed: _choisirHeureLimite,
+            )
+          else
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.bedtime),
+              title: Text(
+                  'Heure limite : ${m.heureLimiteMin! ~/ 60}h${(m.heureLimiteMin! % 60).toString().padLeft(2, '0')}'),
+              subtitle: const Text('Appuie pour changer.'),
+              onTap: _choisirHeureLimite,
+              trailing: TextButton(
+                onPressed: () {
+                  m.setHeureLimite(null);
+                  setState(() {});
+                },
+                child: const Text('Retirer'),
+              ),
+            ),
           const SizedBox(height: 24),
           Text('Mes données', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
@@ -614,7 +751,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Khompas — bêta 0.9'),
+            title: Text('Khompas — bêta 0.11'),
             subtitle: Text(
                 'Le compagnon de ta prépa. Tes données restent sur ton téléphone.'),
           ),

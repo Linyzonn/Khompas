@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../models.dart';
 import '../store.dart';
@@ -17,8 +18,12 @@ class BlocPomodoro {
 }
 
 /// Minuteur Pomodoro plein ecran : enchaine les blocs, enregistre chaque
-/// bloc de travail termine comme une seance. (Garde l'ecran ouvert : pas de
-/// notification en arriere-plan sur la version beta.)
+/// bloc de travail termine comme une seance.
+///
+/// Le decompte est base sur un HORODATAGE de fin (pas sur un compteur
+/// decremente a chaque tick) : si l'OS suspend l'app ou gele le Timer,
+/// le temps reste juste au reveil. Wakelock actif pour garder l'ecran
+/// allume pendant la session.
 class MinuteurScreen extends StatefulWidget {
   final List<BlocPomodoro> blocs;
   const MinuteurScreen({super.key, required this.blocs});
@@ -29,21 +34,29 @@ class MinuteurScreen extends StatefulWidget {
 
 class _MinuteurScreenState extends State<MinuteurScreen> {
   int index = 0;
-  late int restant; // secondes
+  DateTime? finBloc; // instant de fin du bloc courant (null = en pause)
+  int restantPause = 0; // secondes restantes memorisees pendant la pause
   bool running = true;
   bool termine = false;
   Timer? _tick;
 
   BlocPomodoro get bloc => widget.blocs[index];
 
+  int get restant {
+    if (!running) return restantPause;
+    if (finBloc == null) return 0;
+    final r = finBloc!.difference(DateTime.now()).inSeconds;
+    return r < 0 ? 0 : r;
+  }
+
   @override
   void initState() {
     super.initState();
-    restant = widget.blocs.first.minutes * 60;
+    finBloc = DateTime.now().add(Duration(minutes: widget.blocs.first.minutes));
+    WakelockPlus.enable();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!running || termine) return;
       setState(() {
-        restant--;
         if (restant <= 0) _finBloc(complet: true);
       });
     });
@@ -52,7 +65,21 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
   @override
   void dispose() {
     _tick?.cancel();
+    WakelockPlus.disable();
     super.dispose();
+  }
+
+  void _pauseOuReprise() {
+    setState(() {
+      if (running) {
+        restantPause = restant;
+        finBloc = null;
+        running = false;
+      } else {
+        finBloc = DateTime.now().add(Duration(seconds: restantPause));
+        running = true;
+      }
+    });
   }
 
   void _finBloc({required bool complet}) {
@@ -66,17 +93,26 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
         if (b.chapitreId != null) {
           final i = m.chapitres.indexWhere((c) => c.id == b.chapitreId);
           if (i >= 0) {
-            m.chapitres[i].dernierRevu = DateTime.now();
-            m.updateChapitre(m.chapitres[i]);
+            if (m.chapitres[i].prochaineRevision != null) {
+              // Chapitre suivi en revision espacee : "Ca va" par defaut
+              // (l'intervalle double), faute d'auto-evaluation ici.
+              m.evaluerRevision(b.chapitreId!, 'cava');
+            } else {
+              m.chapitres[i].dernierRevu = DateTime.now();
+              m.updateChapitre(m.chapitres[i]);
+            }
           }
         }
       }
     }
     if (index + 1 >= widget.blocs.length) {
       termine = true;
+      finBloc = null;
+      WakelockPlus.disable();
     } else {
       index++;
-      restant = bloc.minutes * 60;
+      running = true;
+      finBloc = DateTime.now().add(Duration(minutes: bloc.minutes));
     }
   }
 
@@ -88,6 +124,7 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
             ? Colors.teal
             : Color(subjectColor(bloc.matiere));
     final total = termine ? 1 : bloc.minutes * 60;
+    final r = restant;
     return Scaffold(
       appBar: AppBar(title: const Text('Minuteur')),
       body: Padding(
@@ -130,7 +167,7 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
               const SizedBox(height: 24),
               Center(
                 child: Text(
-                  '${(restant ~/ 60).toString().padLeft(2, '0')}:${(restant % 60).toString().padLeft(2, '0')}',
+                  '${(r ~/ 60).toString().padLeft(2, '0')}:${(r % 60).toString().padLeft(2, '0')}',
                   style: TextStyle(
                       fontSize: 72,
                       fontWeight: FontWeight.bold,
@@ -140,7 +177,7 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
               ),
               const SizedBox(height: 12),
               LinearProgressIndicator(
-                value: 1 - restant / total,
+                value: 1 - r / total,
                 color: couleur,
                 minHeight: 6,
               ),
@@ -151,7 +188,7 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
                     child: OutlinedButton.icon(
                       icon: Icon(running ? Icons.pause : Icons.play_arrow),
                       label: Text(running ? 'Pause' : 'Reprendre'),
-                      onPressed: () => setState(() => running = !running),
+                      onPressed: _pauseOuReprise,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -167,7 +204,7 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Garde cet écran ouvert pendant la session.',
+                'L\'écran reste allumé pendant la session.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
               ),

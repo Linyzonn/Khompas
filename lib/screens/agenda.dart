@@ -12,6 +12,7 @@ import '../store.dart';
 import 'dialogs.dart';
 import 'import.dart';
 import 'import_ds.dart';
+import 'oraux.dart';
 
 /// Onglet "Agenda" : toutes les khôlles et DS, groupes par semaine.
 class AgendaScreen extends StatelessWidget {
@@ -31,6 +32,8 @@ class AgendaScreen extends StatelessWidget {
         if (!d.dateRendu.isBefore(debut) || !d.rendu) _Event.devoir(d),
       for (final e in m.evenements)
         if (!e.date.isBefore(debut)) _Event.evenement(e),
+      for (final o in m.oraux)
+        if (o.date != null && !o.date!.isBefore(debut)) _Event.oral(o),
     ]..sort((a, b) => a.date.compareTo(b.date));
 
     // Groupement par semaine (lundi).
@@ -222,7 +225,8 @@ class AgendaScreen extends StatelessWidget {
               final edited = await editColleDialog(context, initial: c);
               if (edited != null) m.updateColle(edited);
             } else if (v == 'note') {
-              final n = await noteDialog(context, current: c.note);
+              final n = await noteAvecRecalibrage(context,
+                  matiere: c.matiere, current: c.note);
               if (n != null) {
                 c.note = n < 0 ? null : n;
                 m.updateColle(c);
@@ -265,6 +269,24 @@ class AgendaScreen extends StatelessWidget {
             const PopupMenuItem(value: 'delete', child: Text('Supprimer')),
           ],
         ),
+      );
+    }
+    if (e.oral != null) {
+      final o = e.oral!;
+      return ListTile(
+        leading: CircleAvatar(
+          backgroundColor: color.withOpacity(0.18),
+          child: Icon(Icons.school, color: color, size: 20),
+        ),
+        title: Text('Oral ${o.concours} — ${o.epreuve}'),
+        subtitle: Text(
+          '${frJour(o.date!)} ${o.date!.day}'
+          '${o.debutMin == null ? '' : ' · ${o.debutMin! ~/ 60}h${(o.debutMin! % 60).toString().padLeft(2, '0')}'}'
+          '${o.lieu.isEmpty ? '' : ' · ${o.lieu}'}',
+        ),
+        trailing: const Icon(Icons.chevron_right, size: 18),
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const OrauxScreen())),
       );
     }
     if (e.devoir != null) {
@@ -321,7 +343,8 @@ class AgendaScreen extends StatelessWidget {
         backgroundColor: color.withOpacity(0.18),
         child: Icon(Icons.edit_document, color: color, size: 20),
       ),
-      title: Text('${d.titre} ${d.matiere}'),
+      title: Text('${d.titre} ${d.matiere}'
+          '${d.coeff == 1 ? '' : ' · coef ${d.coeff == d.coeff.roundToDouble() ? d.coeff.toInt() : d.coeff}'}'),
       subtitle: Text(frDate(d.date)),
       trailing: PopupMenuButton<String>(
         onSelected: (v) async {
@@ -329,7 +352,8 @@ class AgendaScreen extends StatelessWidget {
             final edited = await editDsDialog(context, initial: d);
             if (edited != null) m.updateDs(edited);
           } else if (v == 'note') {
-            final n = await noteDialog(context, current: d.note);
+            final n = await noteAvecRecalibrage(context,
+                matiere: d.matiere, current: d.note);
             if (n != null) {
               d.note = n < 0 ? null : n;
               m.updateDs(d);
@@ -355,32 +379,45 @@ class _Event {
   final Ds? ds;
   final Devoir? devoir;
   final Evenement? evenement;
+  final EpreuveOrale? oral;
   _Event.colle(Colle c)
       : date = c.start,
         matiere = c.matiere,
         colle = c,
         ds = null,
         devoir = null,
-        evenement = null;
+        evenement = null,
+        oral = null;
   _Event.ds(Ds d)
       : date = d.date,
         matiere = d.matiere,
         colle = null,
         ds = d,
         devoir = null,
-        evenement = null;
+        evenement = null,
+        oral = null;
   _Event.devoir(Devoir d)
       : date = d.dateRendu,
         matiere = d.matiere,
         colle = null,
         ds = null,
         devoir = d,
-        evenement = null;
+        evenement = null,
+        oral = null;
   _Event.evenement(Evenement e)
       : date = e.date,
         matiere = e.matiere.isEmpty ? e.titre : e.matiere,
         colle = null,
         ds = null,
         devoir = null,
-        evenement = e;
+        evenement = e,
+        oral = null;
+  _Event.oral(EpreuveOrale o)
+      : date = o.date!,
+        matiere = o.epreuve,
+        colle = null,
+        ds = null,
+        devoir = null,
+        evenement = null,
+        oral = o;
 }

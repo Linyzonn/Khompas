@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import 'dialogs.dart';
+import 'erreurs.dart';
 
 /// Onglet "Notes" : notes de khôlles et de DS, moyennes et tendance par matiere.
 class GradesScreen extends StatelessWidget {
@@ -25,9 +26,25 @@ class GradesScreen extends StatelessWidget {
       );
     }
 
+    final aRefaire = m.erreurs.where((e) => !e.refaite).length;
     return ListView(
       padding: const EdgeInsets.only(bottom: 90),
       children: [
+        ListTile(
+          leading: const Text('📕', style: TextStyle(fontSize: 22)),
+          title: const Text('Cahier d\'erreurs',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(
+            aRefaire == 0
+                ? 'Note tes erreurs de khôlle/DS — refais-les jusqu\'à les maîtriser.'
+                : '$aRefaire erreur(s) à refaire',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const ErreursScreen())),
+        ),
+        const Divider(height: 1),
         for (final mat in matieres) _section(context, mat),
       ],
     );
@@ -77,15 +94,19 @@ class GradesScreen extends StatelessWidget {
     final md = m.moyenneDs(mat);
     final t = _tendance(mat);
     final obj = m.objectifs[mat];
-    final notesToutes = <double>[
+    // Moyenne globale ponderee : les khôlles comptent coeff 1, les DS leur
+    // coefficient (un concours blanc coeff 3 pese 3 fois plus).
+    final pondere = <(double, double)>[
       for (final c in m.colles)
-        if (c.matiere == mat && c.note != null) c.note!,
+        if (c.matiere == mat && c.note != null) (c.note!, 1.0),
       for (final d in m.ds)
-        if (d.matiere == mat && d.note != null) d.note!,
+        if (d.matiere == mat && d.note != null) (d.note!, d.coeff),
     ];
-    final avgGlobal = notesToutes.isEmpty
+    final sommeCoeffs =
+        pondere.fold<double>(0, (s, e) => s + e.$2);
+    final avgGlobal = sommeCoeffs == 0
         ? null
-        : notesToutes.reduce((a, b) => a + b) / notesToutes.length;
+        : pondere.fold<double>(0, (s, e) => s + e.$1 * e.$2) / sommeCoeffs;
     final now = DateTime.now();
     final collesPassees = m.colles
         .where((c) => c.matiere == mat && c.start.isBefore(now))
@@ -157,7 +178,8 @@ class GradesScreen extends StatelessWidget {
             title: Text('Khôlle du ${frDateCourte(c.start)}'
                 '${c.kholleur.isEmpty ? '' : ' · ${c.kholleur}'}'),
             trailing: _noteChip(context, c.note, color, () async {
-              final n = await noteDialog(context, current: c.note);
+              final n = await noteAvecRecalibrage(context,
+                  matiere: c.matiere, current: c.note);
               if (n != null) {
                 c.note = n < 0 ? null : n;
                 AppModel.instance.updateColle(c);
@@ -168,9 +190,11 @@ class GradesScreen extends StatelessWidget {
           ListTile(
             dense: true,
             leading: const Icon(Icons.edit_document, size: 18),
-            title: Text('${d.titre} du ${frDateCourte(d.date)}'),
+            title: Text('${d.titre} du ${frDateCourte(d.date)}'
+                '${d.coeff == 1 ? '' : ' · coef ${d.coeff == d.coeff.roundToDouble() ? d.coeff.toInt() : d.coeff}'}'),
             trailing: _noteChip(context, d.note, color, () async {
-              final n = await noteDialog(context, current: d.note);
+              final n = await noteAvecRecalibrage(context,
+                  matiere: d.matiere, current: d.note);
               if (n != null) {
                 d.note = n < 0 ? null : n;
                 AppModel.instance.updateDs(d);

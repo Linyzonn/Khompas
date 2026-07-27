@@ -40,7 +40,8 @@ class _TodayScreenState extends State<TodayScreen> {
     final m = AppModel.instance;
     final now = DateTime.now();
     final prochaine = m.prochaineColle();
-    final suggestions = suggere(m, minutes);
+    final budget = _budgetSoir(m, now);
+    final suggestions = budget < 15 ? <Suggestion>[] : suggere(m, budget);
     final lundi = mondayOf(now);
     final dimanche = lundi.add(const Duration(days: 7));
     final semaineColles = m.colles
@@ -68,18 +69,35 @@ class _TodayScreenState extends State<TodayScreen> {
       ),
     );
 
+    final alertes = <Widget>[
+      if (m.chargementEchoue)
+        _banniere(
+          Colors.red,
+          Icons.error_outline,
+          'Tes données n\'ont pas pu être lues au démarrage — rien n\'est écrasé, une copie de secours a été conservée. Restaure une sauvegarde (Réglages → Données) ou récupère ton compte.',
+        ),
+      if (m.syncConflit)
+        _banniere(
+          Colors.orange,
+          Icons.sync_problem,
+          'Ton autre appareil a des données plus récentes. Fais « Récupérer » dans Réglages → Compte avant de continuer ici, sinon rien ne sera synchronisé.',
+        ),
+    ];
+
     final gauche = <Widget>[
       _blocProchaine(prochaine),
       _blocARendre(aRendre, now),
       _blocSemaine(semaineColles, semaineDs, now),
     ];
     final droite = <Widget>[
-      if (m.dateConcours != null && m.dateConcours!.isAfter(now))
+      if (m.modeOraux && m.oraux.isNotEmpty)
+        _blocOraux(m)
+      else if (m.dateConcours != null && m.dateConcours!.isAfter(now))
         _blocConcours(m),
       _blocJournee(edtJour, evtsJour, plage),
       _blocHeures(minSem),
     ];
-    final centre = _heroSoir(context, suggestions, minSem);
+    final centre = _heroSoir(context, suggestions, minSem, budget);
     final vueSemaine = _blocVueSemaine(context, m, now);
 
     return LayoutBuilder(
@@ -91,6 +109,7 @@ class _TodayScreenState extends State<TodayScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                ...alertes,
                 entete,
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,6 +130,7 @@ class _TodayScreenState extends State<TodayScreen> {
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            ...alertes,
             entete,
             centre,
             const SizedBox(height: 4),
@@ -120,6 +140,44 @@ class _TodayScreenState extends State<TodayScreen> {
           ],
         );
       },
+    );
+  }
+
+  /// Minutes reellement disponibles ce soir : la duree choisie, plafonnee
+  /// par l'heure limite de sommeil si elle approche.
+  int _budgetSoir(AppModel m, DateTime now) {
+    final limite = m.heureLimiteMin;
+    if (limite == null) return minutes;
+    final nowMin = now.hour * 60 + now.minute;
+    // Une limite avant 6h du matin est comprise comme "apres minuit".
+    var restant = limite < 360 ? limite + 1440 - nowMin : limite - nowMin;
+    if (restant < 0) restant = 0;
+    return minutes < restant ? minutes : restant;
+  }
+
+  Widget _banniere(Color couleur, IconData icone, String texte) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      color: couleur.withOpacity(0.08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: couleur.withOpacity(0.5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icone, size: 20, color: couleur),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(texte,
+                  style: const TextStyle(fontSize: 13, height: 1.3)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -312,6 +370,38 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
+  Widget _blocOraux(AppModel m) {
+    final prochain = m.prochainOral();
+    final now = DateTime.now();
+    return _carte(
+      accent: Colors.deepPurple,
+      icone: Icons.school,
+      titre: 'Oraux',
+      enfant: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (prochain == null)
+            Text(
+              '${m.oraux.length} épreuve(s) en rotation — les dates se rempliront après l\'admissibilité.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            )
+          else ...[
+            Text(
+              'J-${DateTime(prochain.date!.year, prochain.date!.month, prochain.date!.day).difference(DateTime(now.year, now.month, now.day)).inDays}',
+              style:
+                  const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            Text(
+              '${prochain.concours} — ${prochain.epreuve}, ${frDateCourte(prochain.date!)}'
+              '${prochain.lieu.isEmpty ? '' : '\n📍 ${prochain.lieu}'}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _blocJournee(
       List<Routine> edtJour, List<Evenement> evtsJour, PlageSansCours? plage) {
     // EDT + evenements ponctuels du jour, fusionnes et tries par heure.
@@ -452,6 +542,19 @@ class _TodayScreenState extends State<TodayScreen> {
           1,
           '📥 ${dev.titre} ${dev.matiere}',
           Color(subjectColor(dev.matiere)),
+          true,
+        ));
+      }
+    }
+    for (final o in m.oraux) {
+      if (o.date != null &&
+          o.date!.year == d.year &&
+          o.date!.month == d.month &&
+          o.date!.day == d.day) {
+        items.add((
+          o.debutMin ?? 0,
+          '🎓 ${o.concours} ${o.epreuve}',
+          Color(subjectColor(o.epreuve)),
           true,
         ));
       }
@@ -597,9 +700,12 @@ class _TodayScreenState extends State<TodayScreen> {
   // ---------- LE CENTRE : la session du soir ----------
 
   Widget _heroSoir(BuildContext context, List<Suggestion> suggestions,
-      Map<String, int> minSem) {
+      Map<String, int> minSem, int budget) {
     final m = AppModel.instance;
     final scheme = Theme.of(context).colorScheme;
+    final plafonne = m.heureLimiteMin != null && budget < minutes;
+    final hLim = m.heureLimiteMin ?? 0;
+    final labelLim = '${hLim ~/ 60}h${(hLim % 60).toString().padLeft(2, '0')}';
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
@@ -655,6 +761,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   ('checklist', '✅ Checklist'),
                   ('pomo25', '🍅 25/5'),
                   ('pomo50', '🍅 50/10'),
+                  ('pomoAuto', '🍅 Auto'),
                 ])
                   ChoiceChip(
                     label: Text(me.$2, style: const TextStyle(fontSize: 12)),
@@ -665,7 +772,20 @@ class _TodayScreenState extends State<TodayScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            if (suggestions.isEmpty)
+            if (plafonne)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  budget >= 15
+                      ? '🌙 Plan ajusté pour finir avant $labelLim — le sommeil consolide ce que tu viens d\'apprendre.'
+                      : '🌙 Il est presque $labelLim : dormir maintenant fera plus pour tes notes qu\'une heure de travail en plus. À demain !',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.primary),
+                ),
+              ),
+            if (suggestions.isEmpty && !plafonne)
               Text(
                 'Importe ton colloscope et ajoute quelques chapitres : je te proposerai un plan pour chaque soirée.',
                 style: TextStyle(color: Colors.grey.shade600),
@@ -948,12 +1068,32 @@ class _TodayScreenState extends State<TodayScreen> {
 
   // ---------- Plan Pomodoro ----------
 
+  /// Vocabulaire, langues, francais : blocs courts (25/5). Sciences : blocs
+  /// longs (50/10), le temps d'entrer vraiment dans un exercice.
+  bool _blocsCourts(String matiere) {
+    final m = matiere.trim().toLowerCase();
+    return m.contains('angl') ||
+        m.contains('lv') ||
+        m.contains('espagnol') ||
+        m.contains('allemand') ||
+        m.contains('fran') ||
+        m.contains('philo') ||
+        m.contains('lettres');
+  }
+
   List<BlocPomodoro> _blocsPomodoro(List<Suggestion> suggestions) {
     final m = AppModel.instance;
-    final travail = m.methodeTravail == 'pomo50' ? 50 : 25;
-    final pause = m.methodeTravail == 'pomo50' ? 10 : 5;
     final blocs = <BlocPomodoro>[];
     for (final s in suggestions) {
+      int travail, pause;
+      if (m.methodeTravail == 'pomoAuto') {
+        final courts = _blocsCourts(s.matiere);
+        travail = courts ? 25 : 50;
+        pause = courts ? 5 : 10;
+      } else {
+        travail = m.methodeTravail == 'pomo50' ? 50 : 25;
+        pause = m.methodeTravail == 'pomo50' ? 10 : 5;
+      }
       var reste = s.minutes;
       while (reste >= 15) {
         final w = reste >= travail ? travail : reste;
@@ -1044,12 +1184,33 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
         title:
             Text(s.matiere, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text('${s.raison}\n${s.titre}'),
-        isThreeLine: true,
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${s.raison}\n${s.titre}'),
+            if (s.consigne.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(
+                  '💡 ${s.consigne}',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.grey.shade600),
+                ),
+              ),
+          ],
+        ),
         trailing: IconButton(
-          tooltip: 'Fait ! (enregistre la séance)',
+          tooltip: s.rappel
+              ? 'Revu ! (règle la prochaine révision)'
+              : 'Fait ! (enregistre la séance)',
           icon: const Icon(Icons.check_circle_outline),
           onPressed: () {
+            if (s.rappel && s.chapitreId != null) {
+              _evaluerRappel(s);
+              return;
+            }
             final m = AppModel.instance;
             m.addSeance(s.matiere, s.minutes);
             if (s.chapitreId != null) {
@@ -1067,5 +1228,71 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
       ),
     );
+  }
+
+  /// Auto-evaluation en 1 tap apres un rappel espace : la reponse regle
+  /// l'ecart avant la prochaine revision (difficile -> vite, facile -> loin).
+  Future<void> _evaluerRappel(Suggestion s) async {
+    final m = AppModel.instance;
+    final verdict = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${s.matiere} — comment ça s\'est passé ?',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              Text(
+                'Ta réponse règle la date de la prochaine révision. Sois honnête, personne ne regarde 😉',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  for (final v in const [
+                    ('difficile', '😮‍💨', 'Difficile'),
+                    ('cava', '🙂', 'Ça va'),
+                    ('facile', '😎', 'Facile'),
+                  ]) ...[
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context, v.$1),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Column(
+                            children: [
+                              Text(v.$2,
+                                  style: const TextStyle(fontSize: 24)),
+                              const SizedBox(height: 2),
+                              Text(v.$3,
+                                  style: const TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (v.$1 != 'facile') const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (verdict == null) return;
+    m.evaluerRevision(s.chapitreId!, verdict);
+    m.addSeance(s.matiere, s.minutes);
+    final i = m.chapitres.indexWhere((c) => c.id == s.chapitreId);
+    final jours = i >= 0 ? m.chapitres[i].intervalleJours : 1;
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Revu ✅ Prochaine révision dans $jours j.'),
+    ));
   }
 }

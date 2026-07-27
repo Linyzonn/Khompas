@@ -52,6 +52,13 @@ function erreur(msg: string, status: number): Response {
   return json({ erreur: msg }, status);
 }
 
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 function genCode(): string {
   const a = new Uint8Array(6);
   crypto.getRandomValues(a);
@@ -384,8 +391,27 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
     const id = cle.slice(0, 6);
     const acc = await kv.get(['acc', id]);
     if (!acc.value) return null;
-    if ((acc.value as { secret: string }).secret !== cle.slice(6)) return null;
-    return id;
+    const v = acc.value as {
+      secret?: string;
+      secretHash?: string;
+      [k: string]: unknown;
+    };
+    const fourni = cle.slice(6);
+    if (v.secretHash) {
+      return (await sha256Hex(fourni)) === v.secretHash ? id : null;
+    }
+    // Compte historique (secret en clair) : migration en douceur vers le
+    // hash au premier passage — le secret en clair est efface.
+    if (v.secret === fourni) {
+      const { secret: _ancien, ...reste } = v;
+      await kv.set(
+        ['acc', id],
+        { ...reste, secretHash: await sha256Hex(fourni) },
+        { expireIn: TTL },
+      );
+      return id;
+    }
+    return null;
   };
 
   if (p === '/api/comptes' && req.method === 'POST') {
@@ -406,10 +432,12 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
     for (let essai = 0; essai < 5; essai++) {
       const id = genCode();
       const secret = genCode() + genCode(); // 12 caracteres
+      // Seul le HASH du secret est stocke : une fuite du KV ne donne pas
+      // les cles des comptes.
       const ok = await kv.atomic()
         .check({ key: ['acc', id], versionstamp: null })
         .set(['acc', id], {
-          secret,
+          secretHash: await sha256Hex(secret),
           filiere: (corps.filiere ?? '').toString().slice(0, 30),
           cinqDemi: !!corps.cinqDemi,
           cree: Date.now(),
@@ -426,6 +454,26 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
     const corps = await req.text();
     if (!corps.trim()) return erreur('Données vides.', 400);
     if (corps.length > 256_000) return erreur('Données trop volumineuses.', 413);
+    // Garde anti-ecrasement : la sauvegarde porte son horodatage
+    // (exportedAt). Si le serveur detient deja une version PLUS RECENTE
+    // (poussee par un autre appareil), on refuse — l'app affiche alors un
+    // bandeau et propose « Récupérer ». Sans horodatage lisible (vieux
+    // client), on accepte comme avant.
+    let exportedAt = 0;
+    try {
+      const t = Date.parse(JSON.parse(corps).exportedAt ?? '');
+      if (!Number.isNaN(t)) exportedAt = t;
+    } catch (_) {
+      // corps illisible en JSON : pas de garde
+    }
+    const metaAvant = await kv.get(['accm', id]);
+    const prev = (metaAvant.value ?? {}) as { exportedAt?: number };
+    if (exportedAt && prev.exportedAt && exportedAt < prev.exportedAt) {
+      return erreur(
+        'Ton autre appareil a des données plus récentes — fais « Récupérer » dans Réglages → Compte avant de pousser depuis celui-ci.',
+        409,
+      );
+    }
     let n = 0;
     for (; n * CHUNK < corps.length; n++) {
       await kv.set(['accd', id, n], corps.slice(n * CHUNK, (n + 1) * CHUNK), {
@@ -435,7 +483,11 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
     const maj = Date.now();
     // meta.chunks borne la lecture : d'eventuels vieux chunks au-dela sont
     // simplement ignores (pas besoin de les supprimer).
-    await kv.set(['accm', id], { maj, chunks: n }, { expireIn: TTL });
+    await kv.set(
+      ['accm', id],
+      { maj, chunks: n, exportedAt: exportedAt || maj },
+      { expireIn: TTL },
+    );
     return json({ version: maj });
   }
 

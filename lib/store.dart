@@ -30,9 +30,21 @@ class AppModel extends ChangeNotifier {
   // Calendrier interne : periodes sans cours (vacances, semaines de
   // revisions) + lundi de reference d'une "semaine A" pour le roulement A/B.
   List<PlageSansCours> sansCours = [];
+  // Cahier d'erreurs, tracker d'annales, planning des epreuves orales.
+  List<Erreur> erreurs = [];
+  List<Annale> annales = [];
+  List<EpreuveOrale> oraux = [];
+  // true = le plan du soir bascule en preparation des ORAUX (post-ecrits).
+  bool modeOraux = false;
   DateTime? refSemaineA;
-  // Methode de travail du soir : 'checklist' | 'pomo25' | 'pomo50'.
+  // Methode de travail du soir : 'checklist' | 'pomo25' | 'pomo50' | 'pomoAuto'.
   String methodeTravail = 'checklist';
+  // Heure limite du soir (minutes depuis minuit, null = pas de limite) :
+  // le plan du soir se raccourcit tout seul — le sommeil consolide.
+  int? heureLimiteMin;
+  // Drapeaux d'alerte (non persistes) affiches sur le tableau de bord.
+  bool chargementEchoue = false;
+  bool syncConflit = false;
   // Objectif de moyenne par matiere (facultatif, toujours formule en positif).
   Map<String, double> objectifs = {};
   // Date des ecrits : non nulle = MODE REVISIONS CONCOURS actif.
@@ -72,6 +84,9 @@ class AppModel extends ChangeNotifier {
       serverUrl = prefs.getString('serverUrl') ?? kServeurDefaut;
       compteCle = prefs.getString('compteCle') ?? '';
       onboarded = prefs.getBool('onboarded') ?? false;
+      notifsActives = prefs.getBool('notifsActives') ?? false;
+      notifVeilleKholle = prefs.getBool('notifVeilleKholle') ?? true;
+      notifVeilleDm = prefs.getBool('notifVeilleDm') ?? true;
       String? raw;
       if (kIsWeb) {
         // Version web (PC) : pas de systeme de fichiers, la base vit dans
@@ -82,6 +97,7 @@ class AppModel extends ChangeNotifier {
         if (await f.exists()) raw = await f.readAsString();
       }
       if (raw != null) {
+        try {
         final j = jsonDecode(raw) as Map<String, dynamic>;
         colles = ((j['colles'] ?? []) as List)
             .map((e) => Colle.fromJson(e as Map<String, dynamic>))
@@ -115,19 +131,47 @@ class AppModel extends ChangeNotifier {
         sansCours = ((j['sansCours'] ?? []) as List)
             .map((e) => PlageSansCours.fromJson(e as Map<String, dynamic>))
             .toList();
+        erreurs = ((j['erreurs'] ?? []) as List)
+            .map((e) => Erreur.fromJson(e as Map<String, dynamic>))
+            .toList();
+        annales = ((j['annales'] ?? []) as List)
+            .map((e) => Annale.fromJson(e as Map<String, dynamic>))
+            .toList();
+        oraux = ((j['oraux'] ?? []) as List)
+            .map((e) => EpreuveOrale.fromJson(e as Map<String, dynamic>))
+            .toList();
+        modeOraux = (j['modeOraux'] ?? false) as bool;
         refSemaineA = j['refSemaineA'] == null
             ? null
             : DateTime.tryParse(j['refSemaineA'] as String);
         methodeTravail = (j['methodeTravail'] ?? 'checklist') as String;
+        heureLimiteMin = j['heureLimiteMin'] as int?;
         filiere = (j['filiere'] ?? 'PCSI') as String;
         groupe = (j['groupe'] ?? 1) as int;
         codeClasse = (j['codeClasse'] ?? '') as String;
         cinqDemi = (j['cinqDemi'] ?? false) as bool;
         prios = ((j['prios'] ?? {}) as Map)
             .map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+        } catch (_) {
+          // Donnees illisibles : COPIE DE SECOURS AVANT TOUTE ECRITURE —
+          // sans elle, le premier save() ecraserait le fichier corrompu
+          // avec un etat vide (= semestre perdu). Un bandeau sur le tableau
+          // de bord guide ensuite vers Recuperer/Restaurer.
+          chargementEchoue = true;
+          try {
+            if (kIsWeb) {
+              await prefs.setString('db_corrompu', raw);
+            } else {
+              final f = await _dbFile();
+              await File('${f.path}.corrompu').writeAsString(raw);
+            }
+          } catch (_) {
+            // meme la copie a echoue : on n'ecrase rien de plus
+          }
+        }
       }
     } catch (_) {
-      // fichier corrompu : on repart proprement plutot que de planter
+      // stockage inaccessible : l'app demarre vide, sans planter
     }
     loaded = true;
     notifyListeners();
@@ -148,8 +192,13 @@ class AppModel extends ChangeNotifier {
         'bilans': bilans.map((b) => b.toJson()).toList(),
         'evenements': evenements.map((e) => e.toJson()).toList(),
         'sansCours': sansCours.map((p) => p.toJson()).toList(),
+        'erreurs': erreurs.map((e) => e.toJson()).toList(),
+        'annales': annales.map((a) => a.toJson()).toList(),
+        'oraux': oraux.map((o) => o.toJson()).toList(),
+        'modeOraux': modeOraux,
         'refSemaineA': refSemaineA?.toIso8601String(),
         'methodeTravail': methodeTravail,
+        'heureLimiteMin': heureLimiteMin,
         'filiere': filiere,
         'groupe': groupe,
         'codeClasse': codeClasse,
@@ -164,8 +213,17 @@ class AppModel extends ChangeNotifier {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('db', raw);
       } else {
+        // Ecriture ATOMIQUE : on ecrit dans un .tmp puis on renomme —
+        // une coupure en pleine ecriture ne corrompt jamais le fichier.
         final f = await _dbFile();
-        await f.writeAsString(raw);
+        final tmp = File('${f.path}.tmp');
+        await tmp.writeAsString(raw);
+        try {
+          await tmp.rename(f.path);
+        } catch (_) {
+          if (await f.exists()) await f.delete();
+          await tmp.rename(f.path);
+        }
       }
     } catch (_) {
       // Stockage indisponible : l'app reste utilisable, sans persistance.
@@ -184,8 +242,18 @@ class AppModel extends ChangeNotifier {
     _pushTimer = Timer(const Duration(seconds: 3), () async {
       try {
         await ApiKhompas(serverUrl).envoyerCompte(compteCle, exportJson());
-      } catch (_) {
-        // hors ligne / serveur indisponible : tant pis pour cette fois
+        if (syncConflit) {
+          syncConflit = false;
+          notifyListeners();
+        }
+      } catch (e) {
+        // Le serveur refuse car un autre appareil a des donnees plus
+        // recentes -> bandeau sur le tableau de bord (sinon : hors ligne,
+        // tant pis pour cette fois).
+        if (e.toString().contains('plus récentes')) {
+          syncConflit = true;
+          notifyListeners();
+        }
       }
     });
   }
@@ -224,6 +292,8 @@ class AppModel extends ChangeNotifier {
   /// Envoi immediat (bouton Reglages).
   Future<void> pousserCompte() async {
     await ApiKhompas(serverUrl).envoyerCompte(compteCle, exportJson());
+    syncConflit = false;
+    notifyListeners();
   }
 
   /// Recuperation immediate (bouton Reglages) : remplace les donnees locales.
@@ -232,6 +302,7 @@ class AppModel extends ChangeNotifier {
     if (data == null || data.trim().isEmpty) {
       throw Exception('aucune donnée sur ce compte pour le moment.');
     }
+    syncConflit = false;
     return importJson(data);
   }
 
@@ -305,10 +376,21 @@ class AppModel extends ChangeNotifier {
       final newSansCours = ((decoded['sansCours'] ?? []) as List)
           .map((e) => PlageSansCours.fromJson(e as Map<String, dynamic>))
           .toList();
+      final newErreurs = ((decoded['erreurs'] ?? []) as List)
+          .map((e) => Erreur.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final newAnnales = ((decoded['annales'] ?? []) as List)
+          .map((e) => Annale.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final newOraux = ((decoded['oraux'] ?? []) as List)
+          .map((e) => EpreuveOrale.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final newModeOraux = (decoded['modeOraux'] ?? false) as bool;
       final newRefSemaineA = decoded['refSemaineA'] == null
           ? null
           : DateTime.tryParse(decoded['refSemaineA'] as String);
       final newMethode = (decoded['methodeTravail'] ?? methodeTravail) as String;
+      final newHeureLimite = decoded['heureLimiteMin'] as int?;
       final newFiliere = (decoded['filiere'] ?? filiere) as String;
       final newGroupe = ((decoded['groupe'] ?? groupe) as num).toInt();
       final newCodeClasse = (decoded['codeClasse'] ?? codeClasse) as String;
@@ -326,8 +408,13 @@ class AppModel extends ChangeNotifier {
       bilans = newBilans;
       evenements = newEvenements;
       sansCours = newSansCours;
+      erreurs = newErreurs;
+      annales = newAnnales;
+      oraux = newOraux;
+      modeOraux = newModeOraux;
       refSemaineA = newRefSemaineA;
       methodeTravail = newMethode;
+      heureLimiteMin = newHeureLimite;
       filiere = newFiliere;
       groupe = newGroupe;
       codeClasse = newCodeClasse;
@@ -498,8 +585,9 @@ class AppModel extends ChangeNotifier {
 
   void addSeance(String matiere, int minutes) {
     seances.add(Seance(matiere: matiere, date: DateTime.now(), minutes: minutes));
-    // On ne garde que ~6 mois d'historique, largement assez pour les stats.
-    final limite = DateTime.now().subtract(const Duration(days: 190));
+    // ~13 mois d'historique : les stats de progression sur l'annee (roadmap)
+    // en auront besoin — ne pas re-raccourcir sans y penser.
+    final limite = DateTime.now().subtract(const Duration(days: 400));
     seances.removeWhere((s) => s.date.isBefore(limite));
     _touch();
   }
@@ -618,6 +706,11 @@ class AppModel extends ChangeNotifier {
     _touch();
   }
 
+  void setHeureLimite(int? minutesDepuisMinuit) {
+    heureLimiteMin = minutesDepuisMinuit;
+    _touch();
+  }
+
   // ---------- Evenements ponctuels ----------
 
   void addEvenement(Evenement e) {
@@ -683,9 +776,195 @@ class AppModel extends ChangeNotifier {
     bilans.removeWhere((e) => e.jour.isBefore(limite));
     if (b.chapitreId != null) {
       final i = chapitres.indexWhere((c) => c.id == b.chapitreId);
-      if (i >= 0 && chapitres[i].etape < 1) chapitres[i].etape = 1;
+      if (i >= 0) {
+        if (chapitres[i].etape < 1) chapitres[i].etape = 1;
+        // Repetition espacee : cours vu aujourd'hui -> revision demain
+        // (la regle d'or, formalisee — le point de depart de l'espacement).
+        final demain = DateTime.now().add(const Duration(days: 1));
+        chapitres[i].prochaineRevision =
+            DateTime(demain.year, demain.month, demain.day);
+        chapitres[i].intervalleJours = 1;
+      }
     }
     _touch();
+  }
+
+  /// Auto-evaluation en 1 tap apres une revision espacee ('difficile',
+  /// 'cava' ou 'facile') : ajuste l'intervalle (et la maitrise aux bords),
+  /// programme la prochaine revision. Regles simples et explicables —
+  /// pas de SM-2 opaque.
+  void evaluerRevision(String chapitreId, String verdict) {
+    final i = chapitres.indexWhere((c) => c.id == chapitreId);
+    if (i < 0) return;
+    final c = chapitres[i];
+    switch (verdict) {
+      case 'difficile':
+        c.intervalleJours = 2;
+        if (c.maitrise > 0) c.maitrise--;
+        break;
+      case 'facile':
+        c.intervalleJours = (c.intervalleJours * 2.5).round().clamp(1, 45);
+        if (c.maitrise < 4) c.maitrise++;
+        break;
+      default: // cava
+        c.intervalleJours = (c.intervalleJours * 2).clamp(1, 45);
+    }
+    final prochaine = DateTime.now().add(Duration(days: c.intervalleJours));
+    c.prochaineRevision =
+        DateTime(prochaine.year, prochaine.month, prochaine.day);
+    c.dernierRevu = DateTime.now();
+    _touch();
+  }
+
+  /// Recalibrage apres une mauvaise note : les chapitres designes repassent
+  /// fragiles (maitrise plafonnee a 2) et leur revision espacee reprend a
+  /// demain avec un intervalle court.
+  void recalibrerChapitres(List<String> ids) {
+    final demain = DateTime.now().add(const Duration(days: 1));
+    for (final id in ids) {
+      final i = chapitres.indexWhere((c) => c.id == id);
+      if (i < 0) continue;
+      final c = chapitres[i];
+      if (c.maitrise > 2) c.maitrise = 2;
+      c.intervalleJours = 1;
+      c.prochaineRevision = DateTime(demain.year, demain.month, demain.day);
+    }
+    _touch();
+  }
+
+  // ---------- Cahier d'erreurs ----------
+
+  void addErreur(Erreur e) {
+    erreurs.insert(0, e);
+    _touch();
+  }
+
+  void updateErreur(Erreur e) {
+    final i = erreurs.indexWhere((x) => x.id == e.id);
+    if (i >= 0) erreurs[i] = e;
+    _touch();
+  }
+
+  void deleteErreur(String id) {
+    erreurs.removeWhere((e) => e.id == id);
+    _touch();
+  }
+
+  /// Erreurs d'une matiere, les non-refaites d'abord (les plus recentes en
+  /// tete dans chaque groupe).
+  List<Erreur> erreursDe(String matiere) {
+    final l = erreurs.where((e) => e.matiere == matiere).toList();
+    l.sort((a, b) => a.refaite != b.refaite
+        ? (a.refaite ? 1 : -1)
+        : b.date.compareTo(a.date));
+    return l;
+  }
+
+  /// Repartition des erreurs NON refaites par type ("Calcul" -> 3...).
+  Map<String, int> statsErreurs(String matiere) {
+    final out = <String, int>{};
+    for (final e in erreurs) {
+      if (e.matiere == matiere && !e.refaite) {
+        out[e.type] = (out[e.type] ?? 0) + 1;
+      }
+    }
+    return out;
+  }
+
+  // ---------- Annales ----------
+
+  void addAnnale(Annale a) {
+    annales.add(a);
+    annales.sort((x, y) => x.matiere != y.matiere
+        ? x.matiere.compareTo(y.matiere)
+        : y.annee.compareTo(x.annee));
+    _touch();
+  }
+
+  void updateAnnale(Annale a) {
+    final i = annales.indexWhere((x) => x.id == a.id);
+    if (i >= 0) annales[i] = a;
+    _touch();
+  }
+
+  void deleteAnnale(String id) {
+    annales.removeWhere((a) => a.id == id);
+    _touch();
+  }
+
+  // ---------- Oraux ----------
+
+  void addOral(EpreuveOrale o) {
+    oraux.add(o);
+    _trierOraux();
+    _touch();
+  }
+
+  void updateOral(EpreuveOrale o) {
+    final i = oraux.indexWhere((x) => x.id == o.id);
+    if (i >= 0) oraux[i] = o;
+    _trierOraux();
+    _touch();
+  }
+
+  void deleteOral(String id) {
+    oraux.removeWhere((o) => o.id == id);
+    _touch();
+  }
+
+  void _trierOraux() {
+    // Dates connues d'abord (chronologiques), puis les autres par concours.
+    oraux.sort((a, b) {
+      if (a.date == null && b.date == null) {
+        return a.concours.compareTo(b.concours);
+      }
+      if (a.date == null) return 1;
+      if (b.date == null) return -1;
+      return a.date!.compareTo(b.date!);
+    });
+  }
+
+  void setModeOraux(bool v) {
+    modeOraux = v;
+    _touch();
+  }
+
+  /// Prochaine epreuve orale datee a venir (null si aucune date connue).
+  EpreuveOrale? prochainOral() {
+    final now = DateTime.now();
+    final aujourdHui = DateTime(now.year, now.month, now.day);
+    EpreuveOrale? best;
+    for (final o in oraux) {
+      if (o.date == null || o.date!.isBefore(aujourdHui)) continue;
+      if (best == null || o.date!.isBefore(best.date!)) best = o;
+    }
+    return best;
+  }
+
+  // ---------- Notifications (preferences LOCALES a l'appareil : pas dans
+  // la sauvegarde — chaque appareil decide de ses notifs) ----------
+
+  bool notifsActives = false;
+  bool notifVeilleKholle = true;
+  bool notifVeilleDm = true;
+
+  Future<void> chargerPrefsNotifs() async {
+    final prefs = await SharedPreferences.getInstance();
+    notifsActives = prefs.getBool('notifsActives') ?? false;
+    notifVeilleKholle = prefs.getBool('notifVeilleKholle') ?? true;
+    notifVeilleDm = prefs.getBool('notifVeilleDm') ?? true;
+  }
+
+  Future<void> setPrefsNotifs(
+      {bool? actives, bool? veilleKholle, bool? veilleDm}) async {
+    if (actives != null) notifsActives = actives;
+    if (veilleKholle != null) notifVeilleKholle = veilleKholle;
+    if (veilleDm != null) notifVeilleDm = veilleDm;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notifsActives', notifsActives);
+    await prefs.setBool('notifVeilleKholle', notifVeilleKholle);
+    await prefs.setBool('notifVeilleDm', notifVeilleDm);
+    notifyListeners();
   }
 
   void setPrio(String matiere, int p) {
@@ -701,7 +980,10 @@ class AppModel extends ChangeNotifier {
 
   // ---------- Lectures pratiques ----------
 
-  /// Toutes les matieres connues (colles + ds + chapitres), triees.
+  /// Toutes les matieres connues (colles + ds + chapitres + devoirs +
+  /// emploi du temps + evenements), triees. L'EDT compte : en debut d'annee,
+  /// avant tout import, c'est souvent la seule source — et sans elle on ne
+  /// pouvait pas regler les priorites de matieres que le moteur score.
   List<String> get matieres {
     final s = <String>{};
     for (final c in colles) {
@@ -712,6 +994,15 @@ class AppModel extends ChangeNotifier {
     }
     for (final c in chapitres) {
       if (c.matiere.isNotEmpty) s.add(c.matiere);
+    }
+    for (final d in devoirs) {
+      if (d.matiere.isNotEmpty) s.add(d.matiere);
+    }
+    for (final r in routines) {
+      if (r.matiere.trim().isNotEmpty) s.add(r.matiere.trim());
+    }
+    for (final e in evenements) {
+      if (e.matiere.trim().isNotEmpty) s.add(e.matiere.trim());
     }
     final l = s.toList()..sort();
     return l;
@@ -736,12 +1027,15 @@ class AppModel extends ChangeNotifier {
     return notes.reduce((a, b) => a + b) / notes.length;
   }
 
+  /// Moyenne des DS PONDEREE par les coefficients (comme au lycee).
   double? moyenneDs(String matiere) {
-    final notes = ds
-        .where((d) => d.matiere == matiere && d.note != null)
-        .map((d) => d.note!)
-        .toList();
-    if (notes.isEmpty) return null;
-    return notes.reduce((a, b) => a + b) / notes.length;
+    double sommePoints = 0, sommeCoeffs = 0;
+    for (final d in ds) {
+      if (d.matiere != matiere || d.note == null) continue;
+      sommePoints += d.note! * d.coeff;
+      sommeCoeffs += d.coeff;
+    }
+    if (sommeCoeffs == 0) return null;
+    return sommePoints / sommeCoeffs;
   }
 }
