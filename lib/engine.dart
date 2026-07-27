@@ -12,12 +12,33 @@ class Suggestion {
   final int minutes;
   // Chapitre vise : permet de le marquer "revu" d'un tap.
   final String? chapitreId;
+  // Devoir vise (DM/exos) : le ✓ propose de le marquer "rendu".
+  final String? devoirId;
   // Rappel espace : le ✓ declenche l'auto-evaluation en 1 tap.
   final bool rappel;
   // Consigne d'action testable (rappel actif) affichee sous la suggestion.
   final String consigne;
   Suggestion(this.matiere, this.titre, this.raison, this.minutes,
-      {this.chapitreId, this.rappel = false, this.consigne = ''});
+      {this.chapitreId, this.devoirId, this.rappel = false, this.consigne = ''});
+}
+
+/// Minutes reellement disponibles ce soir compte tenu de l'heure limite de
+/// sommeil. Fonction PURE (testable) : [nowMin] = minutes depuis minuit.
+int budgetSoir(
+    {required int minutes, required int? limiteMin, required int nowMin}) {
+  if (limiteMin == null) return minutes;
+  int restant;
+  if (limiteMin < 360) {
+    // Limite "apres minuit" (ex. 0h30) : valable de la soiree jusqu'a elle.
+    restant = nowMin < 360 ? limiteMin - nowMin : limiteMin + 1440 - nowMin;
+  } else {
+    // Limite du soir (ex. 23h). ATTENTION apres minuit : elle est DEPASSEE
+    // (23h - 0h30 donnait 22h30 de budget et zero message sommeil — pile
+    // au moment ou il compte le plus).
+    restant = nowMin < 360 ? limiteMin - nowMin - 1440 : limiteMin - nowMin;
+  }
+  if (restant < 0) restant = 0;
+  return minutes < restant ? minutes : restant;
 }
 
 /// Moteur "Que faire ce soir ?" — volontairement TRANSPARENT :
@@ -59,6 +80,13 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
   final out = <Suggestion>[];
   var budget = minutesDispo;
 
+  // JOUR LIBRE (dimanche, samedi sans cours, vacances, journee banalisee) :
+  // la journee de travail remplace la soiree — plus de matieres retenues,
+  // et pendant les vacances les DM s'etalent a cadence VISIBLE.
+  final plage = m.plageSansCours(now);
+  final jourLibre =
+      plage != null || (m.routines.isNotEmpty && m.routinesLe(now).isEmpty);
+
   // ---- 1. Rappels du jour (repetition espacee) ----
   // Blocs courts (15 min), au plus 3, jamais plus de la moitie de la soiree.
   final dus = rappelsDus(m);
@@ -97,18 +125,49 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
     }
   }
 
+  // ---- 2 ter. Vacances : un creneau DM a cadence fixe et annoncee
+  // ("un jour sur N") — de l'etalement TRANSPARENT, pas un planificateur.
+  // Les DM qui tombent dans ≤ 3 jours passent par le circuit urgence normal.
+  if (plage != null && budget >= 60) {
+    final aEtaler = m
+        .devoirsARendre()
+        .where((d) => d.dateRendu.difference(now).inDays >= 3)
+        .toList();
+    if (aEtaler.isNotEmpty) {
+      final d = aEtaler.first;
+      final joursRestants = d.dateRendu.difference(now).inDays + 1;
+      var cadence = joursRestants ~/ (aEtaler.length * 2); // ~2 creneaux/DM
+      if (cadence < 1) cadence = 1;
+      if (cadence > 3) cadence = 3;
+      final aujourdHui = DateTime(now.year, now.month, now.day);
+      if (aujourdHui.difference(DateTime(2026)).inDays % cadence == 0) {
+        out.add(Suggestion(
+          d.matiere,
+          '📥 Créneau DM : ${d.titre}${d.remarque.isEmpty ? '' : ' · ${d.remarque}'}',
+          'Vacances — ${aEtaler.length} DM à rendre, $joursRestants j devant toi : un créneau ${cadence == 1 ? 'par jour' : 'un jour sur $cadence'}',
+          budget >= 150 ? 90 : 60,
+          devoirId: d.id,
+          consigne:
+              'Avance d\'un bloc de questions. Bloqué ≥ 20 min ? Passe à la suivante et note le point de blocage.',
+        ));
+        budget -= budget >= 150 ? 90 : 60;
+      }
+    }
+  }
+
   // ---- 2 bis. Cahier d'erreurs : kholle/DS dans ≤ 2 jours dans une
   // matiere ou des erreurs ne sont pas encore refaites -> les revoir est
   // le meilleur rendement de la soiree. Un seul bloc par soir.
   if (budget >= 30) {
     final proches = <String>{};
     final limite = now.add(const Duration(days: 2, hours: 12));
+    final aujourdHui = DateTime(now.year, now.month, now.day);
     for (final c in m.collesAvenir()) {
       if (c.start.isBefore(limite)) proches.add(c.matiere);
     }
     for (final d in m.ds) {
-      if (!d.date.isBefore(now.subtract(const Duration(days: 1))) &&
-          d.date.isBefore(limite)) {
+      // A VENIR uniquement : un DS d'hier n'est plus une epreuve imminente.
+      if (!d.date.isBefore(aujourdHui) && d.date.isBefore(limite)) {
         proches.add(d.matiere);
       }
     }
@@ -154,8 +213,14 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
     if (d.dateRendu.isAfter(horizon)) continue;
     final e = echeances[d.matiere];
     if (e == null || d.dateRendu.isBefore(e.date)) {
-      echeances[d.matiere] =
-          _Echeance(d.dateRendu, '${d.titre} à rendre ', '', 'dm');
+      echeances[d.matiere] = _Echeance(
+        d.dateRendu,
+        '${d.titre} à rendre ',
+        '',
+        'dm',
+        tache: '${d.titre}${d.remarque.isEmpty ? '' : ' (${d.remarque})'}',
+        devoirId: d.id,
+      );
     }
   }
 
@@ -203,11 +268,19 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
     final e = echeances[mat];
     if (e != null) {
       final jours = e.date.difference(now).inHours / 24.0;
+      final memeJour = e.date.year == now.year &&
+          e.date.month == now.month &&
+          e.date.day == now.day;
       // Les DS et devoirs sont dates a minuit : pas d'heure a afficher.
       final heure = (e.date.hour == 0 && e.date.minute == 0)
           ? ''
           : ' ${frHeure(e.date)}';
-      if (jours < 0) {
+      if (memeJour) {
+        // Une kholle de 18h ou un DM date a minuit restent "AUJOURD'HUI"
+        // toute la journee (avant, un DM du jour passait "EN RETARD").
+        urgence = 4.5;
+        raison = '${e.type}AUJOURD\'HUI$heure';
+      } else if (jours < 0) {
         urgence = 4.5;
         raison = '${e.type}EN RETARD — rends-le vite';
       } else if (jours <= 1.2) {
@@ -217,8 +290,9 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
         urgence = 3;
         raison = '${e.type}dans ${jours.ceil()} jours';
       } else if (jours <= 7) {
+        // Dans les 7 jours = "ce samedi", pas "samedi prochain".
         urgence = 2;
-        raison = '${e.type}${frJour(e.date)} prochain';
+        raison = '${e.type}ce ${frJour(e.date)}';
       } else {
         urgence = 1.2;
         raison = '${e.type}le ${frDateCourte(e.date)}';
@@ -268,10 +342,13 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
 
   if (scores.isEmpty || budget < 15) return out;
 
-  // ---- Repartition du budget restant sur les 2-3 meilleures matieres ----
+  // ---- Repartition du budget restant sur les meilleures matieres ----
+  // Jour libre + gros budget : jusqu'a 4 matieres (une journee de travail
+  // couvre plus large qu'une soiree).
   final classees = scores.keys.toList()
     ..sort((a, b) => scores[b]!.compareTo(scores[a]!));
-  final retenues = classees.take(budget >= 150 ? 3 : 2).toList();
+  final nbMatieres = jourLibre && budget >= 240 ? 4 : (budget >= 150 ? 3 : 2);
+  final retenues = classees.take(nbMatieres).toList();
   final totalScore = retenues.fold<double>(0, (s, mat) => s + scores[mat]!);
 
   var reste = budget;
@@ -291,7 +368,12 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
     final e = echeances[mat];
     final aRevoir =
         m.chapitres.where((c) => c.matiere == mat && c.etape == 1).toList();
-    if (e != null && e.programme.trim().isNotEmpty) {
+    if (e != null && e.genre == 'dm' && e.tache.isNotEmpty) {
+      // Le travail impose s'affiche comme LA TACHE, pas comme un bloc de
+      // matiere abstrait ("avance le DM 3 (exos 1 à 4)").
+      quoi = '📥 Avance ${e.tache}';
+      typeConsigne = 'dm';
+    } else if (e != null && e.programme.trim().isNotEmpty) {
       quoi = 'Programme : ${e.programme.trim()}';
       typeConsigne = e.genre;
     } else if (aRevoir.isNotEmpty) {
@@ -315,6 +397,7 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
     if (e != null && typeConsigne == 'fond') typeConsigne = e.genre;
 
     out.add(Suggestion(mat, quoi, raisons[mat] ?? '', mins,
+        devoirId: e?.genre == 'dm' ? e?.devoirId : null,
         consigne: typeConsigne == 'dm' ? '' : consigneDe(mat, typeConsigne)));
   }
   return out;
@@ -351,34 +434,66 @@ List<Suggestion> _suggereRevisions(AppModel m, int minutesDispo) {
     reste -= mins;
   }
 
-  // Annale du soir : a J-45 et moins, une annale en conditions vaut mieux
-  // qu'une revision de plus. On prend la matiere la moins couverte (le
-  // moins d'annales deja faites), l'annee la plus recente d'abord.
-  if (jours <= 45 && reste >= 60) {
+  // Annales, version REALISTE : une epreuve de concours fait 3-4 h — la
+  // suggerer "en conditions" un mardi soir de 90 min etait contradictoire.
+  // (1) Une annale faite ces derniers jours ? La CORRECTION ACTIVE d'abord :
+  //     c'est la que l'apprentissage se fait, et ca tient dans une soiree.
+  // (2) Gros budget (week-end/vacances, ≥ 3 h) ? Annale complete.
+  // (3) Soir de semaine ? Une PARTIE d'annale, dite comme telle.
+  if (jours <= 45 && reste >= 45) {
+    final recente = m.annales
+        .where((a) =>
+            a.fait &&
+            a.dateFait != null &&
+            now.difference(a.dateFait!).inDays <= 4)
+        .toList()
+      ..sort((x, y) => y.dateFait!.compareTo(x.dateFait!));
     final nonFaites = m.annales.where((a) => !a.fait).toList();
-    if (nonFaites.isNotEmpty) {
-      final faitesParMatiere = <String, int>{};
-      for (final a in m.annales) {
-        if (a.fait) {
-          faitesParMatiere[a.matiere] = (faitesParMatiere[a.matiere] ?? 0) + 1;
-        }
+    final faitesParMatiere = <String, int>{};
+    for (final a in m.annales) {
+      if (a.fait) {
+        faitesParMatiere[a.matiere] = (faitesParMatiere[a.matiere] ?? 0) + 1;
       }
+    }
+    if (recente.isNotEmpty && recente.first.ressenti <= 3) {
+      final a = recente.first;
+      out.add(Suggestion(
+        a.matiere,
+        '🧾 Correction active : ${a.concours} ${a.annee} — ${a.matiere}',
+        'J-$jours · faite il y a ${now.difference(a.dateFait!).inDays} j — la correction est là où on apprend',
+        45,
+        consigne:
+            'Reprends ta copie question par question SANS regarder la correction d\'abord, puis compare — et note chaque erreur dans le cahier d\'erreurs.',
+      ));
+      reste -= 45;
+    } else if (nonFaites.isNotEmpty && reste >= 60) {
       nonFaites.sort((x, y) {
         final fx = faitesParMatiere[x.matiere] ?? 0;
         final fy = faitesParMatiere[y.matiere] ?? 0;
         return fx != fy ? fx.compareTo(fy) : y.annee.compareTo(x.annee);
       });
       final a = nonFaites.first;
-      final mins = reste >= 150 ? 90 : 60;
-      out.add(Suggestion(
-        a.matiere,
-        '📜 Annale ${a.concours} ${a.annee} — ${a.matiere}',
-        'J-$jours · ${faitesParMatiere[a.matiere] ?? 0} annale(s) faite(s) dans cette matière',
-        mins,
-        consigne:
-            'En conditions réelles : chrono, sans le cours. Corrige ensuite en notant chaque erreur dans le cahier d\'erreurs, puis coche l\'annale « faite ».',
-      ));
-      reste -= mins;
+      if (reste >= 180) {
+        out.add(Suggestion(
+          a.matiere,
+          '📜 Annale ${a.concours} ${a.annee} — ${a.matiere}, EN CONDITIONS',
+          'J-$jours · grosse journée : le bon moment pour une épreuve entière',
+          180,
+          consigne:
+              'Conditions réelles : chrono, sans le cours, rédige. La correction se fera un autre jour (elle aura sa propre séance).',
+        ));
+        reste -= 180;
+      } else {
+        out.add(Suggestion(
+          a.matiere,
+          '📜 Une PARTIE de l\'annale ${a.concours} ${a.annee} — ${a.matiere}',
+          'J-$jours · une épreuve fait 3-4 h — ce soir, une partie chrono suffit',
+          60,
+          consigne:
+              'Choisis un problème ou une partie, chrono, sans le cours. Garde l\'épreuve entière pour un week-end.',
+        ));
+        reste -= 60;
+      }
     }
   }
 
@@ -515,5 +630,11 @@ class _Echeance {
   final String type;
   final String programme;
   final String genre; // 'kholle' | 'ds' | 'dm'
-  _Echeance(this.date, this.type, this.programme, this.genre);
+  // Pour les DM : la tache concrete ("DM 3 (exos 1 à 4)") et l'id du devoir
+  // — la soiree d'un preparationnaire est une liste de taches, pas des
+  // blocs de matiere.
+  final String tache;
+  final String? devoirId;
+  _Echeance(this.date, this.type, this.programme, this.genre,
+      {this.tache = '', this.devoirId});
 }

@@ -20,14 +20,53 @@ class ApiKhompas {
     throw Exception(msg);
   }
 
-  /// Cree une classe vide sur le serveur, retourne son code (ex. "K7M2PX").
-  Future<String> creerClasse() async {
+  /// Cree une classe vide sur le serveur. Retourne (code a partager,
+  /// code de GESTION a garder pour soi — il permet la suppression).
+  Future<(String, String)> creerClasse() async {
     final r = await http
         .post(Uri.parse('$base/api/classes'))
         .timeout(const Duration(seconds: 30));
     if (r.statusCode != 200) _lance(r);
-    return (jsonDecode(utf8.decode(r.bodyBytes))
-        as Map<String, dynamic>)['code'] as String;
+    final j = jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    return (j['code'] as String, (j['gestion'] ?? '') as String);
+  }
+
+  /// Supprime une classe et tout son contenu (createur uniquement).
+  Future<void> supprimerClasse(String code, String gestion) async {
+    final r = await http.delete(
+      Uri.parse('$base/api/classes/$code'),
+      headers: {'x-khompas-gestion': gestion},
+    ).timeout(const Duration(seconds: 30));
+    if (r.statusCode != 200) _lance(r);
+  }
+
+  /// Partage le programme de colle d'une matiere pour la semaine du lundi
+  /// [semaineIso] (AAAA-MM-JJ) avec toute la classe.
+  Future<void> envoyerProgramme(
+      String code, String semaineIso, String matiere, String texte) async {
+    final r = await http
+        .put(
+          Uri.parse('$base/api/classes/$code/programmes'),
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode(
+              {'semaine': semaineIso, 'matiere': matiere, 'texte': texte}),
+        )
+        .timeout(const Duration(seconds: 30));
+    if (r.statusCode != 200) _lance(r);
+  }
+
+  /// Programmes de colle de la classe pour une semaine :
+  /// {matiere (minuscules) -> texte}.
+  Future<Map<String, String>> lireProgrammes(
+      String code, String semaineIso) async {
+    final r = await http
+        .get(Uri.parse(
+            '$base/api/classes/$code/programmes?semaine=$semaineIso'))
+        .timeout(const Duration(seconds: 30));
+    if (r.statusCode != 200) _lance(r);
+    final j = jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    return ((j['programmes'] ?? {}) as Map)
+        .map((k, v) => MapEntry(k.toString(), v.toString()));
   }
 
   /// Envoie une piece du colloscope (photo jpeg, ou PDF si [pdf]) pour la
@@ -64,7 +103,9 @@ class ApiKhompas {
   }
 
   /// Envoie la sauvegarde complete du compte (remplace la precedente).
-  Future<void> envoyerCompte(String cle, String data) async {
+  /// Retourne la VERSION serveur resultante (memorisee par l'app pour
+  /// detecter plus tard qu'un autre appareil a pousse entre temps).
+  Future<int> envoyerCompte(String cle, String data) async {
     final r = await http
         .put(
           Uri.parse('$base/api/compte/data'),
@@ -73,18 +114,35 @@ class ApiKhompas {
         )
         .timeout(const Duration(seconds: 45));
     if (r.statusCode != 200) _lance(r);
+    return ((jsonDecode(utf8.decode(r.bodyBytes))
+                as Map<String, dynamic>)['version'] as num?)
+            ?.toInt() ??
+        0;
   }
 
-  /// Donnees du compte, ou null si le compte n'a encore rien envoye.
-  Future<String?> recupererCompte(String cle) async {
+  /// (version, donnees) du compte, ou null si le compte n'a rien envoye.
+  Future<(int, String)?> recupererCompte(String cle) async {
     final r = await http.get(
       Uri.parse('$base/api/compte/data'),
       headers: {'x-khompas-cle': cle},
     ).timeout(const Duration(seconds: 45));
     if (r.statusCode == 404) return null;
     if (r.statusCode != 200) _lance(r);
-    return (jsonDecode(utf8.decode(r.bodyBytes))
-        as Map<String, dynamic>)['data'] as String;
+    final j = jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    return (((j['version'] as num?) ?? 0).toInt(), j['data'] as String);
+  }
+
+  /// Version serveur du compte, sans telecharger les donnees (0 = vide).
+  Future<int> versionCompte(String cle) async {
+    final r = await http.get(
+      Uri.parse('$base/api/compte/version'),
+      headers: {'x-khompas-cle': cle},
+    ).timeout(const Duration(seconds: 20));
+    if (r.statusCode != 200) _lance(r);
+    return ((jsonDecode(utf8.decode(r.bodyBytes))
+                as Map<String, dynamic>)['version'] as num?)
+            ?.toInt() ??
+        0;
   }
 
   /// Recupere les kholles du groupe [groupe] de la classe [code].

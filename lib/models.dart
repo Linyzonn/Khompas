@@ -112,6 +112,9 @@ class Ds {
   DateTime date;
   double? note;
   double coeff;
+  // Moyenne de la classe (facultative) : c'est ELLE qui dit si une note est
+  // bonne — en prepa un 9 peut etre au-dessus de la barre. Jamais de rang.
+  double? moyenneClasse;
 
   Ds({
     String? id,
@@ -120,6 +123,7 @@ class Ds {
     required this.date,
     this.note,
     this.coeff = 1,
+    this.moyenneClasse,
   }) : id = id ?? _newId();
 
   Map<String, dynamic> toJson() => {
@@ -129,6 +133,7 @@ class Ds {
         'date': date.toIso8601String(),
         'note': note,
         'coeff': coeff,
+        'moyenneClasse': moyenneClasse,
       };
 
   static Ds fromJson(Map<String, dynamic> j) => Ds(
@@ -138,15 +143,19 @@ class Ds {
         date: DateTime.parse(j['date'] as String),
         note: (j['note'] as num?)?.toDouble(),
         coeff: ((j['coeff'] ?? 1) as num).toDouble(),
+        moyenneClasse: (j['moyenneClasse'] as num?)?.toDouble(),
       );
 }
 
 /// Filieres proposees (onboarding + Reglages).
 const List<String> kFilieres = [
-  'MPSI', 'PCSI', 'PTSI', 'MP2I', 'BCPST',
+  'MPSI', 'PCSI', 'PTSI', 'MP2I', 'BCPST', 'TSI', 'ATS',
   'MP', 'PC', 'PSI', 'PT', 'MPI',
-  'ECG', 'Hypokhâgne', 'Khâgne', 'Autre',
+  'ECG', 'B/L', 'Hypokhâgne', 'Khâgne', 'Autre',
 ];
+
+/// Filieres de 2e annee scientifique (jalons TIPE/SCEI proposes).
+const List<String> kFilieresDeuxiemeAnnee = ['MP', 'PC', 'PSI', 'PT', 'MPI'];
 
 /// Normalise un nom de matiere pour eviter les DOUBLONS ("Maths" vs
 /// "Mathématiques", "Francais" vs "Français"...) : chaque source (import IA,
@@ -311,10 +320,12 @@ class Devoir {
         matiere: (j['matiere'] ?? '') as String,
         titre: (j['titre'] ?? 'DM') as String,
         dateRendu: DateTime.parse(j['dateRendu'] as String),
-        dateDonne: j['dateDonne'] == null
-            ? DateTime.parse(j['dateRendu'] as String)
-                .subtract(const Duration(days: 7))
-            : DateTime.tryParse(j['dateDonne'] as String),
+        // Absent OU illisible -> dateRendu - 7 j. (Un tryParse nul laissait
+        // le defaut DateTime.now() du constructeur -> le moteur proposait
+        // "Lis le DM distribué aujourd'hui" a tort a chaque chargement.)
+        dateDonne: DateTime.tryParse((j['dateDonne'] ?? '') as String) ??
+            DateTime.parse(j['dateRendu'] as String)
+                .subtract(const Duration(days: 7)),
         rendu: (j['rendu'] ?? false) as bool,
         remarque: (j['remarque'] ?? '') as String,
       );
@@ -600,6 +611,7 @@ List<String> kConcoursPour(String filiere) {
 /// Epreuves orales suggerees (filieres scientifiques).
 const List<String> kEpreuvesOrales = [
   'Maths', 'Physique-Chimie', 'SII (manip)', 'TIPE', 'Anglais', 'ADS',
+  'Français', // Mines-Ponts a un oral de francais
 ];
 
 /// Une annale (sujet de concours) a faire ou faite. [ressenti] : 0 = pas

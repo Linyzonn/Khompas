@@ -1,11 +1,16 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../engine.dart';
 import '../models.dart';
 import '../store.dart';
 import 'dialogs.dart';
+import 'erreurs.dart';
 import 'minuteur.dart';
+import 'oraux.dart';
 import 'semaine.dart';
+import 'settings.dart';
 
 /// Onglet "Aujourd'hui" — le COCKPIT :
 /// - grand ecran : blocs a gauche (kholle, a rendre, semaine), LA SESSION DU
@@ -23,8 +28,9 @@ class TodayScreen extends StatefulWidget {
 class _TodayScreenState extends State<TodayScreen> {
   int minutes = 120;
 
-  // Une seule proposition de recap par lancement de l'app (pas de harcelement).
-  static bool _recapPropose = false;
+  // Une proposition de recap par JOUR (et pas par lancement : sur la
+  // version web PC, l'onglet reste ouvert des jours).
+  static DateTime? _recapJour;
 
   @override
   void initState() {
@@ -45,17 +51,34 @@ class _TodayScreenState extends State<TodayScreen> {
     if (mounted) setState(() {});
   }
 
-  /// A l'ouverture : si des cours d'aujourd'hui sont deja termines sans
-  /// bilan, on propose directement le recap (au lieu d'attendre que
-  /// l'utilisateur pense a ouvrir « Ta journée »).
+  /// Kholles d'aujourd'hui deja terminees et sans note : le moment d'or du
+  /// post-mortem (note, erreurs, ce qui est tombe).
+  List<Colle> _khollesSansPostMortem(AppModel m, DateTime now) {
+    return m.colles
+        .where((c) =>
+            c.start.year == now.year &&
+            c.start.month == now.month &&
+            c.start.day == now.day &&
+            c.end.isBefore(now) &&
+            c.note == null)
+        .toList();
+  }
+
+  /// A l'ouverture : si des cours (ou des kholles !) d'aujourd'hui sont deja
+  /// termines sans bilan, on propose directement le recap.
   Future<void> _proposerRecap() async {
-    if (_recapPropose || !mounted) return;
+    if (!mounted) return;
     final m = AppModel.instance;
     if (!m.loaded) return;
-    final sansBilan = m.creneauxSansBilan(DateTime.now());
-    if (sansBilan.isEmpty) return;
-    _recapPropose = true;
-    final choisi = await feuilleAdaptative<Routine>(
+    final now = DateTime.now();
+    final aujourdHui = DateTime(now.year, now.month, now.day);
+    if (_recapJour == aujourdHui) return;
+    final sansBilan = m.creneauxSansBilan(now);
+    final kholles = _khollesSansPostMortem(m, now);
+    if (sansBilan.isEmpty && kholles.isEmpty) return;
+    _recapJour = aujourdHui;
+    final total = sansBilan.length + kholles.length;
+    final choisi = await feuilleAdaptative<Object>(
       context,
       (context) => SafeArea(
         child: Padding(
@@ -65,17 +88,28 @@ class _TodayScreenState extends State<TodayScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                sansBilan.length == 1
-                    ? 'Tu sors de ${sansBilan.first.titre} — petit récap ?'
-                    : '${sansBilan.length} cours sont passés — petit récap ?',
+                total == 1
+                    ? 'Petit récap de ta journée ?'
+                    : '$total moments de ta journée à récap ?',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 4),
               Text(
-                '10 secondes par créneau : ce qui a été fait (et le chapitre vu) nourrit ton plan du soir.',
+                '10 secondes par créneau : ce qui a été fait nourrit ton plan du soir.',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
               const SizedBox(height: 8),
+              for (final c in kholles)
+                ListTile(
+                  dense: true,
+                  leading: const Text('🎤', style: TextStyle(fontSize: 18)),
+                  title: Text('Khôlle ${c.matiere}'),
+                  subtitle: Text(
+                      '${frHeure(c.start)}${c.kholleur.isEmpty ? '' : ' · ${c.kholleur}'}',
+                      style: const TextStyle(fontSize: 11)),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: () => Navigator.pop(context, c),
+                ),
               for (final r in sansBilan)
                 ListTile(
                   dense: true,
@@ -104,12 +138,164 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
       ),
     );
-    if (choisi != null && mounted) {
-      await _bilanSheet(choisi);
-      // Il reste peut-etre d'autres creneaux sans bilan : on reproprose.
-      _recapPropose = false;
-      if (mounted) _proposerRecap();
-    }
+    if (choisi == null || !mounted) return;
+    if (choisi is Routine) await _bilanSheet(choisi);
+    if (choisi is Colle) await _postMortemKholle(choisi);
+    // Il reste peut-etre d'autres moments a recap : on repropose.
+    _recapJour = null;
+    if (mounted) _proposerRecap();
+  }
+
+  /// POST-MORTEM d'une kholle (30 s) : la note si elle a ete donnee, une
+  /// erreur au cahier, et — donnee precieuse — ce qui est TOMBE (ce qui
+  /// tombe en colle annonce le DS). Stocke dans Colle.remarque.
+  Future<void> _postMortemKholle(Colle c) async {
+    final m = AppModel.instance;
+    final tombeCtl = TextEditingController(text: c.remarque);
+    await feuilleAdaptative<void>(
+      context,
+      (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Khôlle ${c.matiere} — comment ça s\'est passé ?',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  ActionChip(
+                    avatar: const Icon(Icons.grade, size: 16),
+                    label: Text(c.note == null
+                        ? 'Saisir la note'
+                        : 'Note : ${c.note}'),
+                    onPressed: () async {
+                      final n = await noteAvecRecalibrage(context,
+                          matiere: c.matiere, current: c.note);
+                      if (n != null) {
+                        c.note = n < 0 ? null : n;
+                        m.updateColle(c);
+                      }
+                    },
+                  ),
+                  ActionChip(
+                    avatar: const Text('📕', style: TextStyle(fontSize: 14)),
+                    label: const Text('Noter une erreur'),
+                    onPressed: () =>
+                        ajouterErreurDialog(context, matiere: c.matiere),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: tombeCtl,
+                maxLines: 2,
+                minLines: 1,
+                decoration: const InputDecoration(
+                  labelText: 'Ce qui est tombé (facultatif)',
+                  hintText: 'ex. question de cours Cauchy-Lipschitz + exo séries entières',
+                  helperText:
+                      'Ce qui tombe en colle annonce souvent le DS 😉',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: () {
+                    c.remarque = tombeCtl.text.trim();
+                    m.updateColle(c);
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Terminé'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Dialog « coller le programme de colle » : appliqué a toutes les kholles
+  /// de la matiere cette semaine-la, et partage avec la classe si code.
+  Future<void> _collerProgramme(Colle c) async {
+    final m = AppModel.instance;
+    final ctl = TextEditingController(text: c.programme);
+    var partager = m.codeClasse.isNotEmpty;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDlg) => AlertDialog(
+          title: Text('Programme — ${c.matiere}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Khôlle du ${frDateCourte(c.start)}. Colle le texte du programme (Cahier de prépa, mail, photo du tableau recopiée…).',
+                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: ctl,
+                autofocus: true,
+                maxLines: 5,
+                minLines: 3,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  hintText: 'ex. Séries entières : rayon de convergence…',
+                  suffixIcon: IconButton(
+                    tooltip: 'Coller depuis le presse-papiers',
+                    icon: const Icon(Icons.content_paste),
+                    onPressed: () async {
+                      final d = await Clipboard.getData('text/plain');
+                      if (d?.text != null && d!.text!.trim().isNotEmpty) {
+                        setDlg(() => ctl.text = d.text!.trim());
+                      }
+                    },
+                  ),
+                ),
+              ),
+              if (m.codeClasse.isNotEmpty)
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text('Partager avec ma classe (${m.codeClasse})',
+                      style: const TextStyle(fontSize: 13)),
+                  value: partager,
+                  onChanged: (v) => setDlg(() => partager = v ?? true),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Annuler')),
+            FilledButton(
+              onPressed: () {
+                final texte = ctl.text.trim();
+                if (texte.isEmpty) return;
+                m.definirProgramme(c.matiere, c.start, texte,
+                    partager: partager);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(
+                    content: Text(partager && m.codeClasse.isNotEmpty
+                        ? 'Programme enregistré et partagé avec ta classe ✅'
+                        : 'Programme enregistré ✅')));
+              },
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   static const _durees = [
@@ -160,6 +346,15 @@ class _TodayScreenState extends State<TodayScreen> {
       ),
     );
 
+    // Nudge programme de colle : une kholle dans ≤ 3 jours sans programme.
+    Colle? sansProgramme;
+    for (final c in m.collesAvenir()) {
+      if (c.programme.trim().isEmpty && c.start.difference(now).inDays <= 3) {
+        sansProgramme = c;
+        break;
+      }
+    }
+
     final alertes = <Widget>[
       if (m.chargementEchoue)
         _banniere(
@@ -172,6 +367,59 @@ class _TodayScreenState extends State<TodayScreen> {
           Colors.orange,
           Icons.sync_problem,
           'Ton autre appareil a des données plus récentes. Fais « Récupérer » dans Réglages → Compte avant de continuer ici, sinon rien ne sera synchronisé.',
+        ),
+      if (m.compteEnAvance && !m.syncConflit)
+        _banniereAction(
+          Colors.orange,
+          Icons.cloud_sync,
+          'Ton compte a des données plus récentes que cet appareil (poussées par ton autre appareil). Récupère-les AVANT de modifier ici.',
+          'Récupérer',
+          () async {
+            try {
+              final resume = await m.tirerCompte();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Récupéré ✅ ($resume)')));
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(
+                        'Échec : ${e.toString().replaceFirst('Exception: ', '')}')));
+              }
+            }
+          },
+        ),
+      if (kIsWeb &&
+          m.compteCle.isEmpty &&
+          m.serverUrl.isNotEmpty &&
+          (m.colles.isNotEmpty || m.chapitres.isNotEmpty))
+        _banniereAction(
+          Colors.indigo,
+          Icons.cloud_off,
+          'Sur navigateur, un simple « effacer les données de navigation » supprime tout. Un compte gratuit (2 taps, sans email) met ton semestre à l\'abri et synchronise avec ton téléphone.',
+          'Créer',
+          () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen())),
+        ),
+      if (m.dateConcours != null &&
+          !m.dateConcours!.isAfter(now) &&
+          !m.modeOraux)
+        _banniereAction(
+          Colors.deepPurple,
+          Icons.school,
+          'Tes écrits sont passés 🎉 La suite se joue à l\'oral — active le mode oraux : le plan du soir bascule en préparation d\'épreuves, tout à voix haute.',
+          'Mode oraux',
+          () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const OrauxScreen())),
+        ),
+      if (sansProgramme != null)
+        _banniereAction(
+          Colors.teal,
+          Icons.assignment_outlined,
+          'Ta khôlle de ${sansProgramme.matiere} est ${frJour(sansProgramme.start)} et n\'a pas de programme — colle-le ici (5 s), il servira aussi à ton plan du soir${m.codeClasse.isEmpty ? '' : ' et à toute ta classe'}.',
+          'Coller',
+          () => _collerProgramme(sansProgramme!),
         ),
     ];
 
@@ -236,15 +484,45 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   /// Minutes reellement disponibles ce soir : la duree choisie, plafonnee
-  /// par l'heure limite de sommeil si elle approche.
-  int _budgetSoir(AppModel m, DateTime now) {
-    final limite = m.heureLimiteMin;
-    if (limite == null) return minutes;
-    final nowMin = now.hour * 60 + now.minute;
-    // Une limite avant 6h du matin est comprise comme "apres minuit".
-    var restant = limite < 360 ? limite + 1440 - nowMin : limite - nowMin;
-    if (restant < 0) restant = 0;
-    return minutes < restant ? minutes : restant;
+  /// par l'heure limite de sommeil (logique pure et testee dans engine.dart
+  /// — y compris apres minuit).
+  int _budgetSoir(AppModel m, DateTime now) => budgetSoir(
+        minutes: minutes,
+        limiteMin: m.heureLimiteMin,
+        nowMin: now.hour * 60 + now.minute,
+      );
+
+  /// Banniere avec un bouton d'action a droite.
+  Widget _banniereAction(Color couleur, IconData icone, String texte,
+      String labelBouton, VoidCallback onTap) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      color: couleur.withOpacity(0.08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: couleur.withOpacity(0.5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(icone, size: 20, color: couleur),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(texte,
+                  style: const TextStyle(fontSize: 13, height: 1.3)),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonal(
+              onPressed: onTap,
+              child: Text(labelBouton, style: const TextStyle(fontSize: 12.5)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _banniere(Color couleur, IconData icone, String texte) {
@@ -372,7 +650,18 @@ class _TodayScreenState extends State<TodayScreen> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
-          ],
+          ] else
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact),
+                icon: const Icon(Icons.content_paste, size: 15),
+                label: const Text('Coller le programme',
+                    style: TextStyle(fontSize: 12)),
+                onPressed: () => _collerProgramme(c),
+              ),
+            ),
         ],
       ),
     );
@@ -663,9 +952,29 @@ class _TodayScreenState extends State<TodayScreen> {
       Map<String, int> minSem, int budget) {
     final m = AppModel.instance;
     final scheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
     final plafonne = m.heureLimiteMin != null && budget < minutes;
     final hLim = m.heureLimiteMin ?? 0;
     final labelLim = '${hLim ~/ 60}h${(hLim % 60).toString().padLeft(2, '0')}';
+    // Jour libre (week-end sans cours, vacances) : la JOURNEE remplace la
+    // soiree — en-tete et presets de duree adaptes.
+    final jourLibre = m.plageSansCours(now) != null ||
+        (m.routines.isNotEmpty && m.routinesLe(now).isEmpty);
+    final durees = jourLibre
+        ? const [
+            (90, '1 h 30'),
+            (120, '2 h'),
+            (180, '3 h'),
+            (240, '4 h'),
+            (360, 'Journée (6 h)'),
+          ]
+        : _durees;
+    // DS passe ce matin (le samedi classique) : soiree legere recommandee.
+    final dsPasseAujourdhui = now.hour >= 13 &&
+        m.ds.any((d) =>
+            d.date.year == now.year &&
+            d.date.month == now.month &&
+            d.date.day == now.day);
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
@@ -680,31 +989,43 @@ class _TodayScreenState extends State<TodayScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.nightlight, size: 20, color: scheme.primary),
+                Icon(jourLibre ? Icons.wb_sunny : Icons.nightlight,
+                    size: 20, color: scheme.primary),
                 const SizedBox(width: 8),
-                Text('Ce soir, tu as…',
+                Text(jourLibre ? 'Aujourd\'hui, tu as…' : 'Ce soir, tu as…',
                     style: Theme.of(context)
                         .textTheme
                         .titleLarge
                         ?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
+            if (dsPasseAujourdhui)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '🎉 DS passé aujourd\'hui — sois indulgent avec toi-même, une soirée courte suffit largement.',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.primary),
+                ),
+              ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 4,
               children: [
-                for (final e in _durees)
+                for (final e in durees)
                   ChoiceChip(
                     label: Text(e.$2),
                     selected: minutes == e.$1,
                     onSelected: (_) => setState(() => minutes = e.$1),
                   ),
                 ChoiceChip(
-                  label: Text(_durees.any((e) => e.$1 == minutes)
+                  label: Text(durees.any((e) => e.$1 == minutes)
                       ? 'Autre…'
                       : 'Autre : ${_labelMin(minutes)}'),
-                  selected: !_durees.any((e) => e.$1 == minutes),
+                  selected: !durees.any((e) => e.$1 == minutes),
                   onSelected: (_) => _dureePerso(),
                 ),
               ],
@@ -1227,9 +1548,22 @@ class _TodayScreenState extends State<TodayScreen> {
                 m.updateChapitre(m.chapitres[i]);
               }
             }
+            // Bloc DM : le ✓ propose de marquer le devoir rendu.
+            final iDev = s.devoirId == null
+                ? -1
+                : m.devoirs.indexWhere((d) => d.id == s.devoirId);
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(
                   'Séance ${s.matiere} enregistrée (+${_labelMin(s.minutes)}) ✅'),
+              action: iDev >= 0 && !m.devoirs[iDev].rendu
+                  ? SnackBarAction(
+                      label: 'Rendu ?',
+                      onPressed: () {
+                        m.devoirs[iDev].rendu = true;
+                        m.updateDevoir(m.devoirs[iDev]);
+                      },
+                    )
+                  : null,
             ));
           },
         ),

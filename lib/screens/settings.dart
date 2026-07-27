@@ -134,6 +134,199 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // ---------- Suppression de la classe (createur uniquement) ----------
+
+  Future<void> _supprimerClasse() async {
+    final m = AppModel.instance;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Supprimer la classe ${m.codeClasse} ?'),
+        content: const Text(
+            'Tes camarades ne pourront plus importer avec ce code. Cette action est immédiate et définitive côté serveur (tes khôlles déjà importées restent dans l\'app de chacun).'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Supprimer')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ApiKhompas(m.serverUrl)
+          .supprimerClasse(m.codeClasse, m.gestionClasse);
+      m.setCodeClasse('');
+      m.setGestionClasse('');
+      _snack('Classe supprimée du serveur ✅');
+    } catch (e) {
+      _snack(
+          'Échec : ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+    if (mounted) setState(() {});
+  }
+
+  // ---------- Passage en 2e annee (l'ecran de septembre) ----------
+
+  Future<void> _passageDeuxiemeAnnee() async {
+    final m = AppModel.instance;
+    var nouvelleFiliere = switch (m.filiere) {
+      'MPSI' => 'MP',
+      'PCSI' => 'PSI',
+      'PTSI' => 'PT',
+      'MP2I' => 'MPI',
+      _ => 'PSI',
+    };
+    var nettoyer = true;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDlg) => AlertDialog(
+          title: const Text('Passage en 2e année 🎓'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DropdownButtonFormField<String>(
+                value: nouvelleFiliere,
+                decoration: const InputDecoration(
+                    labelText: 'Nouvelle filière',
+                    border: OutlineInputBorder()),
+                items: [
+                  for (final f in kFilieres)
+                    DropdownMenuItem(value: f, child: Text(f)),
+                ],
+                onChanged: (v) =>
+                    setDlg(() => nouvelleFiliere = v ?? nouvelleFiliere),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Supprimer les khôlles passées',
+                    style: TextStyle(fontSize: 14)),
+                subtitle: const Text(
+                    'Notes, chapitres et heures de travail sont CONSERVÉS.',
+                    style: TextStyle(fontSize: 11.5)),
+                value: nettoyer,
+                onChanged: (v) => setDlg(() => nettoyer = v ?? true),
+              ),
+              Text(
+                'Ensuite : importe le colloscope de ta nouvelle classe et le programme de ta nouvelle filière (le dédoublonnage protège des ré-imports).',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Annuler')),
+            FilledButton(
+              onPressed: () {
+                m.setProfil(filiere: nouvelleFiliere, groupe: m.groupe);
+                if (nettoyer) m.nettoyerCollesPassees();
+                Navigator.pop(context);
+                _snack(
+                    'Bienvenue en $nouvelleFiliere 🎓 Pense au nouveau colloscope (Agenda → import).');
+              },
+              child: const Text('C\'est parti'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  // ---------- Jalons TIPE / SCEI (version "a confirmer" : les dates
+  // exactes changent chaque annee — on PROPOSE, l'utilisateur ajuste) ----------
+
+  Future<void> _jalonsTipeDialog() async {
+    final m = AppModel.instance;
+    final now = DateTime.now();
+    // Annee scolaire en cours : SCEI en decembre, MCOT en fevrier suivant.
+    final anneeScei = now.month >= 8 ? now.year : now.year - 1;
+    var dateScei = DateTime(anneeScei, 12, 10);
+    var dateMcot = DateTime(anneeScei + 1, 2, 10);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDlg) => AlertDialog(
+          title: const Text('Jalons TIPE / SCEI'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Dates PROPOSÉES d\'après les années précédentes — vérifie-les sur scei-concours.fr et ajuste avant d\'ajouter.',
+                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 10),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Clôture inscriptions SCEI'),
+                trailing: OutlinedButton(
+                  child: Text(frDateCourte(dateScei)),
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                        context: context,
+                        initialDate: dateScei,
+                        firstDate: DateTime(now.year - 1),
+                        lastDate: DateTime(now.year + 2));
+                    if (d != null) setDlg(() => dateScei = d);
+                  },
+                ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Dépôt du MCOT'),
+                trailing: OutlinedButton(
+                  child: Text(frDateCourte(dateMcot)),
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                        context: context,
+                        initialDate: dateMcot,
+                        firstDate: DateTime(now.year - 1),
+                        lastDate: DateTime(now.year + 2));
+                    if (d != null) setDlg(() => dateMcot = d);
+                  },
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Annuler')),
+            FilledButton(
+              onPressed: () {
+                m.addEvenement(Evenement(
+                    titre: '🚨 Clôture inscriptions SCEI (vérifie l\'heure !)',
+                    matiere: 'TIPE',
+                    date: dateScei,
+                    debutMin: 8 * 60,
+                    dureeMin: 60));
+                m.addEvenement(Evenement(
+                    titre: '🚨 Dépôt du MCOT (TIPE)',
+                    matiere: 'TIPE',
+                    date: dateMcot,
+                    debutMin: 8 * 60,
+                    dureeMin: 60));
+                Navigator.pop(context);
+                _snack(
+                    'Jalons ajoutés à l\'agenda ✅ (notification la veille si les notifs sont actives)');
+              },
+              child: const Text('Ajouter les 2 jalons'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   // ---------- Fusion de matieres ----------
 
   Future<void> _fusionnerDialog() async {
@@ -430,6 +623,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               setState(() {});
             },
           ),
+          if (!kFilieresDeuxiemeAnnee.contains(m.filiere))
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Text('🎓', style: TextStyle(fontSize: 20)),
+              title: const Text('Je passe en 2e année'),
+              subtitle: const Text(
+                  'Nouvelle filière, ménage des khôlles passées, prêt pour le nouveau colloscope.',
+                  style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _passageDeuxiemeAnnee,
+            ),
           const SizedBox(height: 24),
           Text('Compte', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
@@ -612,6 +816,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const AnnalesScreen())),
           ),
+          if (kFilieresDeuxiemeAnnee.contains(m.filiere))
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Text('🧪', style: TextStyle(fontSize: 20)),
+              title: const Text('Jalons TIPE / SCEI'),
+              subtitle: const Text(
+                  'Inscriptions concours (décembre) et MCOT (février) — les dates couperets que des candidats ratent chaque année.',
+                  style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _jalonsTipeDialog,
+            ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.record_voice_over_outlined),
@@ -795,6 +1010,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          if (m.codeClasse.isNotEmpty && m.gestionClasse.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.delete_forever, size: 18),
+              label: Text('Supprimer ma classe ${m.codeClasse} du serveur'),
+              onPressed: _supprimerClasse,
+            ),
+            Text(
+              'Photos du colloscope, extractions et programmes partagés compris. (Les photos expirent de toute façon après ~4 mois.)',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),
+            ),
+          ],
           // Sans serveur (ou si une cle est deja enregistree), on propose la
           // cle API personnelle en secours. Sinon : inutile, on masque.
           if (m.serverUrl.isEmpty || m.apiKey.isNotEmpty) ...[
@@ -831,7 +1058,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Khompas — bêta 0.13'),
+            title: Text('Khompas — bêta 0.14'),
             subtitle: Text(
                 'Le compagnon de ta prépa. Tes données restent sur ton téléphone.'),
           ),

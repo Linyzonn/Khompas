@@ -371,6 +371,168 @@ void main() {
     expect(c.intervalleJours, 1);
   });
 
+  // ---------- Heure limite de sommeil (y compris apres minuit) ----------
+
+  test('budgetSoir : limite 23 h opérante AVANT et APRÈS minuit', () {
+    // 18h00, limite 23h -> 5 h disponibles, plafonnées à la durée choisie.
+    expect(budgetSoir(minutes: 120, limiteMin: 23 * 60, nowMin: 18 * 60), 120);
+    expect(budgetSoir(minutes: 600, limiteMin: 23 * 60, nowMin: 18 * 60), 300);
+    // 00h30, limite 23h : la limite est DÉPASSÉE -> 0 (message sommeil).
+    expect(budgetSoir(minutes: 120, limiteMin: 23 * 60, nowMin: 30), 0);
+    // Limite 0h30 : à 22h il reste 2 h 30 ; à 1h du matin, 0.
+    expect(budgetSoir(minutes: 600, limiteMin: 30, nowMin: 22 * 60), 150);
+    expect(budgetSoir(minutes: 120, limiteMin: 30, nowMin: 60), 0);
+    // Pas de limite -> la durée choisie.
+    expect(budgetSoir(minutes: 120, limiteMin: null, nowMin: 30), 120);
+  });
+
+  // ---------- Parseur COLLES (le plus critique du produit) ----------
+
+  test('parseExtraction : fences, heure 16:30, durée et salle relevées', () {
+    const rep = '''
+Voici le résultat :
+```json
+{"colles": [
+  {"matiere": "Maths", "kholleur": "M. X", "salle": "12", "date": "2026-09-17", "heure": "16:30", "duree_min": 55},
+  {"matiere": "Anglais", "date": "2026-09-18", "heure": "17:00"}
+], "avertissements": ["roulement appliqué"]}
+```
+''';
+    final r = parseExtraction(rep);
+    expect(r.colles.length, 2);
+    expect(r.colles.first.start.hour, 16);
+    expect(r.colles.first.start.minute, 30);
+    expect(r.colles.first.dureeMin, 55);
+    expect(r.colles.first.salle, '12');
+    expect(r.avertissements, contains('roulement appliqué'));
+  });
+
+  test('parseExtraction : JSON tronqué -> sauve les créneaux complets, '
+      'créneau malformé ignoré', () {
+    const tronque =
+        '{"colles":[{"matiere":"Maths","date":"2026-09-17","heure":"16:00"},'
+        '{"matiere":"Sans date"},'
+        '{"matiere":"Phys'; // coupé net (maxOutputTokens)
+    final r = parseExtraction(tronque);
+    expect(r.colles.length, 1);
+    expect(r.colles.first.matiere, 'Maths');
+  });
+
+  // ---------- Libelles d'echeance ----------
+
+  test('khôlle du jour : « AUJOURD\'HUI », pas « demain » ni « EN RETARD »',
+      () {
+    final now = DateTime.now();
+    // Une kholle plus tard dans la journee (ou tot le matin : le test doit
+    // passer a toute heure — on prend 23h59 du jour meme).
+    m.colles.add(Colle(
+        matiere: 'Maths',
+        start: DateTime(now.year, now.month, now.day, 23, 58)));
+    final s = suggere(m, 120);
+    expect(s.first.raison, contains('AUJOURD\'HUI'));
+    expect(s.first.raison, isNot(contains('RETARD')));
+  });
+
+  test('DM à rendre AUJOURD\'HUI : plus jamais « EN RETARD » le jour J', () {
+    final now = DateTime.now();
+    m.devoirs.add(Devoir(
+        matiere: 'Physique',
+        dateRendu: DateTime(now.year, now.month, now.day),
+        dateDonne: now.subtract(const Duration(days: 7))));
+    final s = suggere(m, 120);
+    expect(s.first.raison, contains('AUJOURD\'HUI'));
+  });
+
+  // ---------- Travail impose = tache cochable ----------
+
+  test('DM proche : la suggestion EST la tâche (titre + remarque + '
+      'devoirId)', () {
+    final now = DateTime.now();
+    final d = Devoir(
+        matiere: 'Maths',
+        titre: 'DM 3',
+        dateRendu: now.add(const Duration(days: 5)),
+        dateDonne: now.subtract(const Duration(days: 2)),
+        remarque: 'exos 1 à 4');
+    m.devoirs.add(d);
+    final s = suggere(m, 120);
+    final sug = s.firstWhere((x) => x.matiere == 'Maths');
+    expect(sug.titre, contains('Avance DM 3'));
+    expect(sug.titre, contains('exos 1 à 4'));
+    expect(sug.devoirId, d.id);
+  });
+
+  // ---------- Jour libre : plus de matieres ----------
+
+  test('jour libre (EDT rempli mais rien aujourd\'hui) + gros budget : '
+      '4 matières retenues', () {
+    final now = DateTime.now();
+    // Une routine sur un AUTRE jour que celui du test -> aujourd'hui libre.
+    final autreJour = now.weekday == 7 ? 1 : now.weekday + 1;
+    m.routines.add(Routine(titre: 'Maths', jour: autreJour, debutMin: 480));
+    for (final mat in ['Maths', 'Physique', 'Anglais', 'Français']) {
+      m.chapitres
+          .add(Chapitre(matiere: mat, nom: 'Ch $mat', etape: 2, maitrise: 2));
+    }
+    final s = suggere(m, 300);
+    expect(s.map((x) => x.matiere).toSet().length, greaterThanOrEqualTo(4));
+  });
+
+  // ---------- Vacances : creneau DM etale, cadence annoncee ----------
+
+  test('vacances + 2 DM : un créneau DM apparaît avec sa cadence', () {
+    final now = DateTime.now();
+    m.sansCours.add(PlageSansCours(
+        titre: 'Vacances',
+        debut: now.subtract(const Duration(days: 2)),
+        fin: now.add(const Duration(days: 10))));
+    m.devoirs.add(Devoir(
+        matiere: 'Maths',
+        titre: 'DM vacances',
+        dateRendu: now.add(const Duration(days: 4)),
+        dateDonne: now.subtract(const Duration(days: 1))));
+    m.devoirs.add(Devoir(
+        matiere: 'Physique',
+        titre: 'DM 5',
+        dateRendu: now.add(const Duration(days: 6)),
+        dateDonne: now.subtract(const Duration(days: 1))));
+    final s = suggere(m, 180);
+    expect(s.any((x) => x.titre.contains('Créneau DM')), isTrue);
+  });
+
+  // ---------- Annales realistes ----------
+
+  test('mode révisions : annale ENTIÈRE seulement à gros budget, sinon '
+      'une PARTIE', () {
+    m.dateConcours = DateTime.now().add(const Duration(days: 30));
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 2, maitrise: 3));
+    m.annales
+        .add(Annale(concours: 'CCINP', matiere: 'Maths', annee: 2024));
+    final soir = suggere(m, 120);
+    expect(soir.any((x) => x.titre.contains('PARTIE')), isTrue);
+    final weekend = suggere(m, 300);
+    expect(weekend.any((x) => x.titre.contains('EN CONDITIONS')), isTrue);
+  });
+
+  test('annale faite récemment avec ressenti moyen : la CORRECTION ACTIVE '
+      'passe devant', () {
+    m.dateConcours = DateTime.now().add(const Duration(days: 30));
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 2, maitrise: 3));
+    m.annales.add(Annale(
+        concours: 'CCINP',
+        matiere: 'Maths',
+        annee: 2023,
+        fait: true,
+        ressenti: 2,
+        dateFait: DateTime.now().subtract(const Duration(days: 1))));
+    m.annales.add(Annale(concours: 'CCINP', matiere: 'Maths', annee: 2024));
+    final s = suggere(m, 120);
+    expect(s.any((x) => x.titre.contains('Correction active')), isTrue);
+    expect(s.any((x) => x.titre.contains('PARTIE')), isFalse);
+  });
+
   // ---------- Parseur DS (tolerance + coefficient) ----------
 
   test('parseDsExtraction : fences markdown, texte autour, coeff facultatif',

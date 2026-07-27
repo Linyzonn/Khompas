@@ -192,9 +192,18 @@ class GradesScreen extends StatelessWidget {
             leading: const Icon(Icons.edit_document, size: 18),
             title: Text('${d.titre} du ${frDateCourte(d.date)}'
                 '${d.coeff == 1 ? '' : ' · coef ${d.coeff == d.coeff.roundToDouble() ? d.coeff.toInt() : d.coeff}'}'),
+            subtitle: d.moyenneClasse == null || d.note == null
+                ? null
+                : Text(
+                    'classe : ${d.moyenneClasse!.toStringAsFixed(1)} — tu es '
+                    '${d.note! >= d.moyenneClasse! + 1 ? 'au-dessus 💪' : d.note! >= d.moyenneClasse! - 1 ? 'dans la moyenne' : 'un peu en dessous — ça se rattrape'}',
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.grey.shade600)),
             trailing: _noteChip(context, d.note, color, () async {
               final n = await noteAvecRecalibrage(context,
-                  matiere: d.matiere, current: d.note);
+                  matiere: d.matiere,
+                  current: d.note,
+                  moyenneClasse: d.moyenneClasse);
               if (n != null) {
                 d.note = n < 0 ? null : n;
                 AppModel.instance.updateDs(d);

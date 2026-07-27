@@ -31,6 +31,9 @@ const CHUNK = 60_000; // Deno KV limite chaque valeur a 64 Ko
 const LIMITE_IP_JOUR = 30; // extractions max / appareil / jour
 const LIMITE_GLOBALE_JOUR = 200; // extractions max / jour (protege le budget)
 const TTL = 400 * 24 * 3600 * 1000; // ~13 mois, en millisecondes
+// Les PHOTOS de colloscope (noms de kholleurs = donnees de tiers) expirent
+// bien avant le reste : ~4 mois couvrent le semestre + retardataires.
+const TTL_PHOTO = 120 * 24 * 3600 * 1000;
 // Alphabet sans caracteres ambigus (pas de O/0, I/1/L...).
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
@@ -127,15 +130,32 @@ async function lirePhotos(code: string): Promise<Piece[] | null> {
   const n = (meta.value as { photos: number }).photos;
   const out: Piece[] = [];
   for (let i = 0; i < n; i++) {
+    const m = await kv.get(['mime', code, i]);
+    const info = m.value as string | { mime: string; chunks: number } | null;
     let b64 = '';
-    for (let c = 0; ; c++) {
-      const part = await kv.get(['photo', code, i, c]);
-      if (!part.value) break;
-      b64 += part.value as string;
-    }
-    if (b64) {
-      const m = await kv.get(['mime', code, i]);
-      out.push({ b64, mime: (m.value as string | null) ?? 'image/jpeg' });
+    if (info && typeof info === 'object') {
+      // Format actuel : le nombre de morceaux est connu -> lecture BORNEE.
+      // (Sans cette borne, remplacer une photo par une plus petite laissait
+      // les vieux morceaux au-dela concatenes -> base64 corrompu.)
+      let ok = true;
+      for (let c = 0; c < info.chunks; c++) {
+        const part = await kv.get(['photo', code, i, c]);
+        if (!part.value) {
+          ok = false; // morceau expire : photo incomplete, on l'ignore
+          break;
+        }
+        b64 += part.value as string;
+      }
+      if (ok && b64) out.push({ b64, mime: info.mime });
+    } else {
+      // Format historique (mime = chaine, pas de compte de morceaux) :
+      // lecture jusqu'au premier trou, comme avant.
+      for (let c = 0; ; c++) {
+        const part = await kv.get(['photo', code, i, c]);
+        if (!part.value) break;
+        b64 += part.value as string;
+      }
+      if (b64) out.push({ b64, mime: (info as string | null) ?? 'image/jpeg' });
     }
   }
   return out;
@@ -265,17 +285,75 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
     });
   }
 
-  // Creer une classe (vide) -> {code}
+  // Compteur anti-abus generique : n operations max par IP et par jour.
+  const compterAbus = async (
+    quoi: string,
+    max: number,
+  ): Promise<string | null> => {
+    const jour = new Date().toISOString().slice(0, 10);
+    const k = ['rlx', quoi, ip, jour];
+    const n = ((await kv.get(k)).value as number | null) ?? 0;
+    if (n >= max) {
+      return 'Limite quotidienne atteinte pour cet appareil — réessaie demain.';
+    }
+    await kv.set(k, n + 1, { expireIn: 2 * 24 * 3600 * 1000 });
+    return null;
+  };
+
+  // Creer une classe (vide) -> {code, gestion}. Le code se PARTAGE avec la
+  // classe ; le code de GESTION reste chez le createur (suppression).
   if (p === '/api/classes' && req.method === 'POST') {
+    // Sans limite, un script saturait le KV gratuit en quelques minutes.
+    const refus = await compterAbus('classes', 3);
+    if (refus) return erreur(refus, 429);
     for (let essai = 0; essai < 5; essai++) {
       const code = genCode();
+      const gestion = genCode() + genCode();
       const ok = await kv.atomic()
         .check({ key: ['class', code], versionstamp: null })
-        .set(['class', code], { photos: 0, cree: Date.now() }, { expireIn: TTL })
+        .set(['class', code], {
+          photos: 0,
+          cree: Date.now(),
+          gestionHash: await sha256Hex(gestion),
+        }, { expireIn: TTL })
         .commit();
-      if (ok.ok) return json({ code });
+      if (ok.ok) return json({ code, gestion });
     }
     return erreur('Impossible de générer un code, réessaie.', 500);
+  }
+
+  // Supprimer une classe (createur uniquement, via le code de gestion) :
+  // photos, extractions et programmes compris. RGPD-friendly.
+  const mDel = p.match(/^\/api\/classes\/([A-Z2-9]{6})$/);
+  if (mDel && req.method === 'DELETE') {
+    const code = mDel[1];
+    const meta = await kv.get(['class', code]);
+    if (!meta.value) return erreur('Code inconnu.', 404);
+    const mv = meta.value as { gestionHash?: string };
+    const g = (req.headers.get('x-khompas-gestion') ?? '').trim().toUpperCase();
+    if (!mv.gestionHash) {
+      return erreur(
+        'Classe créée avant la gestion des suppressions — elle expirera d\'elle-même.',
+        403,
+      );
+    }
+    if (!g || (await sha256Hex(g)) !== mv.gestionHash) {
+      return erreur('Code de gestion invalide.', 403);
+    }
+    for (
+      const prefix of [
+        ['photo', code],
+        ['mime', code],
+        ['res', code],
+        ['err', code],
+        ['pending', code],
+        ['prog', code],
+      ]
+    ) {
+      for await (const e of kv.list({ prefix })) await kv.delete(e.key);
+    }
+    await kv.delete(['class', code]);
+    return json({ ok: true });
   }
 
   // Envoyer la photo n°i (corps = jpeg en base64, texte brut)
@@ -286,6 +364,8 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
     if (i >= MAX_PHOTOS) return erreur(`Maximum ${MAX_PHOTOS} photos.`, 400);
     const meta = await kv.get(['class', code]);
     if (!meta.value) return erreur('Code inconnu.', 404);
+    const refus = await compterAbus('photos', 15);
+    if (refus) return erreur(refus, 429);
     const brut = await req.text();
     const b64 = brut.replace(/\s+/g, '');
     if (!b64) return erreur('Fichier vide.', 400);
@@ -295,17 +375,70 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
     const mime = url.searchParams.get('mime') === 'pdf'
       ? 'application/pdf'
       : 'image/jpeg';
-    await kv.set(['mime', code, i], mime, { expireIn: TTL });
-    for (let c = 0; c * CHUNK < b64.length; c++) {
-      await kv.set(['photo', code, i, c], b64.slice(c * CHUNK, (c + 1) * CHUNK), {
-        expireIn: TTL,
-      });
+    // Les PHOTOS (donnees de tiers : noms des kholleurs) ne restent que
+    // ~4 mois — le cache d'extraction, lui, garde son TTL long.
+    let nChunks = 0;
+    for (; nChunks * CHUNK < b64.length; nChunks++) {
+      await kv.set(
+        ['photo', code, i, nChunks],
+        b64.slice(nChunks * CHUNK, (nChunks + 1) * CHUNK),
+        { expireIn: TTL_PHOTO },
+      );
     }
+    // Le nombre de morceaux BORNE la lecture (voir lirePhotos).
+    await kv.set(['mime', code, i], { mime, chunks: nChunks }, {
+      expireIn: TTL_PHOTO,
+    });
     const m = meta.value as { photos: number; cree: number };
     if (i + 1 > m.photos) {
       await kv.set(['class', code], { ...m, photos: i + 1 }, { expireIn: TTL });
     }
     return json({ ok: true });
+  }
+
+  // ---------- Programmes de colles partages (la 2e boucle virale) ----------
+  // Un eleve colle le programme de la semaine -> toute la classe le recoit,
+  // attache aux kholles de la matiere. Texte brut, pas d'IA.
+  const mProg = p.match(/^\/api\/classes\/([A-Z2-9]{6})\/programmes$/);
+  if (mProg && req.method === 'PUT') {
+    const code = mProg[1];
+    if (!(await kv.get(['class', code])).value) {
+      return erreur('Code inconnu.', 404);
+    }
+    const refus = await compterAbus('progs', 40);
+    if (refus) return erreur(refus, 429);
+    let corps: { semaine?: string; matiere?: string; texte?: string } = {};
+    try {
+      corps = await req.json();
+    } catch (_) {
+      return erreur('JSON attendu.', 400);
+    }
+    const semaine = (corps.semaine ?? '').toString().slice(0, 10);
+    const matiere = (corps.matiere ?? '').toString().trim().toLowerCase()
+      .slice(0, 40);
+    const texte = (corps.texte ?? '').toString().trim().slice(0, 2000);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(semaine) || !matiere || !texte) {
+      return erreur('semaine (lundi AAAA-MM-JJ), matiere et texte requis.', 400);
+    }
+    await kv.set(['prog', code, semaine, matiere], texte, {
+      expireIn: 60 * 24 * 3600 * 1000,
+    });
+    return json({ ok: true });
+  }
+  if (mProg && req.method === 'GET') {
+    const code = mProg[1];
+    if (!(await kv.get(['class', code])).value) {
+      return erreur('Code inconnu.', 404);
+    }
+    const semaine = (url.searchParams.get('semaine') ?? '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(semaine)) {
+      return erreur('?semaine=AAAA-MM-JJ (lundi) requis.', 400);
+    }
+    const programmes: Record<string, string> = {};
+    for await (const e of kv.list({ prefix: ['prog', code, semaine] })) {
+      programmes[String(e.key[3])] = e.value as string;
+    }
+    return json({ programmes });
   }
 
   // Kholles d'un groupe -> {text} (le texte JSON du modele ; l'app le parse).
@@ -365,9 +498,15 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
         // Reponse entiere : cache longue duree. Reponse tronquee : on la
         // stocke quand meme (l'app en tire le maximum et avertit) mais
         // seulement 10 min, pour qu'un nouvel essai reparte de zero.
-        await kv.set(['res', code, groupe], text, {
-          expireIn: entiere ? TTL : 10 * 60 * 1000,
-        });
+        // Garde-fou : si le verrou pending a expire (extraction > 4 min) et
+        // qu'un travail concurrent a DEJA ecrit un resultat, on garde le
+        // premier — pas d'ecrasement croise ni de double depense.
+        const deja = await kv.get(['res', code, groupe]);
+        if (!deja.value) {
+          await kv.set(['res', code, groupe], text, {
+            expireIn: entiere ? TTL : 10 * 60 * 1000,
+          });
+        }
       } catch (e) {
         await kv.set(
           errKey,
@@ -489,6 +628,17 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
       { expireIn: TTL },
     );
     return json({ version: maj });
+  }
+
+  // Version legere (sans les donnees) : l'app la compare au demarrage a la
+  // derniere version qu'ELLE connait — si un autre appareil a pousse entre
+  // temps, bannière "Récupérer" AVANT la premiere modification locale.
+  if (p === '/api/compte/version' && req.method === 'GET') {
+    const id = await compteAuth();
+    if (!id) return erreur('Clé de compte invalide.', 401);
+    const meta = await kv.get(['accm', id]);
+    if (!meta.value) return json({ version: 0 });
+    return json({ version: (meta.value as { maj: number }).maj });
   }
 
   if (p === '/api/compte/data' && req.method === 'GET') {

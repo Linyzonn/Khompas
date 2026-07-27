@@ -53,6 +53,9 @@ class AppModel extends ChangeNotifier {
   int groupe = 1;
   // Code de partage du colloscope de ma classe (serveur Khompas).
   String codeClasse = '';
+  // Code de GESTION de la classe (seulement chez son createur) : permet de
+  // la supprimer du serveur.
+  String gestionClasse = '';
   // Priorite par matiere (1 a 3) : ponderation du plan de travail.
   Map<String, int> prios = {};
 
@@ -87,6 +90,7 @@ class AppModel extends ChangeNotifier {
       notifsActives = prefs.getBool('notifsActives') ?? false;
       notifVeilleKholle = prefs.getBool('notifVeilleKholle') ?? true;
       notifVeilleDm = prefs.getBool('notifVeilleDm') ?? true;
+      _majConnue = prefs.getInt('majConnue') ?? 0;
       String? raw;
       if (kIsWeb) {
         // Version web (PC) : pas de systeme de fichiers, la base vit dans
@@ -149,6 +153,7 @@ class AppModel extends ChangeNotifier {
         filiere = (j['filiere'] ?? 'PCSI') as String;
         groupe = (j['groupe'] ?? 1) as int;
         codeClasse = (j['codeClasse'] ?? '') as String;
+        gestionClasse = (j['gestionClasse'] ?? '') as String;
         cinqDemi = (j['cinqDemi'] ?? false) as bool;
         prios = ((j['prios'] ?? {}) as Map)
             .map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
@@ -178,6 +183,9 @@ class AppModel extends ChangeNotifier {
     if (_migrerMatieres()) save();
     loaded = true;
     notifyListeners();
+    // Taches d'arriere-plan non bloquantes (silencieuses hors ligne).
+    verifierVersionCompte();
+    synchroniserProgrammes();
   }
 
   /// Applique [normaliseMatiere] a toutes les donnees. Retourne true si
@@ -307,6 +315,7 @@ class AppModel extends ChangeNotifier {
         'filiere': filiere,
         'groupe': groupe,
         'codeClasse': codeClasse,
+        'gestionClasse': gestionClasse,
         'cinqDemi': cinqDemi,
         'prios': prios,
       };
@@ -346,9 +355,12 @@ class AppModel extends ChangeNotifier {
     _pushTimer?.cancel();
     _pushTimer = Timer(const Duration(seconds: 3), () async {
       try {
-        await ApiKhompas(serverUrl).envoyerCompte(compteCle, exportJson());
-        if (syncConflit) {
+        final v =
+            await ApiKhompas(serverUrl).envoyerCompte(compteCle, exportJson());
+        await _memoriserVersion(v);
+        if (syncConflit || compteEnAvance) {
           syncConflit = false;
+          compteEnAvance = false;
           notifyListeners();
         }
       } catch (e) {
@@ -384,8 +396,10 @@ class AppModel extends ChangeNotifier {
   /// Retourne un resume, ou une explication si le compte est encore vide.
   Future<String> connecterCompte(String cle) async {
     final propre = cle.trim().toUpperCase();
-    final data = await ApiKhompas(serverUrl).recupererCompte(propre);
+    final resultat = await ApiKhompas(serverUrl).recupererCompte(propre);
     await saveCompteCle(propre);
+    final data = resultat?.$2;
+    if (resultat != null) await _memoriserVersion(resultat.$1);
     if (data == null || data.trim().isEmpty) {
       // Compte vide : on y envoie au contraire les donnees locales.
       _programmerPush();
@@ -396,19 +410,52 @@ class AppModel extends ChangeNotifier {
 
   /// Envoi immediat (bouton Reglages).
   Future<void> pousserCompte() async {
-    await ApiKhompas(serverUrl).envoyerCompte(compteCle, exportJson());
+    final v = await ApiKhompas(serverUrl).envoyerCompte(compteCle, exportJson());
+    await _memoriserVersion(v);
     syncConflit = false;
+    compteEnAvance = false;
     notifyListeners();
   }
 
   /// Recuperation immediate (bouton Reglages) : remplace les donnees locales.
   Future<String> tirerCompte() async {
-    final data = await ApiKhompas(serverUrl).recupererCompte(compteCle);
+    final resultat = await ApiKhompas(serverUrl).recupererCompte(compteCle);
+    final data = resultat?.$2;
     if (data == null || data.trim().isEmpty) {
       throw Exception('aucune donnée sur ce compte pour le moment.');
     }
+    await _memoriserVersion(resultat!.$1);
     syncConflit = false;
+    compteEnAvance = false;
     return importJson(data);
+  }
+
+  /// Derniere version serveur que CET appareil connait (prefs locales).
+  int _majConnue = 0;
+  // true = le serveur detient une version plus recente que ce que cet
+  // appareil a vu -> bannière "Récupérer" avant de modifier quoi que ce soit.
+  bool compteEnAvance = false;
+
+  Future<void> _memoriserVersion(int v) async {
+    if (v == 0) return;
+    _majConnue = v;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('majConnue', v);
+  }
+
+  /// Verification legere au demarrage : un autre appareil a-t-il pousse
+  /// depuis la derniere fois ? (fire-and-forget, silencieux hors ligne)
+  Future<void> verifierVersionCompte() async {
+    if (compteCle.isEmpty || serverUrl.isEmpty) return;
+    try {
+      final v = await ApiKhompas(serverUrl).versionCompte(compteCle);
+      if (v != 0 && _majConnue != 0 && v != _majConnue) {
+        compteEnAvance = true;
+        notifyListeners();
+      }
+    } catch (_) {
+      // hors ligne : tant pis, la garde 409 reste le filet
+    }
   }
 
   void setCinqDemi(bool v) {
@@ -528,6 +575,10 @@ class AppModel extends ChangeNotifier {
     } catch (_) {
       throw Exception('sauvegarde illisible ou incomplète — rien n\'a été modifié.');
     }
+    gestionClasse = (decoded['gestionClasse'] ?? gestionClasse) as String;
+    // Une sauvegarde d'avant-0.12 peut reintroduire des doublons de
+    // matieres : on re-normalise tout de suite, pas au prochain redemarrage.
+    _migrerMatieres();
     _touch();
     return '${colles.length} khôlle(s), ${ds.length} DS, ${chapitres.length} chapitre(s)';
   }
@@ -548,6 +599,95 @@ class AppModel extends ChangeNotifier {
 
   void setCodeClasse(String code) {
     codeClasse = code.trim().toUpperCase();
+    _touch();
+  }
+
+  void setGestionClasse(String gestion) {
+    gestionClasse = gestion.trim().toUpperCase();
+    _touch();
+  }
+
+  /// Menage de rentree (passage en 2e annee) : supprime les kholles
+  /// terminees. Notes de DS, chapitres et seances sont conserves.
+  int nettoyerCollesPassees() {
+    final now = DateTime.now();
+    final avant = colles.length;
+    colles.removeWhere((c) => c.end.isBefore(now));
+    _touch();
+    return avant - colles.length;
+  }
+
+  // ---------- Programmes de colles (la 2e boucle virale) ----------
+
+  static String _isoDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Applique un programme de colle a TOUTES les kholles de [matiere] de la
+  /// semaine de [date], et le partage avec la classe si demande.
+  Future<void> definirProgramme(String matiere, DateTime date, String texte,
+      {bool partager = true}) async {
+    final lundi = mondayOf(date);
+    final fin = lundi.add(const Duration(days: 7));
+    for (final c in colles) {
+      if (c.matiere == matiere &&
+          !c.start.isBefore(lundi) &&
+          c.start.isBefore(fin)) {
+        c.programme = texte.trim();
+      }
+    }
+    _touch();
+    if (partager && codeClasse.isNotEmpty && serverUrl.isNotEmpty) {
+      try {
+        await ApiKhompas(serverUrl).envoyerProgramme(
+            codeClasse, _isoDate(lundi), matiere.toLowerCase(), texte.trim());
+      } catch (_) {
+        // hors ligne : le programme reste au moins en local
+      }
+    }
+  }
+
+  /// Recupere les programmes partages par la classe (semaine courante et
+  /// suivante) et les applique aux kholles SANS programme. Silencieux.
+  Future<void> synchroniserProgrammes() async {
+    if (codeClasse.isEmpty || serverUrl.isEmpty || colles.isEmpty) return;
+    try {
+      final api = ApiKhompas(serverUrl);
+      var change = false;
+      final lundiCourant = mondayOf(DateTime.now());
+      for (final lundi in [
+        lundiCourant,
+        lundiCourant.add(const Duration(days: 7)),
+      ]) {
+        final progs = await api.lireProgrammes(codeClasse, _isoDate(lundi));
+        if (progs.isEmpty) continue;
+        final fin = lundi.add(const Duration(days: 7));
+        for (final c in colles) {
+          if (c.programme.trim().isNotEmpty) continue;
+          if (c.start.isBefore(lundi) || !c.start.isBefore(fin)) continue;
+          final texte = progs[c.matiere.toLowerCase()];
+          if (texte != null && texte.trim().isNotEmpty) {
+            c.programme = texte.trim();
+            change = true;
+          }
+        }
+      }
+      if (change) _touch();
+    } catch (_) {
+      // hors ligne : on reessaiera au prochain lancement
+    }
+  }
+
+  /// Entree MANUELLE dans la repetition espacee (fiche chapitre) : "vu
+  /// aujourd'hui -> reviser demain" — la porte d'entree sans EDT rempli.
+  void demarrerEspacement(String chapitreId) {
+    final i = chapitres.indexWhere((c) => c.id == chapitreId);
+    if (i < 0) return;
+    final c = chapitres[i];
+    if (c.etape < 1) c.etape = 1;
+    c.entame = false;
+    c.intervalleJours = 1;
+    final demain = DateTime.now().add(const Duration(days: 1));
+    c.prochaineRevision = DateTime(demain.year, demain.month, demain.day);
     _touch();
   }
 
@@ -881,8 +1021,9 @@ class AppModel extends ChangeNotifier {
         e.jour.month == b.jour.month &&
         e.jour.day == b.jour.day);
     bilans.add(b);
-    // On garde ~2 mois d'historique, assez pour les stats a venir.
-    final limite = DateTime.now().subtract(const Duration(days: 60));
+    // ~13 mois d'historique, ALIGNE sur les seances : les stats annuelles
+    // de la roadmap en auront besoin (ne pas re-raccourcir sans y penser).
+    final limite = DateTime.now().subtract(const Duration(days: 400));
     bilans.removeWhere((e) => e.jour.isBefore(limite));
     if (b.chapitreId != null) {
       final i = chapitres.indexWhere((c) => c.id == b.chapitreId);

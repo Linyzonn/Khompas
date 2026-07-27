@@ -29,9 +29,14 @@ class AgendaScreen extends StatelessWidget {
         if (!c.end.isBefore(debut)) _Event.colle(c),
       for (final d in m.ds)
         if (!d.date.isBefore(debut)) _Event.ds(d),
-      // Un devoir non rendu reste visible meme en retard.
+      // Un devoir non rendu reste visible meme en retard — mais un vieux DM
+      // ne cree plus de section "semaine fossile" en tete : il REMONTE dans
+      // la semaine courante avec son ⚠.
       for (final d in m.devoirs)
-        if (!d.dateRendu.isBefore(debut) || !d.rendu) _Event.devoir(d),
+        if (!d.dateRendu.isBefore(debut))
+          _Event.devoir(d)
+        else if (!d.rendu)
+          _Event.devoir(d, dateAffichage: debut),
       for (final e in m.evenements)
         if (!e.date.isBefore(debut)) _Event.evenement(e),
       for (final o in m.oraux)
@@ -529,7 +534,9 @@ class AgendaScreen extends StatelessWidget {
             if (edited != null) m.updateDs(edited);
           } else if (v == 'note') {
             final n = await noteAvecRecalibrage(context,
-                matiere: d.matiere, current: d.note);
+                matiere: d.matiere,
+                current: d.note,
+                moyenneClasse: d.moyenneClasse);
             if (n != null) {
               d.note = n < 0 ? null : n;
               m.updateDs(d);
@@ -572,8 +579,8 @@ class _Event {
         devoir = null,
         evenement = null,
         oral = null;
-  _Event.devoir(Devoir d)
-      : date = d.dateRendu,
+  _Event.devoir(Devoir d, {DateTime? dateAffichage})
+      : date = dateAffichage ?? d.dateRendu,
         matiere = d.matiere,
         colle = null,
         ds = null,

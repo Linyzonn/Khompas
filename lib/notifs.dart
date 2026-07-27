@@ -120,7 +120,7 @@ class Notifs {
             '${frHeure(c.start)}'
             '${c.salle.isEmpty ? '' : ' · salle ${c.salle}'}'
             '${c.kholleur.isEmpty ? '' : ' · ${c.kholleur}'}'
-            '${c.programme.isEmpty ? '' : '\n📋 ${c.programme}'}',
+            '${c.programme.trim().isEmpty ? '\n⚠ Programme manquant — colle-le dans l\'app' : '\n📋 ${c.programme}'}',
           );
         }
         for (final o in m.oraux) {
@@ -144,6 +144,17 @@ class Notifs {
             '${d.titre}${d.remarque.isEmpty ? '' : ' · ${d.remarque}'}',
           );
         }
+      }
+
+      // Jalons critiques (🚨 SCEI, MCOT…) : toujours notifies la veille,
+      // quels que soient les sous-reglages — les rater coute une annee.
+      for (final e in m.evenements) {
+        if (!e.titre.contains('🚨') || e.date.isBefore(now)) continue;
+        await planifier(
+          e.date,
+          'Demain — ${e.titre.replaceAll('🚨 ', '')}',
+          'Ne le rate pas : vérifie l\'heure exacte sur le site du concours.',
+        );
       }
     } catch (_) {
       // Les notifs ne doivent JAMAIS faire planter l'app (plugin absent

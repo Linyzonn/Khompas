@@ -43,6 +43,14 @@ class KhompasApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6B5CEB)),
       ),
+      // Une app dont le coeur d'usage est "le soir avant de dormir" suit le
+      // theme sombre du systeme (coherent avec le discours sommeil).
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF6B5CEB), brightness: Brightness.dark),
+      ),
+      themeMode: ThemeMode.system,
       locale: const Locale('fr'),
       supportedLocales: const [Locale('fr')],
       localizationsDelegates: const [

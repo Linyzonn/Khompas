@@ -170,6 +170,8 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
   final titreCtl = TextEditingController(text: initial?.titre ?? 'DS');
   var date = initial?.date ?? DateTime.now().add(const Duration(days: 3));
   var coeff = initial?.coeff ?? 1.0;
+  final moyClasseCtl = TextEditingController(
+      text: initial?.moyenneClasse?.toString() ?? '');
 
   return showDialog<Ds>(
     context: context,
@@ -236,6 +238,17 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
                 ),
               ],
             ),
+            TextField(
+              controller: moyClasseCtl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Moyenne de la classe (facultatif)',
+                helperText:
+                    'C\'est elle qui dit si une note est bonne — un 9 peut être au-dessus de la barre.',
+                helperMaxLines: 2,
+              ),
+            ),
           ],
         ),
         actions: [
@@ -244,11 +257,17 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
             onPressed: () {
               if (matiereCtl.text.trim().isEmpty) return;
               final d = initial ?? Ds(matiere: '', date: date);
+              final moyClasse = double.tryParse(
+                  moyClasseCtl.text.replaceAll(',', '.'));
               d
                 ..matiere = normaliseMatiere(matiereCtl.text)
                 ..titre = titreCtl.text.trim().isEmpty ? 'DS' : titreCtl.text.trim()
                 ..date = DateTime(date.year, date.month, date.day)
-                ..coeff = coeff;
+                ..coeff = coeff
+                ..moyenneClasse =
+                    (moyClasse != null && moyClasse > 0 && moyClasse <= 20)
+                        ? moyClasse
+                        : null;
               Navigator.pop(context, d);
             },
             child: const Text('Enregistrer'),
@@ -528,14 +547,17 @@ Future<double?> noteDialog(BuildContext context, {double? current}) async {
   );
 }
 
-/// Saisie de note + RECALIBRAGE : une mauvaise note (< 8) est le meilleur
-/// signal que des chapitres sont moins maitrises qu'on ne le pensait.
-/// On propose alors de les re-marquer fragiles (maitrise plafonnee a 2,
-/// revision espacee reprogrammee des demain) — sans jamais culpabiliser.
+/// Saisie de note + RECALIBRAGE : une mauvaise note est le meilleur signal
+/// que des chapitres sont moins maitrises qu'on ne le pensait. Le seuil est
+/// RELATIF quand la moyenne de classe est connue (en prepa, un 9 peut etre
+/// au-dessus de la barre ; un 7 avec classe a 6 n'a rien d'alarmant),
+/// absolu (< 8) sinon. Jamais culpabilisant.
 Future<double?> noteAvecRecalibrage(BuildContext context,
-    {required String matiere, double? current}) async {
+    {required String matiere, double? current, double? moyenneClasse}) async {
   final note = await noteDialog(context, current: current);
-  if (note == null || note < 0 || note >= 8) return note;
+  if (note == null || note < 0) return note;
+  final seuil = moyenneClasse ?? 8;
+  if (note >= seuil) return note;
   if (!context.mounted) return note;
 
   final m = AppModel.instance;

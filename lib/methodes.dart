@@ -26,7 +26,8 @@ String consigneOral(String epreuve) {
   if (e.contains('manip') || e.contains('tp')) {
     return 'Refais mentalement un protocole type : matériel, montage, mesures, incertitudes. Verbalise chaque étape comme devant l\'examinateur.';
   }
-  return consigneDe(epreuve, 'oral');
+  // La moitie de la prepa aux oraux se fait en binome — on le rappelle.
+  return '${consigneDe(epreuve, 'oral')} Encore mieux à deux : l\'un au tableau, l\'autre joue l\'examinateur (20 min chacun, questions incluses).';
 }
 
 String _categorie(String matiere) {

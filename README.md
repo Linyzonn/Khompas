@@ -2,7 +2,18 @@
 
 Le manque que toutes les prépas connaissent : un outil qui comprend VRAIMENT le fonctionnement d'une CPGE — colloscope, khôlles, programmes de colles, DS du samedi — et qui t'aide à décider quoi travailler chaque soir.
 
-## ✨ Fonctionnalités (bêta 0.12)
+## ✨ Fonctionnalités (bêta 0.14)
+
+- 📋 **Programmes de colles partagés** : UN élève colle le programme de la semaine → toute la classe le reçoit, attaché à ses khôlles. Bouton « coller » sur la prochaine khôlle, rappel à J-3 si le programme manque.
+- 🎤 **Post-mortem de khôlle** : en sortant d'une colle, 30 secondes pour la note, une erreur au cahier, et « ce qui est tombé » (ce qui tombe en colle annonce le DS).
+- 📊 **Moyenne de classe sur les DS** (facultative) : c'est elle qui dit si une note est bonne — l'app compare à la classe, jamais de rang, jamais de rouge.
+- ☀️ **Mode week-end / vacances** : jour sans cours = « Aujourd'hui, tu as… », budgets jusqu'à la journée entière, 4 matières, et les DM de vacances étalés à cadence annoncée.
+- 📥 **Le travail imposé est la tâche** : « Avance DM 3 (exos 1 à 4) », cochable, avec « rendu ? » à la clé.
+- 📜 **Annales réalistes** : l'épreuve entière (3-4 h) le week-end, une partie chrono en semaine, et la correction active en priorité le lendemain d'une annale.
+- 🧭 **Fil de rentrée** : à la première ouverture, trois étapes guidées — colloscope → programme officiel → emploi du temps.
+- 🌙 **Mode sombre** (suit le réglage du téléphone/PC) et heure limite de sommeil désormais opérante même après minuit.
+- 🎓 **2e année** : écran « je passe en 2e année », jalons TIPE/SCEI à confirmer (notifiés la veille), planning d'oraux proposé automatiquement après les écrits.
+- 🔐 **Serveur blindé** : limites anti-abus, photos de colloscope auto-supprimées après ~4 mois, suppression de classe par son créateur, détection « ton compte a plus récent » à l'ouverture.
 
 - 🧭 **Agenda repensé** : les 7 prochains jours en colonnes (cours, khôlles, DS, DM, oraux), les échéances les plus importantes sur le côté, et l'import du colloscope en une carte compacte.
 - 💻 **Vraie interface PC** : navigation en rail latéral sur grand écran (fini la barre du bas coupée par la barre des tâches), plus les colonnes du cockpit.

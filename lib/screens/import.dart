@@ -150,12 +150,15 @@ class _ImportScreenState extends State<ImportScreen> {
     try {
       _setBusy('Création du code de classe…');
       final api = ApiKhompas(m.serverUrl);
-      final code = await api.creerClasse();
+      final (code, gestion) = await api.creerClasse();
       for (var i = 0; i < pieces.length; i++) {
         _setBusy('Envoi du fichier ${i + 1}/${pieces.length}…');
         await api.envoyerPhoto(code, i, pieces[i].bytes, pdf: pieces[i].pdf);
       }
       m.setCodeClasse(code);
+      // Le code de GESTION reste chez le createur : il permet de supprimer
+      // la classe du serveur (Reglages).
+      if (gestion.isNotEmpty) m.setGestionClasse(gestion);
       m.setProfil(filiere: m.filiere, groupe: groupe);
       codeCtl.text = code;
       _clearBusy();
@@ -410,6 +413,10 @@ class _ImportScreenState extends State<ImportScreen> {
           const SizedBox(height: 20),
           Text('Photos ou PDF du colloscope',
               style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Envoyées à un serveur, les photos y sont stockées ~4 mois pour ta classe puis supprimées automatiquement (suppression anticipée possible par le créateur du code, dans Réglages).',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),
+          ),
           const SizedBox(height: 8),
           Row(
             children: [

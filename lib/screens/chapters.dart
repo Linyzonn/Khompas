@@ -287,18 +287,20 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 if (c.entame && c.etape == 0)
                   const Text('⏳', style: TextStyle(fontSize: 12)),
                 if (due) const Text('🔁', style: TextStyle(fontSize: 12)),
+                // 4 pastilles pour l'echelle 0-4 : maitrise 0 = RIEN de
+                // rempli (avant, "jamais consolidé" affichait deja 1 point).
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (var i = 0; i < 5; i++)
+                    for (var i = 0; i < 4; i++)
                       Padding(
                         padding: const EdgeInsets.only(right: 2),
                         child: Icon(
-                          i <= c.maitrise
+                          i < c.maitrise
                               ? Icons.circle
                               : Icons.circle_outlined,
                           size: 9,
-                          color: i <= c.maitrise
+                          color: i < c.maitrise
                               ? _couleurMaitrise(c.maitrise)
                               : Colors.grey.withOpacity(0.5),
                         ),
@@ -384,21 +386,23 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    for (var i = 0; i < 5; i++)
+                    // Tap sur la pastille i = maitrise i+1 ; tap sur la
+                    // premiere deja seule remplie = retour a 0.
+                    for (var i = 0; i < 4; i++)
                       InkWell(
                         onTap: () {
-                          c.maitrise = i;
+                          c.maitrise = (i + 1 == c.maitrise) ? 0 : i + 1;
                           m.updateChapitre(c);
                           setSheet(() {});
                         },
                         child: Padding(
                           padding: const EdgeInsets.all(4),
                           child: Icon(
-                            i <= c.maitrise
+                            i < c.maitrise
                                 ? Icons.circle
                                 : Icons.circle_outlined,
                             size: 20,
-                            color: i <= c.maitrise
+                            color: i < c.maitrise
                                 ? _couleurMaitrise(c.maitrise)
                                 : Colors.grey,
                           ),
@@ -411,6 +415,24 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                // La porte d'entree MANUELLE de la repetition espacee : sans
+                // EDT rempli, c'etait impossible d'y entrer.
+                OutlinedButton.icon(
+                  icon: const Text('🔁', style: TextStyle(fontSize: 14)),
+                  label: Text(
+                      c.prochaineRevision == null
+                          ? 'Vu aujourd\'hui → réviser demain (répétition espacée)'
+                          : 'Revoir dès demain (réinitialise l\'espacement)',
+                      style: const TextStyle(fontSize: 12.5)),
+                  onPressed: () {
+                    m.demarrerEspacement(c.id);
+                    setSheet(() {});
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text(
+                            'C\'est parti 🔁 Rappel demain, puis à intervalles croissants.')));
+                  },
+                ),
+                const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerRight,
                   child: FilledButton(
