@@ -28,7 +28,7 @@ class Notifs {
       } catch (_) {}
     }
     await _plugin.initialize(
-      const InitializationSettings(
+      settings: const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(
           // La permission est demandee explicitement au moment ou
@@ -103,11 +103,11 @@ class Notifs {
         final quand = veilleDe(evt);
         if (quand == null || id > 60) return; // iOS plafonne a 64 en attente
         await _plugin.zonedSchedule(
-          id++,
-          titre,
-          corps,
-          quand,
-          _details,
+          id: id++,
+          title: titre,
+          body: corps,
+          scheduledDate: quand,
+          notificationDetails: _details,
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         );
       }
