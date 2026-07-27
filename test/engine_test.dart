@@ -37,8 +37,10 @@ void main() {
   // ---------- Echeances ----------
 
   test('khôlle imminente : la matière passe en tête avec la bonne raison', () {
+    // 26 h : TOUJOURS demain, quelle que soit l'heure du test (20 h pouvait
+    // retomber le meme jour pour un test lance avant 4 h du matin).
     m.colles.add(Colle(
-        matiere: 'Maths', start: DateTime.now().add(const Duration(hours: 20))));
+        matiere: 'Maths', start: DateTime.now().add(const Duration(hours: 26))));
     m.chapitres
         .add(Chapitre(matiere: 'Anglais', nom: 'Vocab', etape: 1, maitrise: 2));
     final s = suggere(m, 120);
@@ -272,8 +274,10 @@ void main() {
     m.annales.add(Annale(
         concours: 'CCINP', matiere: 'Physique-Chimie', annee: 2023,
         fait: true));
+    // Budget de soir de semaine -> c'est la version "une PARTIE" qui sort
+    // (l'epreuve entiere est reservee aux gros budgets — teste plus bas).
     final s = suggere(m, 120);
-    expect(s.first.titre, contains('Annale CCINP 2024'));
+    expect(s.first.titre, contains('CCINP 2024'));
     expect(s.first.matiere, 'Maths');
   });
 
