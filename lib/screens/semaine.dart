@@ -3,23 +3,24 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 
-/// Colonnes-jours partagees entre le tableau de bord (« Ma semaine ») et
-/// l'Agenda (les 7 prochains jours) : EDT reel, evenements ⭐, khôlles 🎤,
-/// DS 📝, DM 📥, oraux 🎓.
+/// Colonnes-jours compactes (blocs teintes) : la carte « Ma semaine » du
+/// tableau de bord, et l'Agenda sur TELEPHONE. Sur PC, l'Agenda utilise la
+/// vraie grille horaire (grille_semaine.dart).
 ///
-/// Sur grand ecran les colonnes S'ETIRENT pour remplir toute la largeur
-/// disponible (grille de calendrier, blocs teintes) ; sur petit ecran on
-/// retombe sur un defilement horizontal a largeur fixe.
+/// [etire] est decide par l'APPELANT (pas de LayoutBuilder ici : ce widget
+/// vit dans une carte IntrinsicHeight, qui ne supporte pas LayoutBuilder).
 class VueSemaineColonnes extends StatelessWidget {
   final DateTime debut;
   final int jours;
-  // Hauteur minimale d'une colonne (l'Agenda en veut une grande, la carte
-  // « Ma semaine » du tableau de bord une compacte).
+  // true = les colonnes remplissent la largeur (Expanded) ; false = scroll
+  // horizontal a largeur fixe.
+  final bool etire;
   final double hauteurMin;
   const VueSemaineColonnes({
     super.key,
     required this.debut,
     this.jours = 7,
+    this.etire = false,
     this.hauteurMin = 120,
   });
 
@@ -27,39 +28,33 @@ class VueSemaineColonnes extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = AppModel.instance;
     final now = DateTime.now();
-    return LayoutBuilder(
-      builder: (context, contraintes) {
-        // Assez de place pour ~130 px par jour ? On etire. Sinon : scroll.
-        final etire = contraintes.maxWidth >= jours * 130;
-        if (etire) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (var i = 0; i < jours; i++)
-                Expanded(
-                  child: _colonneJour(
-                      context, m, debut.add(Duration(days: i)), now,
-                      etire: true, dernier: i == jours - 1),
-                ),
-            ],
-          );
-        }
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (var i = 0; i < jours; i++)
-                SizedBox(
-                  width: 128,
-                  child: _colonneJour(
-                      context, m, debut.add(Duration(days: i)), now,
-                      etire: false, dernier: i == jours - 1),
-                ),
-            ],
-          ),
-        );
-      },
+    if (etire) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < jours; i++)
+            Expanded(
+              child: _colonneJour(
+                  context, m, debut.add(Duration(days: i)), now,
+                  etire: true, dernier: i == jours - 1),
+            ),
+        ],
+      );
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < jours; i++)
+            SizedBox(
+              width: 128,
+              child: _colonneJour(
+                  context, m, debut.add(Duration(days: i)), now,
+                  etire: false, dernier: i == jours - 1),
+            ),
+        ],
+      ),
     );
   }
 

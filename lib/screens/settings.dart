@@ -831,7 +831,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Khompas — bêta 0.12'),
+            title: Text('Khompas — bêta 0.13'),
             subtitle: Text(
                 'Le compagnon de ta prépa. Tes données restent sur ton téléphone.'),
           ),

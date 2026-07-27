@@ -29,7 +29,20 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   void initState() {
     super.initState();
+    // L'onglet vit dans un IndexedStack : il doit ecouter le modele
+    // lui-meme pour que chips et blocs se rafraichissent immediatement.
+    AppModel.instance.addListener(_surModele);
     WidgetsBinding.instance.addPostFrameCallback((_) => _proposerRecap());
+  }
+
+  @override
+  void dispose() {
+    AppModel.instance.removeListener(_surModele);
+    super.dispose();
+  }
+
+  void _surModele() {
+    if (mounted) setState(() {});
   }
 
   /// A l'ouverture : si des cours d'aujourd'hui sont deja termines sans
@@ -176,10 +189,11 @@ class _TodayScreenState extends State<TodayScreen> {
       _blocHeures(minSem),
     ];
     final centre = _heroSoir(context, suggestions, minSem, budget);
-    final vueSemaine = _blocVueSemaine(context, m, now);
 
     return LayoutBuilder(
       builder: (context, contraintes) {
+        final vueSemaine = _blocVueSemaine(
+            context, m, now, contraintes.maxWidth >= 1000);
         if (contraintes.maxWidth >= 900) {
           // ---- Cockpit large : gauche / CENTRE / droite + semaine dessous ----
           return SingleChildScrollView(
@@ -549,12 +563,15 @@ class _TodayScreenState extends State<TodayScreen> {
 
   // ---------- Vue semaine ----------
 
-  Widget _blocVueSemaine(BuildContext context, AppModel m, DateTime now) {
+  Widget _blocVueSemaine(
+      BuildContext context, AppModel m, DateTime now, bool etire) {
+    // [etire] vient du LayoutBuilder de l'ecran : PAS de LayoutBuilder dans
+    // la carte (IntrinsicHeight ne le supporte pas -> carte coupee).
     return _carte(
       accent: Colors.blueGrey,
       icone: Icons.view_week_outlined,
       titre: 'Ma semaine',
-      enfant: VueSemaineColonnes(debut: mondayOf(now)),
+      enfant: VueSemaineColonnes(debut: mondayOf(now), etire: etire),
     );
   }
 

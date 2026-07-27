@@ -96,9 +96,12 @@ class _RootScaffoldState extends State<RootScaffold> {
       builder: (context, _) => LayoutBuilder(
         builder: (context, contraintes) {
           final large = contraintes.maxWidth >= 900;
+          // PAS de const ici : des enfants const seraient consideres
+          // identiques a chaque rebuild et ne se rafraichiraient JAMAIS
+          // apres un changement de donnees (chips durée/méthode figées...).
           final corps = IndexedStack(
             index: tab,
-            children: const [
+            children: [
               TodayScreen(),
               AgendaScreen(),
               GradesScreen(),

@@ -10,6 +10,7 @@ import '../ics.dart';
 import '../models.dart';
 import '../store.dart';
 import 'dialogs.dart';
+import 'grille_semaine.dart';
 import 'import.dart';
 import 'import_ds.dart';
 import 'oraux.dart';
@@ -47,25 +48,12 @@ class AgendaScreen extends StatelessWidget {
     final aujourdHui = DateTime(
         DateTime.now().year, DateTime.now().month, DateTime.now().day);
 
-    // Le corps principal : import (si besoin), 7 prochains jours, puis la
-    // liste par semaine.
-    final principal = <Widget>[
-      if (m.colles.isEmpty) _carteImport(context),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-        child: Text('Les 7 prochains jours',
-            style: Theme.of(context)
-                .textTheme
-                .titleSmall
-                ?.copyWith(color: Colors.grey.shade600)),
-      ),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: VueSemaineColonnes(debut: aujourdHui, hauteurMin: 240),
-      ),
+    // Liste des evenements groupes par semaine (partagee entre les deux
+    // dispositions).
+    final listeSemaines = <Widget>[
       if (events.isEmpty)
         Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           child: Text(
             'Aucune khôlle, DS ou DM enregistré pour le moment — le ➕ en bas à droite permet d\'ajouter à la main.',
             textAlign: TextAlign.center,
@@ -88,41 +76,68 @@ class AgendaScreen extends StatelessWidget {
         ],
     ];
 
+    Widget titre7Jours() => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+          child: Text('Les 7 prochains jours',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: Colors.grey.shade600)),
+        );
+
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, contraintes) {
           if (contraintes.maxWidth >= 900) {
-            // Grand ecran : les echeances importantes SUR LE COTE.
+            // ---- Grand ecran : GRILLE HORAIRE pleine hauteur a gauche,
+            // echeances + liste par semaine dans le panneau de droite. ----
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.only(bottom: 90),
-                    children: principal,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (m.colles.isEmpty) _carteImport(context),
+                      titre7Jours(),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 0, 6, 12),
+                          child: GrilleSemaine(debut: aujourdHui),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 SizedBox(
-                  width: 300,
+                  width: 320,
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(4, 14, 16, 90),
-                    children: [_blocEcheances(context, m)],
+                    children: [
+                      _blocEcheances(context, m),
+                      const SizedBox(height: 6),
+                      ...listeSemaines,
+                    ],
                   ),
                 ),
               ],
             );
           }
-          // Telephone : les echeances juste apres les colonnes des 7 jours.
-          final enTete = m.colles.isEmpty ? 3 : 2;
+          // ---- Telephone : colonnes compactes + echeances + liste. ----
           return ListView(
             padding: const EdgeInsets.only(bottom: 90),
             children: [
-              ...principal.take(enTete),
+              if (m.colles.isEmpty) _carteImport(context),
+              titre7Jours(),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: VueSemaineColonnes(debut: aujourdHui),
+              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
                 child: _blocEcheances(context, m),
               ),
-              ...principal.skip(enTete),
+              ...listeSemaines,
             ],
           );
         },
