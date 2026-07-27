@@ -61,7 +61,7 @@ class AgendaScreen extends StatelessWidget {
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: VueSemaineColonnes(debut: aujourdHui, largeurColonne: 118),
+        child: VueSemaineColonnes(debut: aujourdHui, hauteurMin: 240),
       ),
       if (events.isEmpty)
         Padding(
@@ -294,9 +294,9 @@ class AgendaScreen extends StatelessWidget {
   }
 
   void _menuAjout(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
+    feuilleAdaptative<void>(
+      context,
+      (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

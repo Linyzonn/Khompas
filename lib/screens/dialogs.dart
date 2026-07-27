@@ -4,6 +4,28 @@ import '../models.dart';
 import '../store.dart';
 import 'erreurs.dart';
 
+/// Sur telephone : bottom sheet classique. Sur GRAND ECRAN : boite de
+/// dialogue centree — une sheet collee en bas de fenetre passe sous la
+/// barre des taches Windows des que la fenetre la chevauche.
+Future<T?> feuilleAdaptative<T>(
+    BuildContext context, Widget Function(BuildContext) builder) {
+  if (MediaQuery.of(context).size.width >= 900) {
+    return showDialog<T>(
+      context: context,
+      builder: (context) => Dialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: builder(context),
+        ),
+      ),
+    );
+  }
+  return showModalBottomSheet<T>(
+      context: context, isScrollControlled: true, builder: builder);
+}
+
 /// "45 min", "1 h", "1 h 30"...
 String _labelDuree(int min) {
   if (min < 60) return '$min min';
@@ -523,10 +545,9 @@ Future<double?> noteAvecRecalibrage(BuildContext context,
   if (chs.isEmpty) return note;
 
   final choisis = <String>{};
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    builder: (context) => StatefulBuilder(
+  await feuilleAdaptative<void>(
+    context,
+    (context) => StatefulBuilder(
       builder: (context, setState) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),

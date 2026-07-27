@@ -42,9 +42,9 @@ class _TodayScreenState extends State<TodayScreen> {
     final sansBilan = m.creneauxSansBilan(DateTime.now());
     if (sansBilan.isEmpty) return;
     _recapPropose = true;
-    final choisi = await showModalBottomSheet<Routine>(
-      context: context,
-      builder: (context) => SafeArea(
+    final choisi = await feuilleAdaptative<Routine>(
+      context,
+      (context) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -852,10 +852,9 @@ class _TodayScreenState extends State<TodayScreen> {
 
   Future<void> _bilanSheet(Routine r) async {
     final m = AppModel.instance;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
+    await feuilleAdaptative<void>(
+      context,
+      (context) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -978,10 +977,9 @@ class _TodayScreenState extends State<TodayScreen> {
   Future<void> _choisirChapitre(Routine r) async {
     final m = AppModel.instance;
     final chapitres = m.chapitres.where((c) => c.matiere == r.matiere).toList();
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
+    await feuilleAdaptative<void>(
+      context,
+      (context) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -1226,9 +1224,9 @@ class _TodayScreenState extends State<TodayScreen> {
   /// l'ecart avant la prochaine revision (difficile -> vite, facile -> loin).
   Future<void> _evaluerRappel(Suggestion s) async {
     final m = AppModel.instance;
-    final verdict = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => SafeArea(
+    final verdict = await feuilleAdaptative<String>(
+      context,
+      (context) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

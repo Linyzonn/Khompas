@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import 'dialogs.dart';
 
 /// Editeur d'emploi du temps en TABLEAU : 6 colonnes (lundi -> samedi),
 /// on tape une case pour poser un bloc depuis une palette pre-remplie
@@ -218,10 +219,9 @@ class _EdtScreenState extends State<EdtScreen> {
   // ---------- Creation depuis la palette ----------
 
   Future<void> _creer(int jour, int heure) async {
-    final choix = await showModalBottomSheet<(String, bool)>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
+    final choix = await feuilleAdaptative<(String, bool)>(
+      context,
+      (context) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

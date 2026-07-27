@@ -3,39 +3,69 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 
-/// Colonnes-jours partagees entre le tableau de bord (« Ma semaine »,
-/// lundi -> dimanche) et l'Agenda (les 7 PROCHAINS jours) : EDT reel,
-/// evenements ⭐, khôlles 🎤, DS 📝, DM 📥, oraux 🎓 — tries par heure,
-/// aujourd'hui surligne, periodes sans cours grisees 🏖.
+/// Colonnes-jours partagees entre le tableau de bord (« Ma semaine ») et
+/// l'Agenda (les 7 prochains jours) : EDT reel, evenements ⭐, khôlles 🎤,
+/// DS 📝, DM 📥, oraux 🎓.
+///
+/// Sur grand ecran les colonnes S'ETIRENT pour remplir toute la largeur
+/// disponible (grille de calendrier, blocs teintes) ; sur petit ecran on
+/// retombe sur un defilement horizontal a largeur fixe.
 class VueSemaineColonnes extends StatelessWidget {
   final DateTime debut;
   final int jours;
-  final double largeurColonne;
+  // Hauteur minimale d'une colonne (l'Agenda en veut une grande, la carte
+  // « Ma semaine » du tableau de bord une compacte).
+  final double hauteurMin;
   const VueSemaineColonnes({
     super.key,
     required this.debut,
     this.jours = 7,
-    this.largeurColonne = 112,
+    this.hauteurMin = 120,
   });
 
   @override
   Widget build(BuildContext context) {
     final m = AppModel.instance;
     final now = DateTime.now();
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var i = 0; i < jours; i++)
-            _colonneJour(context, m, debut.add(Duration(days: i)), now),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, contraintes) {
+        // Assez de place pour ~130 px par jour ? On etire. Sinon : scroll.
+        final etire = contraintes.maxWidth >= jours * 130;
+        if (etire) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < jours; i++)
+                Expanded(
+                  child: _colonneJour(
+                      context, m, debut.add(Duration(days: i)), now,
+                      etire: true, dernier: i == jours - 1),
+                ),
+            ],
+          );
+        }
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < jours; i++)
+                SizedBox(
+                  width: 128,
+                  child: _colonneJour(
+                      context, m, debut.add(Duration(days: i)), now,
+                      etire: false, dernier: i == jours - 1),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 
   Widget _colonneJour(
-      BuildContext context, AppModel m, DateTime d, DateTime now) {
+      BuildContext context, AppModel m, DateTime d, DateTime now,
+      {required bool etire, required bool dernier}) {
     final estAujourdhui =
         d.year == now.year && d.month == now.month && d.day == now.day;
     final plage = m.plageSansCours(d);
@@ -104,55 +134,104 @@ class VueSemaineColonnes extends StatelessWidget {
       }
     }
     items.sort((a, b) => a.$1.compareTo(b.$1));
+
     final scheme = Theme.of(context).colorScheme;
+    final maxItems = etire ? 10 : 7;
+    final jourLong = frJour(d);
+    final labelJour = etire
+        ? '${jourLong[0].toUpperCase()}${jourLong.substring(1)}'
+        : '${jourLong[0].toUpperCase()}${jourLong.substring(1, 3)}';
+
     return Container(
-      width: largeurColonne,
-      margin: const EdgeInsets.only(right: 6),
-      padding: const EdgeInsets.all(6),
+      margin: EdgeInsets.only(right: dernier ? 0 : 8),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+      constraints: BoxConstraints(minHeight: hauteurMin),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         color: estAujourdhui
-            ? scheme.primary.withOpacity(0.08)
+            ? scheme.primary.withOpacity(0.07)
             : plage != null
-                ? Colors.grey.withOpacity(0.08)
-                : null,
-        border: estAujourdhui
-            ? Border.all(color: scheme.primary.withOpacity(0.4))
-            : null,
+                ? Colors.grey.withOpacity(0.10)
+                : Colors.grey.withOpacity(0.04),
+        border: Border.all(
+          color: estAujourdhui
+              ? scheme.primary.withOpacity(0.55)
+              : Colors.grey.withOpacity(0.18),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '${frJour(d)[0].toUpperCase()}${frJour(d).substring(1, 3)} ${d.day}',
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: estAujourdhui ? scheme.primary : null),
+          // En-tete : jour + numero, badge « auj. » le jour meme.
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$labelJour ${d.day}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: etire ? 13.5 : 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: estAujourdhui
+                          ? scheme.primary
+                          : Colors.grey.shade700),
+                ),
+              ),
+              if (estAujourdhui)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: scheme.primary,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text('auj.',
+                      style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
+                ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           if (plage != null)
             Text('🏖 ${plage.titre}',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade600))
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600))
           else if (items.isEmpty)
-            Text('—', style: TextStyle(color: Colors.grey.shade400)),
-          for (final it in items.take(7))
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 1),
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('—',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+            ),
+          // Chaque element = un petit bloc teinte a liseret colore (bien
+          // plus lisible que des lignes de texte nues).
+          for (final it in items.take(maxItems))
+            Container(
+              margin: const EdgeInsets.only(bottom: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: it.$3.withOpacity(it.$4 ? 0.16 : 0.09),
+                borderRadius: BorderRadius.circular(6),
+                border: Border(
+                    left: BorderSide(color: it.$3, width: 3)),
+              ),
               child: Text(
                 it.$2,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                    fontSize: 10,
+                    fontSize: etire ? 11.5 : 10.5,
+                    height: 1.2,
                     color: it.$3,
-                    fontWeight: it.$4 ? FontWeight.w700 : FontWeight.w400),
+                    fontWeight: it.$4 ? FontWeight.w800 : FontWeight.w500),
               ),
             ),
-          if (items.length > 7)
-            Text('+${items.length - 7}',
+          if (items.length > maxItems)
+            Text('+${items.length - maxItems} autres',
                 style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
         ],
       ),
