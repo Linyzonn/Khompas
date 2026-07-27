@@ -148,6 +148,66 @@ const List<String> kFilieres = [
   'ECG', 'Hypokhâgne', 'Khâgne', 'Autre',
 ];
 
+/// Normalise un nom de matiere pour eviter les DOUBLONS ("Maths" vs
+/// "Mathématiques", "Francais" vs "Français"...) : chaque source (import IA,
+/// palette EDT, saisie manuelle) ecrit differemment, on canonise tout a
+/// l'entree ET au chargement (migration des donnees existantes).
+/// Les fusions risquees (LV1 -> Anglais ?) ne sont PAS automatiques :
+/// l'outil « Fusionner deux matières » des Reglages est la pour ca.
+String normaliseMatiere(String brut) {
+  final propre = brut.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (propre.isEmpty) return propre;
+  final cle = _sansAccents(propre.toLowerCase());
+  const alias = <String, String>{
+    'math': 'Maths',
+    'maths': 'Maths',
+    'mathematique': 'Maths',
+    'mathematiques': 'Maths',
+    'francais': 'Français',
+    'francais-philo': 'Français',
+    'francais-philosophie': 'Français',
+    'lettres': 'Français',
+    'anglais': 'Anglais',
+    'espagnol': 'Espagnol',
+    'allemand': 'Allemand',
+    'physique-chimie': 'Physique-Chimie',
+    'physique chimie': 'Physique-Chimie',
+    'pc': 'Physique-Chimie',
+    'physique': 'Physique',
+    'chimie': 'Chimie',
+    'si': 'SII',
+    'sii': 'SII',
+    's2i': 'SII',
+    'sciences de l\'ingenieur': 'SII',
+    'sciences industrielles': 'SII',
+    'info': 'Info',
+    'informatique': 'Info',
+    'tipe': 'TIPE',
+    'philosophie': 'Philosophie',
+    'philo': 'Philosophie',
+  };
+  final canon = alias[cle];
+  if (canon != null) return canon;
+  // Matiere inconnue : on garde la graphie mais avec une majuscule.
+  return propre[0].toUpperCase() + propre.substring(1);
+}
+
+String _sansAccents(String s) {
+  const map = {
+    'à': 'a', 'â': 'a', 'ä': 'a',
+    'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+    'î': 'i', 'ï': 'i',
+    'ô': 'o', 'ö': 'o',
+    'ù': 'u', 'û': 'u', 'ü': 'u',
+    'ç': 'c',
+  };
+  final b = StringBuffer();
+  for (final r in s.split('')) {
+    b.write(map[r] ?? r);
+  }
+  return b.toString();
+}
+
 /// Etapes de progression d'un chapitre (le workflow prepa).
 const List<String> kEtapesChapitre = [
   'pas vu', 'vu en cours', 'revu chez moi', 'exos faits', 'DS/DNS passé',
@@ -168,6 +228,9 @@ class Chapitre {
   // (double a chaque succes, se resserre en cas de difficulte).
   DateTime? prochaineRevision;
   int intervalleJours;
+  // Le prof est EN PLEIN DEDANS : une partie a ete vue en classe mais le
+  // chapitre n'est pas fini — on ne declenche ni etape ni espacement.
+  bool entame;
 
   Chapitre({
     String? id,
@@ -178,6 +241,7 @@ class Chapitre {
     this.dernierRevu,
     this.prochaineRevision,
     this.intervalleJours = 1,
+    this.entame = false,
   }) : id = id ?? _newId();
 
   Map<String, dynamic> toJson() => {
@@ -189,6 +253,7 @@ class Chapitre {
         'dernierRevu': dernierRevu?.toIso8601String(),
         'prochaineRevision': prochaineRevision?.toIso8601String(),
         'intervalleJours': intervalleJours,
+        'entame': entame,
       };
 
   static Chapitre fromJson(Map<String, dynamic> j) => Chapitre(
@@ -204,6 +269,7 @@ class Chapitre {
             ? null
             : DateTime.tryParse(j['prochaineRevision'] as String),
         intervalleJours: (j['intervalleJours'] ?? 1) as int,
+        entame: (j['entame'] ?? false) as bool,
       );
 }
 

@@ -261,7 +261,7 @@ Future<bool> ajouterErreurDialog(BuildContext context,
                 }
                 if (initial == null) {
                   m.addErreur(Erreur(
-                    matiere: matiereCtl.text.trim(),
+                    matiere: normaliseMatiere(matiereCtl.text),
                     texte: texteCtl.text.trim(),
                     type: type,
                     source: source,
@@ -269,7 +269,7 @@ Future<bool> ajouterErreurDialog(BuildContext context,
                   ));
                 } else {
                   initial
-                    ..matiere = matiereCtl.text.trim()
+                    ..matiere = normaliseMatiere(matiereCtl.text)
                     ..texte = texteCtl.text.trim()
                     ..type = type
                     ..source = source

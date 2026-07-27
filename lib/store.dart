@@ -173,8 +173,113 @@ class AppModel extends ChangeNotifier {
     } catch (_) {
       // stockage inaccessible : l'app demarre vide, sans planter
     }
+    // Migration : canonise les noms de matieres partout ("Mathématiques" et
+    // "Maths" etaient deux matieres differentes -> doublons dans toute l'UI).
+    if (_migrerMatieres()) save();
     loaded = true;
     notifyListeners();
+  }
+
+  /// Applique [normaliseMatiere] a toutes les donnees. Retourne true si
+  /// quelque chose a change. Idempotent (relance sans effet).
+  bool _migrerMatieres() {
+    var change = false;
+    String n(String s) {
+      final v = normaliseMatiere(s);
+      if (v != s) change = true;
+      return v;
+    }
+
+    for (final c in colles) {
+      c.matiere = n(c.matiere);
+    }
+    for (final d in ds) {
+      d.matiere = n(d.matiere);
+    }
+    for (final c in chapitres) {
+      c.matiere = n(c.matiere);
+    }
+    for (final r in routines) {
+      if (r.matiere.trim().isNotEmpty) r.matiere = n(r.matiere);
+    }
+    for (final d in devoirs) {
+      d.matiere = n(d.matiere);
+    }
+    for (final s in seances) {
+      s.matiere = n(s.matiere);
+    }
+    for (final b in bilans) {
+      b.matiere = n(b.matiere);
+    }
+    for (final e in evenements) {
+      if (e.matiere.trim().isNotEmpty) e.matiere = n(e.matiere);
+    }
+    for (final e in erreurs) {
+      e.matiere = n(e.matiere);
+    }
+    for (final a in annales) {
+      a.matiere = n(a.matiere);
+    }
+    // Maps par matiere : en cas de collision apres normalisation, on garde
+    // la valeur la plus haute (prio) / existante (objectif).
+    final nouveauxPrios = <String, int>{};
+    prios.forEach((k, v) {
+      final ck = n(k);
+      final actuel = nouveauxPrios[ck];
+      nouveauxPrios[ck] = actuel == null ? v : (v > actuel ? v : actuel);
+    });
+    prios = nouveauxPrios;
+    final nouveauxObj = <String, double>{};
+    objectifs.forEach((k, v) {
+      nouveauxObj.putIfAbsent(n(k), () => v);
+    });
+    objectifs = nouveauxObj;
+    return change;
+  }
+
+  /// Fusion MANUELLE de deux matieres (Reglages) : tout ce qui est en
+  /// [source] passe en [cible] — pour les cas qu'on ne peut pas deviner
+  /// (LV1 -> Anglais, un khôlleur qui ecrit "Analyse" pour "Maths"...).
+  void fusionnerMatieres(String source, String cible) {
+    if (source == cible) return;
+    for (final c in colles) {
+      if (c.matiere == source) c.matiere = cible;
+    }
+    for (final d in ds) {
+      if (d.matiere == source) d.matiere = cible;
+    }
+    for (final c in chapitres) {
+      if (c.matiere == source) c.matiere = cible;
+    }
+    for (final r in routines) {
+      if (r.matiere == source) r.matiere = cible;
+    }
+    for (final d in devoirs) {
+      if (d.matiere == source) d.matiere = cible;
+    }
+    for (final s in seances) {
+      if (s.matiere == source) s.matiere = cible;
+    }
+    for (final b in bilans) {
+      if (b.matiere == source) b.matiere = cible;
+    }
+    for (final e in evenements) {
+      if (e.matiere == source) e.matiere = cible;
+    }
+    for (final e in erreurs) {
+      if (e.matiere == source) e.matiere = cible;
+    }
+    for (final a in annales) {
+      if (a.matiere == source) a.matiere = cible;
+    }
+    final pSource = prios.remove(source);
+    if (pSource != null) {
+      final pCible = prios[cible];
+      prios[cible] = pCible == null ? pSource : (pSource > pCible ? pSource : pCible);
+    }
+    final oSource = objectifs.remove(source);
+    if (oSource != null) objectifs.putIfAbsent(cible, () => oSource);
+    _touch();
   }
 
   Map<String, dynamic> _snapshot() => {
@@ -762,9 +867,14 @@ class AppModel extends ChangeNotifier {
     return null;
   }
 
-  /// Enregistre (ou remplace) le bilan d'un creneau, et si c'est un COURS
-  /// avec un chapitre : le chapitre passe au moins en "vu en cours".
-  void setBilan(Bilan b) {
+  /// Enregistre (ou remplace) le bilan d'un creneau. Si c'est un COURS avec
+  /// un chapitre :
+  /// - [chapitreTermine] (defaut) : le chapitre passe au moins en "vu en
+  ///   cours" et la repetition espacee demarre (revision demain) ;
+  /// - chapitre PAS termine (le prof est en plein dedans) : on marque
+  ///   seulement [Chapitre.entame] — pas d'etape, pas d'espacement. Un
+  ///   chapitre a moitie vu n'est pas un chapitre vu.
+  void setBilan(Bilan b, {bool chapitreTermine = true}) {
     bilans.removeWhere((e) =>
         e.routineId == b.routineId &&
         e.jour.year == b.jour.year &&
@@ -777,16 +887,33 @@ class AppModel extends ChangeNotifier {
     if (b.chapitreId != null) {
       final i = chapitres.indexWhere((c) => c.id == b.chapitreId);
       if (i >= 0) {
-        if (chapitres[i].etape < 1) chapitres[i].etape = 1;
-        // Repetition espacee : cours vu aujourd'hui -> revision demain
-        // (la regle d'or, formalisee — le point de depart de l'espacement).
-        final demain = DateTime.now().add(const Duration(days: 1));
-        chapitres[i].prochaineRevision =
-            DateTime(demain.year, demain.month, demain.day);
-        chapitres[i].intervalleJours = 1;
+        if (chapitreTermine) {
+          chapitres[i].entame = false;
+          if (chapitres[i].etape < 1) chapitres[i].etape = 1;
+          // Repetition espacee : cours vu aujourd'hui -> revision demain
+          // (la regle d'or, formalisee — le point de depart de l'espacement).
+          final demain = DateTime.now().add(const Duration(days: 1));
+          chapitres[i].prochaineRevision =
+              DateTime(demain.year, demain.month, demain.day);
+          chapitres[i].intervalleJours = 1;
+        } else {
+          chapitres[i].entame = true;
+        }
       }
     }
     _touch();
+  }
+
+  /// Creneaux de cours (matiere renseignee) deja TERMINES aujourd'hui et
+  /// sans bilan — pour proposer le recap a l'ouverture de l'app.
+  List<Routine> creneauxSansBilan(DateTime d) {
+    final nowMin = d.hour * 60 + d.minute;
+    return routinesLe(d)
+        .where((r) =>
+            r.matiere.trim().isNotEmpty &&
+            r.debutMin + r.dureeMin <= nowMin &&
+            bilanPour(d, r.id) == null)
+        .toList();
   }
 
   /// Auto-evaluation en 1 tap apres une revision espacee ('difficile',

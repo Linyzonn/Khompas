@@ -225,7 +225,7 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
                 }
                 m.addAnnale(Annale(
                   concours: concoursCtl.text.trim(),
-                  matiere: matiereCtl.text.trim(),
+                  matiere: normaliseMatiere(matiereCtl.text),
                   annee: annee,
                 ));
                 Navigator.pop(context);

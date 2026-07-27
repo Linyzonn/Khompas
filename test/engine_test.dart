@@ -304,6 +304,73 @@ void main() {
     expect(consigneOral('TIPE'), contains('TIPE'));
   });
 
+  // ---------- Normalisation et fusion des matieres ----------
+
+  test('normaliseMatiere : plus de doublons Maths/Mathématiques, '
+      'Francais/Français…', () {
+    expect(normaliseMatiere('Mathématiques'), 'Maths');
+    expect(normaliseMatiere('  maths '), 'Maths');
+    expect(normaliseMatiere('francais'), 'Français');
+    expect(normaliseMatiere('FRANÇAIS'), 'Français');
+    expect(normaliseMatiere('physique-chimie'), 'Physique-Chimie');
+    expect(normaliseMatiere('Physique'), 'Physique'); // PAS fusionnee avec PC
+    expect(normaliseMatiere('informatique'), 'Info');
+    expect(normaliseMatiere('s2i'), 'SII');
+    // Matiere inconnue : gardee telle quelle, majuscule assuree.
+    expect(normaliseMatiere('géographie'), 'Géographie');
+    // LV1 volontairement PAS auto-fusionnee (outil manuel des Reglages).
+    expect(normaliseMatiere('LV1'), 'LV1');
+  });
+
+  test('fusionnerMatieres : tout passe de la source vers la cible', () {
+    m.colles.add(Colle(matiere: 'LV1', start: DateTime.now()));
+    m.seances.add(
+        Seance(matiere: 'LV1', date: DateTime.now(), minutes: 30));
+    m.chapitres
+        .add(Chapitre(matiere: 'Anglais', nom: 'Vocab', etape: 1));
+    m.prios['LV1'] = 3;
+    m.prios['Anglais'] = 1;
+    m.fusionnerMatieres('LV1', 'Anglais');
+    expect(m.colles.first.matiere, 'Anglais');
+    expect(m.seances.first.matiere, 'Anglais');
+    expect(m.prios.containsKey('LV1'), isFalse);
+    expect(m.prios['Anglais'], 3); // la prio la plus haute gagne
+    expect(m.matieres, ['Anglais']);
+  });
+
+  // ---------- Bilan : chapitre fini vs en plein dedans ----------
+
+  test('setBilan chapitre NON termine : entame seulement, ni étape ni '
+      'révision espacée', () {
+    final c = Chapitre(matiere: 'Maths', nom: 'Séries', etape: 0);
+    m.chapitres.add(c);
+    m.setBilan(
+      Bilan(
+          jour: DateTime.now(),
+          routineId: 'r1',
+          matiere: 'Maths',
+          type: 'Cours',
+          chapitreId: c.id),
+      chapitreTermine: false,
+    );
+    expect(c.entame, isTrue);
+    expect(c.etape, 0);
+    expect(c.prochaineRevision, isNull);
+    // Le prof finit le chapitre au cours suivant :
+    m.setBilan(
+      Bilan(
+          jour: DateTime.now().add(const Duration(days: 2)),
+          routineId: 'r1',
+          matiere: 'Maths',
+          type: 'Cours',
+          chapitreId: c.id),
+    );
+    expect(c.entame, isFalse);
+    expect(c.etape, 1);
+    expect(c.prochaineRevision, isNotNull);
+    expect(c.intervalleJours, 1);
+  });
+
   // ---------- Parseur DS (tolerance + coefficient) ----------
 
   test('parseDsExtraction : fences markdown, texte autour, coeff facultatif',

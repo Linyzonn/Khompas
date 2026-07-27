@@ -125,7 +125,7 @@ Future<Colle?> editColleDialog(BuildContext context, {Colle? initial}) async {
               final start = DateTime(date.year, date.month, date.day, time.hour, time.minute);
               final c = initial ?? Colle(matiere: '', start: start, custom: true);
               c
-                ..matiere = matiereCtl.text.trim()
+                ..matiere = normaliseMatiere(matiereCtl.text)
                 ..kholleur = kholleurCtl.text.trim()
                 ..salle = salleCtl.text.trim()
                 ..start = start
@@ -223,7 +223,7 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
               if (matiereCtl.text.trim().isEmpty) return;
               final d = initial ?? Ds(matiere: '', date: date);
               d
-                ..matiere = matiereCtl.text.trim()
+                ..matiere = normaliseMatiere(matiereCtl.text)
                 ..titre = titreCtl.text.trim().isEmpty ? 'DS' : titreCtl.text.trim()
                 ..date = DateTime(date.year, date.month, date.day)
                 ..coeff = coeff;
@@ -237,10 +237,13 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
   );
 }
 
-/// Editeur de devoir a rendre (DM / DNS).
-Future<Devoir?> editDevoirDialog(BuildContext context, {Devoir? initial}) async {
+/// Editeur de devoir a rendre (DM / DNS / exos donnes en cours).
+/// [matiere] pre-remplit la matiere (ex. depuis le recap d'un creneau).
+Future<Devoir?> editDevoirDialog(BuildContext context,
+    {Devoir? initial, String? matiere}) async {
   final m = AppModel.instance;
-  final matiereCtl = TextEditingController(text: initial?.matiere ?? '');
+  final matiereCtl =
+      TextEditingController(text: initial?.matiere ?? matiere ?? '');
   final titreCtl = TextEditingController(text: initial?.titre ?? 'DM');
   final remCtl = TextEditingController(text: initial?.remarque ?? '');
   var date = initial?.dateRendu ?? DateTime.now().add(const Duration(days: 7));
@@ -276,7 +279,20 @@ Future<Devoir?> editDevoirDialog(BuildContext context, {Devoir? initial}) async 
               TextField(
                 controller: titreCtl,
                 decoration:
-                    const InputDecoration(labelText: 'Titre (DM 3, DNS…)'),
+                    const InputDecoration(labelText: 'Titre (DM 3, DNS, Exos…)'),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final t in const ['DM', 'DNS', 'Exos'])
+                      ActionChip(
+                        label: Text(t, style: const TextStyle(fontSize: 12)),
+                        onPressed: () => setState(() => titreCtl.text = t),
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
@@ -311,7 +327,7 @@ Future<Devoir?> editDevoirDialog(BuildContext context, {Devoir? initial}) async 
               if (matiereCtl.text.trim().isEmpty) return;
               final d = initial ?? Devoir(matiere: '', dateRendu: date);
               d
-                ..matiere = matiereCtl.text.trim()
+                ..matiere = normaliseMatiere(matiereCtl.text)
                 ..titre =
                     titreCtl.text.trim().isEmpty ? 'DM' : titreCtl.text.trim()
                 ..dateRendu = DateTime(date.year, date.month, date.day)
@@ -444,7 +460,7 @@ Future<Evenement?> editEvenementDialog(BuildContext context,
                   Evenement(titre: '', date: date, debutMin: 0);
               e
                 ..titre = titreCtl.text.trim()
-                ..matiere = matiereCtl.text.trim()
+                ..matiere = normaliseMatiere(matiereCtl.text)
                 ..date = DateTime(date.year, date.month, date.day)
                 ..debutMin = time.hour * 60 + time.minute
                 ..dureeMin = duree;

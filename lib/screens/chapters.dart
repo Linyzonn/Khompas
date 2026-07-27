@@ -99,6 +99,15 @@ class ChaptersScreen extends StatelessWidget {
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (c.entame && c.etape == 0)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Text(
+                      '⏳ en cours en classe — les étapes attendront la fin du chapitre',
+                      style: TextStyle(
+                          fontSize: 10.5, color: Colors.orange.shade800),
+                    ),
+                  ),
                 // Etape de progression : le workflow prepa.
                 Wrap(
                   spacing: 4,
@@ -228,7 +237,7 @@ class ChaptersScreen extends StatelessWidget {
               onPressed: () {
                 if (matiereCtl.text.trim().isEmpty || nomCtl.text.trim().isEmpty) return;
                 m.addChapitre(Chapitre(
-                  matiere: matiereCtl.text.trim(),
+                  matiere: normaliseMatiere(matiereCtl.text),
                   nom: nomCtl.text.trim(),
                   // Ajoute a la main = generalement un chapitre en cours.
                   etape: 1,

@@ -13,6 +13,7 @@ import 'dialogs.dart';
 import 'import.dart';
 import 'import_ds.dart';
 import 'oraux.dart';
+import 'semaine.dart';
 
 /// Onglet "Agenda" : toutes les khôlles et DS, groupes par semaine.
 class AgendaScreen extends StatelessWidget {
@@ -43,53 +44,213 @@ class AgendaScreen extends StatelessWidget {
     }
     final lundis = semaines.keys.toList()..sort();
 
-    return Scaffold(
-      body: events.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.calendar_month, size: 56, color: Colors.grey),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Ton agenda est vide.\nImporte ton colloscope en une photo :',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 14),
-                    FilledButton.icon(
-                      icon: const Icon(Icons.photo_camera),
-                      label: const Text('Importer mon colloscope'),
-                      onPressed: () => _openImport(context),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : ListView(
-              padding: const EdgeInsets.only(bottom: 90),
-              children: [
-                for (final lundi in lundis) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
-                    child: Text(
-                      'Semaine du ${frDateCourte(lundi)}',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleSmall
-                          ?.copyWith(color: Colors.grey.shade600),
-                    ),
-                  ),
-                  for (final e in semaines[lundi]!) _tile(context, e),
-                ],
-              ],
+    final aujourdHui = DateTime(
+        DateTime.now().year, DateTime.now().month, DateTime.now().day);
+
+    // Le corps principal : import (si besoin), 7 prochains jours, puis la
+    // liste par semaine.
+    final principal = <Widget>[
+      if (m.colles.isEmpty) _carteImport(context),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+        child: Text('Les 7 prochains jours',
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(color: Colors.grey.shade600)),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: VueSemaineColonnes(debut: aujourdHui, largeurColonne: 118),
+      ),
+      if (events.isEmpty)
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Aucune khôlle, DS ou DM enregistré pour le moment — le ➕ en bas à droite permet d\'ajouter à la main.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+          ),
+        )
+      else
+        for (final lundi in lundis) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
+            child: Text(
+              'Semaine du ${frDateCourte(lundi)}',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: Colors.grey.shade600),
             ),
+          ),
+          for (final e in semaines[lundi]!) _tile(context, e),
+        ],
+    ];
+
+    return Scaffold(
+      body: LayoutBuilder(
+        builder: (context, contraintes) {
+          if (contraintes.maxWidth >= 900) {
+            // Grand ecran : les echeances importantes SUR LE COTE.
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.only(bottom: 90),
+                    children: principal,
+                  ),
+                ),
+                SizedBox(
+                  width: 300,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(4, 14, 16, 90),
+                    children: [_blocEcheances(context, m)],
+                  ),
+                ),
+              ],
+            );
+          }
+          // Telephone : les echeances juste apres les colonnes des 7 jours.
+          final enTete = m.colles.isEmpty ? 3 : 2;
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 90),
+            children: [
+              ...principal.take(enTete),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: _blocEcheances(context, m),
+              ),
+              ...principal.skip(enTete),
+            ],
+          );
+        },
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _menuAjout(context),
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  /// Carte d'import bien VOYANTE quand aucun colloscope n'est charge
+  /// (sans monopoliser tout l'onglet comme avant).
+  Widget _carteImport(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      elevation: 0,
+      color: scheme.primary.withOpacity(0.07),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.primary.withOpacity(0.4)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('📸 Ton colloscope n\'est pas encore importé',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(
+              'Une photo (ou le code de ta classe) et toutes tes khôlles arrivent ici, avec salle, heure et khôlleur.',
+              style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              icon: const Icon(Icons.photo_camera),
+              label: const Text('Importer mon colloscope'),
+              onPressed: () => _openImport(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Les echeances les plus importantes a venir, toutes categories
+  /// confondues (khôlles, DS, DM, oraux), triees par date.
+  Widget _blocEcheances(BuildContext context, AppModel m) {
+    final now = DateTime.now();
+    final aujourdHui = DateTime(now.year, now.month, now.day);
+    final lignes = <(DateTime, String, String, Color)>[
+      for (final c in m.collesAvenir())
+        (c.start, '🎤', 'Khôlle ${c.matiere} · ${frHeure(c.start)}', Color(subjectColor(c.matiere))),
+      for (final d in m.ds)
+        if (!d.date.isBefore(aujourdHui))
+          (d.date, '📝', '${d.titre} ${d.matiere}', Color(subjectColor(d.matiere))),
+      for (final d in m.devoirsARendre())
+        if (!d.dateRendu.isBefore(aujourdHui))
+          (d.dateRendu, '📥', '${d.titre} ${d.matiere} à rendre', Color(subjectColor(d.matiere))),
+      for (final o in m.oraux)
+        if (o.date != null && !o.date!.isBefore(aujourdHui))
+          (o.date!, '🎓', 'Oral ${o.concours} ${o.epreuve}', Color(subjectColor(o.epreuve))),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+
+    return Card(
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'PROCHAINES ÉCHÉANCES',
+              style: TextStyle(
+                  fontSize: 11,
+                  letterSpacing: 0.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 8),
+            if (lignes.isEmpty)
+              Text('Rien à l\'horizon 🎉',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600))
+            else
+              for (final l in lignes.take(8))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Text(l.$2, style: const TextStyle(fontSize: 14)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(l.$3,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                                color: l.$4)),
+                      ),
+                      Text(
+                        _labelJx(l.$1, aujourdHui),
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _labelJx(DateTime d, DateTime aujourdHui) {
+    final j = DateTime(d.year, d.month, d.day).difference(aujourdHui).inDays;
+    if (j <= 0) return 'auj.';
+    if (j == 1) return 'demain';
+    return 'J-$j';
   }
 
   static void _openImport(BuildContext context) {

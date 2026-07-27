@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../engine.dart';
 import '../models.dart';
 import '../store.dart';
+import 'dialogs.dart';
 import 'minuteur.dart';
+import 'semaine.dart';
 
 /// Onglet "Aujourd'hui" — le COCKPIT :
 /// - grand ecran : blocs a gauche (kholle, a rendre, semaine), LA SESSION DU
@@ -20,6 +22,82 @@ class TodayScreen extends StatefulWidget {
 
 class _TodayScreenState extends State<TodayScreen> {
   int minutes = 120;
+
+  // Une seule proposition de recap par lancement de l'app (pas de harcelement).
+  static bool _recapPropose = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _proposerRecap());
+  }
+
+  /// A l'ouverture : si des cours d'aujourd'hui sont deja termines sans
+  /// bilan, on propose directement le recap (au lieu d'attendre que
+  /// l'utilisateur pense a ouvrir « Ta journée »).
+  Future<void> _proposerRecap() async {
+    if (_recapPropose || !mounted) return;
+    final m = AppModel.instance;
+    if (!m.loaded) return;
+    final sansBilan = m.creneauxSansBilan(DateTime.now());
+    if (sansBilan.isEmpty) return;
+    _recapPropose = true;
+    final choisi = await showModalBottomSheet<Routine>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                sansBilan.length == 1
+                    ? 'Tu sors de ${sansBilan.first.titre} — petit récap ?'
+                    : '${sansBilan.length} cours sont passés — petit récap ?',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '10 secondes par créneau : ce qui a été fait (et le chapitre vu) nourrit ton plan du soir.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 8),
+              for (final r in sansBilan)
+                ListTile(
+                  dense: true,
+                  leading: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                        color: Color(subjectColor(r.matiere)),
+                        shape: BoxShape.circle),
+                  ),
+                  title: Text(r.titre),
+                  subtitle: Text(r.labelHeure,
+                      style: const TextStyle(fontSize: 11)),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: () => Navigator.pop(context, r),
+                ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Plus tard'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (choisi != null && mounted) {
+      await _bilanSheet(choisi);
+      // Il reste peut-etre d'autres creneaux sans bilan : on reproprose.
+      _recapPropose = false;
+      if (mounted) _proposerRecap();
+    }
+  }
 
   static const _durees = [
     (45, '45 min'),
@@ -472,146 +550,11 @@ class _TodayScreenState extends State<TodayScreen> {
   // ---------- Vue semaine ----------
 
   Widget _blocVueSemaine(BuildContext context, AppModel m, DateTime now) {
-    final lundi = mondayOf(now);
     return _carte(
       accent: Colors.blueGrey,
       icone: Icons.view_week_outlined,
       titre: 'Ma semaine',
-      enfant: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (var i = 0; i < 7; i++)
-              _colonneJour(context, m, lundi.add(Duration(days: i)), now),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _colonneJour(
-      BuildContext context, AppModel m, DateTime d, DateTime now) {
-    final estAujourdhui =
-        d.year == now.year && d.month == now.month && d.day == now.day;
-    final plage = m.plageSansCours(d);
-    final items = <(int, String, Color, bool)>[];
-    if (plage == null) {
-      for (final r in m.routinesLe(d)) {
-        items.add((
-          r.debutMin,
-          '${r.debutMin ~/ 60}h ${r.titre}',
-          r.matiere.isEmpty ? Colors.blueGrey : Color(subjectColor(r.matiere)),
-          false,
-        ));
-      }
-    }
-    for (final e in m.evenementsLe(d)) {
-      items.add((
-        e.debutMin,
-        '⭐ ${e.debutMin ~/ 60}h ${e.titre}',
-        e.matiere.isEmpty ? Colors.blueGrey : Color(subjectColor(e.matiere)),
-        false,
-      ));
-    }
-    for (final c in m.colles) {
-      if (c.start.year == d.year &&
-          c.start.month == d.month &&
-          c.start.day == d.day) {
-        items.add((
-          c.start.hour * 60 + c.start.minute,
-          '🎤 ${frHeure(c.start)} ${c.matiere}${c.salle.isEmpty ? '' : ' s.${c.salle}'}',
-          Color(subjectColor(c.matiere)),
-          true,
-        ));
-      }
-    }
-    for (final ds in m.ds) {
-      if (ds.date.year == d.year &&
-          ds.date.month == d.month &&
-          ds.date.day == d.day) {
-        items.add(
-            (0, '📝 ${ds.titre} ${ds.matiere}', Color(subjectColor(ds.matiere)), true));
-      }
-    }
-    for (final dev in m.devoirsARendre()) {
-      if (dev.dateRendu.year == d.year &&
-          dev.dateRendu.month == d.month &&
-          dev.dateRendu.day == d.day) {
-        items.add((
-          1,
-          '📥 ${dev.titre} ${dev.matiere}',
-          Color(subjectColor(dev.matiere)),
-          true,
-        ));
-      }
-    }
-    for (final o in m.oraux) {
-      if (o.date != null &&
-          o.date!.year == d.year &&
-          o.date!.month == d.month &&
-          o.date!.day == d.day) {
-        items.add((
-          o.debutMin ?? 0,
-          '🎓 ${o.concours} ${o.epreuve}',
-          Color(subjectColor(o.epreuve)),
-          true,
-        ));
-      }
-    }
-    items.sort((a, b) => a.$1.compareTo(b.$1));
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: 112,
-      margin: const EdgeInsets.only(right: 6),
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: estAujourdhui
-            ? scheme.primary.withOpacity(0.08)
-            : plage != null
-                ? Colors.grey.withOpacity(0.08)
-                : null,
-        border: estAujourdhui
-            ? Border.all(color: scheme.primary.withOpacity(0.4))
-            : null,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${frJour(d)[0].toUpperCase()}${frJour(d).substring(1, 3)} ${d.day}',
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: estAujourdhui ? scheme.primary : null),
-          ),
-          const SizedBox(height: 4),
-          if (plage != null)
-            Text('🏖 ${plage.titre}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade600))
-          else if (items.isEmpty)
-            Text('—', style: TextStyle(color: Colors.grey.shade400)),
-          for (final it in items.take(7))
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 1),
-              child: Text(
-                it.$2,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 10,
-                    color: it.$3,
-                    fontWeight: it.$4 ? FontWeight.w700 : FontWeight.w400),
-              ),
-            ),
-          if (items.length > 7)
-            Text('+${items.length - 7}',
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-        ],
-      ),
+      enfant: VueSemaineColonnes(debut: mondayOf(now)),
     );
   }
 
@@ -961,13 +904,74 @@ class _TodayScreenState extends State<TodayScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Cours → tu choisiras le chapitre vu : il passera en « vu en cours » et le plan du soir proposera de le revoir.',
+                'Cours → tu choisiras le chapitre vu (et s\'il est fini ou encore en cours).',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const Divider(height: 20),
+              Text('On vous a donné du travail ?',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade700)),
+              const SizedBox(height: 6),
+              ActionChip(
+                avatar: const Text('📥', style: TextStyle(fontSize: 14)),
+                label: const Text('DM / exos à faire pour un prochain cours'),
+                onPressed: () async {
+                  final d = await editDevoirDialog(context,
+                      matiere: r.matiere);
+                  if (d != null) {
+                    m.addDevoir(d);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(
+                              '${d.titre} ${d.matiere} ajouté — rappelé sur le tableau de bord ✅')));
+                    }
+                  }
+                },
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  /// Apres le choix du chapitre : le prof l'a FINI (-> etape "vu en cours"
+  /// + revision espacee des demain) ou il est EN PLEIN DEDANS (-> juste
+  /// marque "entamé", rien ne se declenche — un chapitre a moitié vu n'est
+  /// pas un chapitre vu).
+  Future<void> _finirBilanCours(Routine r, String chapitreId, String nom) async {
+    final m = AppModel.instance;
+    final termine = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(nom),
+        content: const Text(
+            'Le prof a fini ce chapitre, ou vous êtes en plein dedans ?\n\n'
+            'Fini → la révision espacée démarre dès demain. En cours → rien ne se déclenche, tu le rediras quand il sera terminé.'),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('⏳ En plein dedans'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('✅ Fini'),
+          ),
+        ],
+      ),
+    );
+    // Ferme sans repondre = prudence : on n'avance pas les etapes.
+    m.setBilan(
+      Bilan(
+        jour: DateTime.now(),
+        routineId: r.id,
+        matiere: r.matiere,
+        type: 'Cours',
+        chapitreId: chapitreId,
+      ),
+      chapitreTermine: termine ?? false,
     );
   }
 
@@ -996,19 +1000,13 @@ class _TodayScreenState extends State<TodayScreen> {
                       ListTile(
                         dense: true,
                         title: Text(c.nom),
-                        subtitle: c.etape == 0
-                            ? const Text('nouveau — passera en « vu en cours »',
+                        subtitle: c.entame && c.etape == 0
+                            ? const Text('⏳ le prof est en plein dedans',
                                 style: TextStyle(fontSize: 11))
                             : null,
                         onTap: () {
-                          m.setBilan(Bilan(
-                            jour: DateTime.now(),
-                            routineId: r.id,
-                            matiere: r.matiere,
-                            type: 'Cours',
-                            chapitreId: c.id,
-                          ));
                           Navigator.pop(context);
+                          _finirBilanCours(r, c.id, c.nom);
                         },
                       ),
                     ListTile(
@@ -1055,15 +1053,9 @@ class _TodayScreenState extends State<TodayScreen> {
     );
     if (nom == null || nom.isEmpty) return;
     final m = AppModel.instance;
-    final c = Chapitre(matiere: r.matiere, nom: nom, maitrise: 2, etape: 1);
+    final c = Chapitre(matiere: r.matiere, nom: nom, maitrise: 2, etape: 0);
     m.addChapitre(c);
-    m.setBilan(Bilan(
-      jour: DateTime.now(),
-      routineId: r.id,
-      matiere: r.matiere,
-      type: 'Cours',
-      chapitreId: c.id,
-    ));
+    await _finirBilanCours(r, c.id, c.nom);
   }
 
   // ---------- Plan Pomodoro ----------

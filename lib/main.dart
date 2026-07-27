@@ -93,61 +93,106 @@ class _RootScaffoldState extends State<RootScaffold> {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: AppModel.instance,
-      builder: (context, _) => Scaffold(
-        appBar: AppBar(
-          title: Text(titres[tab]),
-          actions: [
-            if (tab == 1) ...[
-              IconButton(
-                tooltip: 'Importer un colloscope',
-                icon: const Icon(Icons.photo_camera_outlined),
-                onPressed: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const ImportScreen())),
-              ),
-              IconButton(
-                tooltip: "Exporter vers l'agenda du téléphone",
-                icon: const Icon(Icons.ios_share),
-                onPressed: () => AgendaScreen.exportIcs(context),
-              ),
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, contraintes) {
+          final large = contraintes.maxWidth >= 900;
+          final corps = IndexedStack(
+            index: tab,
+            children: const [
+              TodayScreen(),
+              AgendaScreen(),
+              GradesScreen(),
+              ChaptersScreen(),
             ],
-            IconButton(
-              icon: const Icon(Icons.settings_outlined),
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          );
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(titres[tab]),
+              actions: [
+                if (tab == 1) ...[
+                  IconButton(
+                    tooltip: 'Importer un colloscope',
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const ImportScreen())),
+                  ),
+                  IconButton(
+                    tooltip: "Exporter vers l'agenda du téléphone",
+                    icon: const Icon(Icons.ios_share),
+                    onPressed: () => AgendaScreen.exportIcs(context),
+                  ),
+                ],
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const SettingsScreen())),
+                ),
+              ],
             ),
-          ],
-        ),
-        body: IndexedStack(
-          index: tab,
-          children: const [
-            TodayScreen(),
-            AgendaScreen(),
-            GradesScreen(),
-            ChaptersScreen(),
-          ],
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: tab,
-          onDestinationSelected: (i) => setState(() => tab = i),
-          destinations: const [
-            NavigationDestination(
-                icon: Icon(Icons.today_outlined),
-                selectedIcon: Icon(Icons.today),
-                label: "Aujourd'hui"),
-            NavigationDestination(
-                icon: Icon(Icons.calendar_month_outlined),
-                selectedIcon: Icon(Icons.calendar_month),
-                label: 'Agenda'),
-            NavigationDestination(
-                icon: Icon(Icons.grade_outlined),
-                selectedIcon: Icon(Icons.grade),
-                label: 'Notes'),
-            NavigationDestination(
-                icon: Icon(Icons.school_outlined),
-                selectedIcon: Icon(Icons.school),
-                label: 'Chapitres'),
-          ],
-        ),
+            // Sur PC : navigation en RAIL a gauche (la barre du bas passait
+            // sous la barre des taches Windows et se faisait couper).
+            body: large
+                ? Row(
+                    children: [
+                      NavigationRail(
+                        selectedIndex: tab,
+                        onDestinationSelected: (i) =>
+                            setState(() => tab = i),
+                        labelType: NavigationRailLabelType.all,
+                        destinations: const [
+                          NavigationRailDestination(
+                              icon: Icon(Icons.today_outlined),
+                              selectedIcon: Icon(Icons.today),
+                              label: Text("Aujourd'hui")),
+                          NavigationRailDestination(
+                              icon: Icon(Icons.calendar_month_outlined),
+                              selectedIcon: Icon(Icons.calendar_month),
+                              label: Text('Agenda')),
+                          NavigationRailDestination(
+                              icon: Icon(Icons.grade_outlined),
+                              selectedIcon: Icon(Icons.grade),
+                              label: Text('Notes')),
+                          NavigationRailDestination(
+                              icon: Icon(Icons.school_outlined),
+                              selectedIcon: Icon(Icons.school),
+                              label: Text('Chapitres')),
+                        ],
+                      ),
+                      const VerticalDivider(width: 1, thickness: 1),
+                      Expanded(child: corps),
+                    ],
+                  )
+                : corps,
+            bottomNavigationBar: large
+                ? null
+                : NavigationBar(
+                    selectedIndex: tab,
+                    onDestinationSelected: (i) => setState(() => tab = i),
+                    destinations: const [
+                      NavigationDestination(
+                          icon: Icon(Icons.today_outlined),
+                          selectedIcon: Icon(Icons.today),
+                          label: "Aujourd'hui"),
+                      NavigationDestination(
+                          icon: Icon(Icons.calendar_month_outlined),
+                          selectedIcon: Icon(Icons.calendar_month),
+                          label: 'Agenda'),
+                      NavigationDestination(
+                          icon: Icon(Icons.grade_outlined),
+                          selectedIcon: Icon(Icons.grade),
+                          label: 'Notes'),
+                      NavigationDestination(
+                          icon: Icon(Icons.school_outlined),
+                          selectedIcon: Icon(Icons.school),
+                          label: 'Chapitres'),
+                    ],
+                  ),
+          );
+        },
       ),
     );
   }

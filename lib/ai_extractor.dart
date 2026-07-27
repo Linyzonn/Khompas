@@ -128,7 +128,7 @@ ExtractionResult parseExtraction(String text) {
           ? dureeRaw.toInt()
           : (int.tryParse((dureeRaw ?? '').toString()) ?? 60);
       colles.add(Colle(
-        matiere: (m['matiere'] ?? '?').toString(),
+        matiere: normaliseMatiere((m['matiere'] ?? '?').toString()),
         kholleur: (m['kholleur'] ?? '').toString(),
         salle: (m['salle'] ?? '').toString(),
         start: DateTime(dp[0], dp[1], dp[2], hp[0], hp.length > 1 ? hp[1] : 0),
@@ -291,7 +291,7 @@ ChapitresExtraction parseChapitresExtraction(String text) {
   for (final e in bruts) {
     try {
       final m = e as Map<String, dynamic>;
-      final matiere = (m['matiere'] ?? '').toString().trim();
+      final matiere = normaliseMatiere((m['matiere'] ?? '').toString());
       final nom = (m['nom'] ?? '').toString().trim();
       if (matiere.isEmpty || nom.isEmpty) continue;
       chapitres.add(Chapitre(matiere: matiere, nom: nom, maitrise: 0, etape: 0));
@@ -320,7 +320,7 @@ DsExtraction parseDsExtraction(String text) {
           : double.tryParse((coeffRaw ?? '').toString().replaceAll(',', '.')) ??
               1.0;
       ds.add(Ds(
-        matiere: (m['matiere'] ?? '?').toString(),
+        matiere: normaliseMatiere((m['matiere'] ?? '?').toString()),
         titre: titre.isEmpty ? 'DS' : titre,
         date: DateTime(dp[0], dp[1], dp[2]),
         coeff: coeff <= 0 ? 1.0 : coeff,

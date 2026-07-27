@@ -2,7 +2,14 @@
 
 Le manque que toutes les prépas connaissent : un outil qui comprend VRAIMENT le fonctionnement d'une CPGE — colloscope, khôlles, programmes de colles, DS du samedi — et qui t'aide à décider quoi travailler chaque soir.
 
-## ✨ Fonctionnalités (bêta 0.11)
+## ✨ Fonctionnalités (bêta 0.12)
+
+- 🧭 **Agenda repensé** : les 7 prochains jours en colonnes (cours, khôlles, DS, DM, oraux), les échéances les plus importantes sur le côté, et l'import du colloscope en une carte compacte.
+- 💻 **Vraie interface PC** : navigation en rail latéral sur grand écran (fini la barre du bas coupée par la barre des tâches), plus les colonnes du cockpit.
+- 🧹 **Plus de matières en double** : « Mathématiques » et « Maths », « Francais » et « Français »… sont automatiquement réunies (tes données existantes comprises), et un outil « Fusionner deux matières » règle les cas particuliers (LV1 → Anglais).
+- ⏳ **Chapitre en cours en classe** : au récap, dis si le prof a FINI le chapitre (→ révision espacée dès demain) ou s'il est en plein dedans (→ rien ne se déclenche à tort).
+- 📥 **Devoirs donnés en cours** : depuis le récap d'un créneau, ajoute en 2 taps le DM ou les exos donnés pour la prochaine fois.
+- 👋 **Récap à l'ouverture** : si des cours sont passés sans bilan, l'app te les propose direct — 10 secondes par créneau.
 
 - 📕 **Cahier d'erreurs** : note chaque erreur de khôlle/DS en 20 s (matière, type, chapitre), avec stats par type — et refais-les jusqu'à les maîtriser. Avant une épreuve, le plan du soir te ressort tes erreurs non refaites de la matière.
 - 🔔 **Notifications** (iPhone/Android) : la veille à 19 h — khôlle demain (heure, salle, programme), oral demain, DM à rendre demain. Rien d'autre, pas de spam. À activer dans Réglages.

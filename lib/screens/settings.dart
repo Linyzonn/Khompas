@@ -134,6 +134,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // ---------- Fusion de matieres ----------
+
+  Future<void> _fusionnerDialog() async {
+    final m = AppModel.instance;
+    final liste = m.matieres;
+    String? source;
+    String? cible;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Fusionner deux matières'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DropdownButton<String>(
+                value: source,
+                isExpanded: true,
+                hint: const Text('Matière à faire disparaître'),
+                items: [
+                  for (final mat in liste)
+                    DropdownMenuItem(value: mat, child: Text(mat)),
+                ],
+                onChanged: (v) => setState(() => source = v),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: Icon(Icons.arrow_downward, size: 18),
+              ),
+              DropdownButton<String>(
+                value: cible,
+                isExpanded: true,
+                hint: const Text('Matière qui garde tout'),
+                items: [
+                  for (final mat in liste)
+                    if (mat != source)
+                      DropdownMenuItem(value: mat, child: Text(mat)),
+                ],
+                onChanged: (v) => setState(() => cible = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Annuler')),
+            FilledButton(
+              onPressed: source == null || cible == null || source == cible
+                  ? null
+                  : () {
+                      m.fusionnerMatieres(source!, cible!);
+                      Navigator.pop(context);
+                      _snack('« $source » fusionnée dans « $cible » ✅');
+                    },
+              child: const Text('Fusionner'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   // ---------- Heure limite de sommeil ----------
 
   Future<void> _choisirHeureLimite() async {
@@ -653,6 +717,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: const Text('Retirer'),
               ),
             ),
+          if (m.matieres.length >= 2) ...[
+            const SizedBox(height: 24),
+            Text('Fusionner deux matières',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Un doublon qui résiste (« LV1 » et « Anglais », un khôlleur qui écrit autrement…) ? Tout ce qui est dans la première passera dans la seconde — khôlles, notes, chapitres, heures.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.merge_type),
+              label: const Text('Fusionner…'),
+              onPressed: _fusionnerDialog,
+            ),
+          ],
           const SizedBox(height: 24),
           Text('Mes données', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
@@ -751,7 +831,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Khompas — bêta 0.11'),
+            title: Text('Khompas — bêta 0.12'),
             subtitle: Text(
                 'Le compagnon de ta prépa. Tes données restent sur ton téléphone.'),
           ),
