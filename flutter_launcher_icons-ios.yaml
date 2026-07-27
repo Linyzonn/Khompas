@@ -1,0 +1,7 @@
+# Config icônes pour le workflow IOS uniquement (build-ios.yml).
+# remove_alpha_ios : Apple rejette les icônes avec canal alpha.
+flutter_launcher_icons:
+  android: false
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icone.png"

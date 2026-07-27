@@ -27,7 +27,7 @@ jobs:
         run: flutter create . --platforms=web --project-name khompas
       - run: flutter pub get
       # Icône de l'app (favicon + PWA) générée depuis assets/icone.png.
-      - run: dart run flutter_launcher_icons
+      - run: dart run flutter_launcher_icons -f flutter_launcher_icons-web.yaml
       # Les tests du moteur de suggestions tournent avant tout déploiement :
       # s'ils échouent, la version en ligne n'est pas remplacée.
       - run: flutter test

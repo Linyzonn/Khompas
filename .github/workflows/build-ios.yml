@@ -21,7 +21,7 @@ jobs:
           plutil -insert NSPhotoLibraryUsageDescription -string "Khompas lit tes captures d’écran de colloscope pour les importer." ios/Runner/Info.plist
       - run: flutter pub get
       # Icône de l'app générée depuis assets/icone.png (toutes les tailles iOS).
-      - run: dart run flutter_launcher_icons
+      - run: dart run flutter_launcher_icons -f flutter_launcher_icons-ios.yaml
       - run: flutter build ios --release --no-codesign
       - name: Empaqueter en IPA
         run: |

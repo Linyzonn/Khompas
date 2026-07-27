@@ -28,19 +28,10 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.14.4
 
-# Icone de l'app (rose des vents nanobanana) : les workflows CI lancent
-# `dart run flutter_launcher_icons` apres flutter create pour generer
-# toutes les tailles (iPhone, Android, favicon + PWA web).
-flutter_launcher_icons:
-  android: true
-  ios: true
-  remove_alpha_ios: true
-  image_path: "assets/icone.png"
-  web:
-    generate: true
-    image_path: "assets/icone.png"
-    theme_color: "#6B5CEB"
-    background_color: "#6B5CEB"
+# Icone de l'app (rose des vents, assets/icone.png) : PAS de config globale
+# ici — chaque workflow CI ne genere que le squelette de SA plateforme, donc
+# chacun utilise son fichier flutter_launcher_icons-<plateforme>.yaml
+# (une config globale planterait sur les dossiers absents).
 
 flutter:
   uses-material-design: true

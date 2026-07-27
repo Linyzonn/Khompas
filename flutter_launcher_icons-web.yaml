@@ -1,0 +1,12 @@
+# Config icônes pour le workflow WEB uniquement (deploy-web.yml).
+# Chaque workflow CI ne génère que le squelette de SA plateforme : une
+# config globale ferait planter l'outil sur les dossiers absents.
+flutter_launcher_icons:
+  android: false
+  ios: false
+  image_path: "assets/icone.png"
+  web:
+    generate: true
+    image_path: "assets/icone.png"
+    theme_color: "#6B5CEB"
+    background_color: "#6B5CEB"
