@@ -26,6 +26,8 @@ jobs:
       - name: Générer le squelette web
         run: flutter create . --platforms=web --project-name khompas
       - run: flutter pub get
+      # Icône de l'app (favicon + PWA) générée depuis assets/icone.png.
+      - run: dart run flutter_launcher_icons
       # Les tests du moteur de suggestions tournent avant tout déploiement :
       # s'ils échouent, la version en ligne n'est pas remplacée.
       - run: flutter test

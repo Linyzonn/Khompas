@@ -76,6 +76,8 @@ jobs:
           print('Manifest + gradle patch OK')
           EOF
       - run: flutter pub get
+      # Icône de l'app générée depuis assets/icone.png (toutes les densités).
+      - run: dart run flutter_launcher_icons
       - run: flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:

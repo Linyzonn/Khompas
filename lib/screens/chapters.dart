@@ -2,67 +2,161 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import 'dialogs.dart';
 import 'import_chapitres.dart';
 
-/// Onglet "Chapitres" : ou tu en es (etape) et a quel point tu tiens chaque
-/// chapitre (maitrise 0-4). Nourrit le plan de travail du soir.
-class ChaptersScreen extends StatelessWidget {
+/// Onglet "Chapitres", version COMPACTE : avec 60+ chapitres importes,
+/// l'ancienne liste (10 chips par chapitre, toujours visibles) devenait un
+/// mur illisible. Desormais :
+/// - recherche + filtres (fragiles / a reviser / en cours en classe) ;
+/// - une section repliable par matiere avec resume + barre de progression ;
+/// - chaque chapitre = une petite carte (etape, maitrise, badges) ;
+/// - le TAP ouvre la fiche d'edition (etape, maitrise, suppression).
+/// Sur PC les cartes se rangent en plusieurs colonnes.
+class ChaptersScreen extends StatefulWidget {
   const ChaptersScreen({super.key});
+
+  @override
+  State<ChaptersScreen> createState() => _ChaptersScreenState();
+}
+
+class _ChaptersScreenState extends State<ChaptersScreen> {
+  String recherche = '';
+  String filtre = 'tous'; // tous | fragiles | reviser | encours
 
   void _importer(BuildContext context) {
     Navigator.push(context,
         MaterialPageRoute(builder: (_) => const ImportChapitresScreen()));
   }
 
+  bool _garde(Chapitre c) {
+    if (recherche.isNotEmpty &&
+        !c.nom.toLowerCase().contains(recherche.toLowerCase())) {
+      return false;
+    }
+    final finJour = DateTime.now().add(const Duration(days: 1));
+    switch (filtre) {
+      case 'fragiles':
+        return c.etape > 0 && c.maitrise <= 1;
+      case 'reviser':
+        return c.prochaineRevision != null &&
+            c.prochaineRevision!.isBefore(
+                DateTime(finJour.year, finJour.month, finJour.day));
+      case 'encours':
+        return c.entame && c.etape == 0;
+      default:
+        return true;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = AppModel.instance;
-    final matieres = <String>{
-      ...m.matieres,
-      ...m.chapitres.map((c) => c.matiere),
-    }.toList()
-      ..sort();
 
-    return Scaffold(
-      body: m.chapitres.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      'Charge les chapitres du programme officiel de ta filière '
-                      '(prepa.org), puis fais-les vivre : vu en cours → revu → '
-                      'exos → DS. Le plan du soir s\'appuie dessus.',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 14),
-                    FilledButton.icon(
-                      icon: const Icon(Icons.menu_book),
-                      label: const Text('Importer le programme officiel'),
-                      onPressed: () => _importer(context),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : ListView(
-              padding: const EdgeInsets.only(bottom: 90),
+    if (m.chapitres.isEmpty) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.menu_book),
-                    label: const Text('Importer le programme officiel (IA)'),
-                    onPressed: () => _importer(context),
-                  ),
+                const Text(
+                  'Charge les chapitres du programme officiel de ta filière '
+                  '(prepa.org), puis fais-les vivre : vu en cours → revu → '
+                  'exos → DS. Le plan du soir s\'appuie dessus.',
+                  textAlign: TextAlign.center,
                 ),
-                for (final mat in matieres)
-                  if (m.chapitres.any((c) => c.matiere == mat))
-                    _section(context, mat),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  icon: const Icon(Icons.menu_book),
+                  label: const Text('Importer le programme officiel'),
+                  onPressed: () => _importer(context),
+                ),
               ],
             ),
+          ),
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => _ajouter(context),
+          child: const Icon(Icons.add),
+        ),
+      );
+    }
+
+    final matieres = <String>{for (final c in m.chapitres) c.matiere}.toList()
+      ..sort();
+    final nbFragiles =
+        m.chapitres.where((c) => c.etape > 0 && c.maitrise <= 1).length;
+    final demain = DateTime.now().add(const Duration(days: 1));
+    final nbAReviser = m.chapitres
+        .where((c) =>
+            c.prochaineRevision != null &&
+            c.prochaineRevision!
+                .isBefore(DateTime(demain.year, demain.month, demain.day)))
+        .length;
+    final nbEnCours =
+        m.chapitres.where((c) => c.entame && c.etape == 0).length;
+    final actif = filtre != 'tous' || recherche.isNotEmpty;
+
+    return Scaffold(
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 90),
+        children: [
+          // ---- Recherche + filtres ----
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Rechercher un chapitre…',
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      contentPadding:
+                          const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    onChanged: (v) => setState(() => recherche = v.trim()),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Importer le programme officiel (IA)',
+                  icon: const Icon(Icons.menu_book),
+                  onPressed: () => _importer(context),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                for (final f in [
+                  ('tous', 'Tous (${m.chapitres.length})'),
+                  ('fragiles', '⚠ Fragiles ($nbFragiles)'),
+                  ('reviser', '🔁 À réviser ($nbAReviser)'),
+                  ('encours', '⏳ En cours en classe ($nbEnCours)'),
+                ])
+                  ChoiceChip(
+                    label:
+                        Text(f.$2, style: const TextStyle(fontSize: 12)),
+                    selected: filtre == f.$1,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => setState(() => filtre = f.$1),
+                  ),
+              ],
+            ),
+          ),
+          // ---- Sections par matiere ----
+          for (final mat in matieres) _section(context, mat, actif),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _ajouter(context),
         child: const Icon(Icons.add),
@@ -70,66 +164,224 @@ class ChaptersScreen extends StatelessWidget {
     );
   }
 
-  Widget _section(BuildContext context, String mat) {
+  Widget _section(BuildContext context, String mat, bool actif) {
     final m = AppModel.instance;
     final color = Color(subjectColor(mat));
-    final chs = m.chapitres.where((c) => c.matiere == mat).toList();
+    final tous = m.chapitres.where((c) => c.matiere == mat).toList();
+    final visibles = tous.where(_garde).toList();
+    if (actif && visibles.isEmpty) return const SizedBox.shrink();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
-          child: Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    final revus = tous.where((c) => c.etape >= 2).length;
+    final fragiles =
+        tous.where((c) => c.etape > 0 && c.maitrise <= 1).length;
+    final large = MediaQuery.of(context).size.width >= 760;
+
+    return ExpansionTile(
+      // La cle force le repli/depli quand le filtre ou la recherche change.
+      key: ValueKey('$mat|$filtre|$recherche'),
+      initiallyExpanded: actif,
+      leading: CircleAvatar(
+        backgroundColor: color.withOpacity(0.18),
+        child: Text(mat.characters.first.toUpperCase(),
+            style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+      ),
+      title: Text(mat, style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  value: tous.isEmpty ? 0 : revus / tous.length,
+                  minHeight: 5,
+                  color: color,
+                  backgroundColor: Colors.grey.withOpacity(0.15),
+                ),
               ),
-              const SizedBox(width: 8),
-              Text(mat, style: Theme.of(context).textTheme.titleMedium),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 3,
+              child: Text(
+                '$revus/${tous.length} revus'
+                '${fragiles == 0 ? '' : ' · ⚠ $fragiles fragile(s)'}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+              ),
+            ),
+          ],
         ),
-        for (final c in chs)
-          ListTile(
-            dense: true,
-            title: Text(c.nom),
-            subtitle: Column(
+      ),
+      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final c in visibles)
+              SizedBox(
+                width: large ? 300 : double.infinity,
+                child: _carteChapitre(context, c, color),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static const _couleursEtape = [
+    Colors.blueGrey,
+    Colors.indigo,
+    Colors.teal,
+    Colors.orange,
+    Colors.green,
+  ];
+
+  Widget _carteChapitre(BuildContext context, Chapitre c, Color color) {
+    final due = c.prochaineRevision != null &&
+        !c.prochaineRevision!
+            .isAfter(DateTime.now().add(const Duration(hours: 12)));
+    final couleurEtape = _couleursEtape[c.etape.clamp(0, 4)];
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => _editerChapitre(c),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.withOpacity(0.25)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(c.nom,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, fontSize: 13.5)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 5,
+              runSpacing: 3,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: couleurEtape.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    kEtapesChapitre[c.etape.clamp(0, 4)],
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: couleurEtape),
+                  ),
+                ),
+                if (c.entame && c.etape == 0)
+                  const Text('⏳', style: TextStyle(fontSize: 12)),
+                if (due) const Text('🔁', style: TextStyle(fontSize: 12)),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < 5; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 2),
+                        child: Icon(
+                          i <= c.maitrise
+                              ? Icons.circle
+                              : Icons.circle_outlined,
+                          size: 9,
+                          color: i <= c.maitrise
+                              ? _couleurMaitrise(c.maitrise)
+                              : Colors.grey.withOpacity(0.5),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Fiche d'edition d'un chapitre (etape, maitrise, suppression).
+  Future<void> _editerChapitre(Chapitre c) async {
+    final m = AppModel.instance;
+    await feuilleAdaptative<void>(
+      context,
+      (context) => StatefulBuilder(
+        builder: (context, setSheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (c.entame && c.etape == 0)
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(c.nom,
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                    IconButton(
+                      tooltip: 'Supprimer ce chapitre',
+                      icon: const Icon(Icons.delete_outline, size: 20),
+                      onPressed: () {
+                        m.deleteChapitre(c.id);
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ],
+                ),
+                Text(c.matiere,
+                    style:
+                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                if (c.prochaineRevision != null)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
+                    padding: const EdgeInsets.only(top: 4),
                     child: Text(
-                      '⏳ en cours en classe — les étapes attendront la fin du chapitre',
+                      '🔁 Prochaine révision espacée : ${frDateCourte(c.prochaineRevision!)}',
                       style: TextStyle(
-                          fontSize: 10.5, color: Colors.orange.shade800),
+                          fontSize: 12, color: Colors.grey.shade600),
                     ),
                   ),
-                // Etape de progression : le workflow prepa.
+                const SizedBox(height: 12),
+                Text('Étape',
+                    style:
+                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                const SizedBox(height: 4),
                 Wrap(
-                  spacing: 4,
-                  runSpacing: -8,
+                  spacing: 5,
+                  runSpacing: 2,
                   children: [
-                    for (var iEt = 0; iEt < kEtapesChapitre.length; iEt++)
+                    for (var i = 0; i < kEtapesChapitre.length; i++)
                       ChoiceChip(
-                        label: Text(kEtapesChapitre[iEt],
-                            style: const TextStyle(fontSize: 10)),
-                        selected: c.etape == iEt,
+                        label: Text(kEtapesChapitre[i],
+                            style: const TextStyle(fontSize: 11)),
+                        selected: c.etape == i,
                         visualDensity: VisualDensity.compact,
-                        materialTapTargetSize:
-                            MaterialTapTargetSize.shrinkWrap,
                         onSelected: (_) {
-                          c.etape = iEt;
+                          c.etape = i;
                           m.updateChapitre(c);
+                          setSheet(() {});
                         },
                       ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                // Maitrise : a quel point tu le tiens.
+                const SizedBox(height: 10),
+                Text('Maîtrise',
+                    style:
+                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                const SizedBox(height: 4),
                 Row(
                   children: [
                     for (var i = 0; i < 5; i++)
@@ -137,37 +389,42 @@ class ChaptersScreen extends StatelessWidget {
                         onTap: () {
                           c.maitrise = i;
                           m.updateChapitre(c);
+                          setSheet(() {});
                         },
                         child: Padding(
-                          padding: const EdgeInsets.all(3),
+                          padding: const EdgeInsets.all(4),
                           child: Icon(
                             i <= c.maitrise
                                 ? Icons.circle
                                 : Icons.circle_outlined,
-                            size: 16,
+                            size: 20,
                             color: i <= c.maitrise
                                 ? _couleurMaitrise(c.maitrise)
                                 : Colors.grey,
                           ),
                         ),
                       ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _labelMaitrise(c.maitrise),
-                      style:
-                          TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                    ),
+                    const SizedBox(width: 8),
+                    Text(_labelMaitrise(c.maitrise),
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.grey.shade600)),
                   ],
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Fermer'),
+                  ),
                 ),
               ],
             ),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline, size: 20),
-              onPressed: () => m.deleteChapitre(c.id),
-            ),
           ),
-      ],
+        ),
+      ),
     );
+    if (mounted) setState(() {});
   }
 
   Color _couleurMaitrise(int n) {
