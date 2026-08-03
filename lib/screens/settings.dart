@@ -12,9 +12,13 @@ import '../api_client.dart';
 import '../models.dart';
 import '../notifs.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'annales.dart';
+import 'bilan_concours.dart';
 import 'calendrier.dart';
+import 'dialogs.dart';
 import 'edt.dart';
+import 'lectures.dart';
 import 'oraux.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -170,15 +174,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ---------- Passage en 2e annee (l'ecran de septembre) ----------
 
+  /// Reactivation d'ete (5/2) : etale la revision de tous les chapitres sur
+  /// les jours restants de la plage « Été ». Si aucune plage d'ete n'existe,
+  /// on en propose une (aujourd'hui -> 31 aout) plutot que d'echouer.
+  Future<void> _planifierReactivation() async {
+    final m = AppModel.instance;
+    final now = DateTime.now();
+    var plage = m.plageSansCours(now);
+    if (plage == null || plage.type != 'ete') {
+      final creer = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Pas de plage « Été » en cours'),
+          content: Text(
+              'La réactivation s\'étale sur une plage de grandes vacances. '
+              'En créer une du ${now.day}/${now.month} au 31 août ?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Créer la plage')),
+          ],
+        ),
+      );
+      if (creer != true) return;
+      final fin = DateTime(now.month >= 9 ? now.year + 1 : now.year, 8, 31);
+      m.addPlageSansCours(PlageSansCours(
+        titre: 'Grandes vacances',
+        debut: DateTime(now.year, now.month, now.day),
+        fin: fin,
+        type: 'ete',
+      ));
+    }
+    final n = m.etalerReactivation();
+    if (!mounted) return;
+    _snack(n == 0
+        ? 'Aucun chapitre commencé à planifier — importe ton programme d\'abord (Réglages → Chapitres).'
+        : 'Réactivation planifiée ✅ $n chapitres répartis jusqu\'à la fin des vacances — ils arriveront en « Rappel du jour ».');
+    setState(() {});
+  }
+
   Future<void> _passageDeuxiemeAnnee() async {
     final m = AppModel.instance;
-    var nouvelleFiliere = switch (m.filiere) {
-      'MPSI' => 'MP',
-      'PCSI' => 'PSI',
-      'PTSI' => 'PT',
-      'MP2I' => 'MPI',
-      _ => 'PSI',
+    // Les VRAIS choix de filiere de 2e annee : un PCSI part en PC ou en
+    // PSI (avant, PSI etait impose en silence), un MPSI en MP ou PSI...
+    final suggestions = switch (m.filiere) {
+      'MPSI' => ['MP', 'PSI'],
+      'PCSI' => ['PC', 'PSI'],
+      'PTSI' => ['PT', 'PSI'],
+      'MP2I' => ['MPI', 'MP'],
+      _ => ['PSI'],
     };
+    var nouvelleFiliere = suggestions.first;
     var nettoyer = true;
     await showDialog<void>(
       context: context,
@@ -189,8 +238,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (suggestions.length > 1) ...[
+                Text('Depuis ${m.filiere}, tu peux partir en :',
+                    style: const TextStyle(fontSize: 13)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final f in suggestions)
+                      ChoiceChip(
+                        label: Text(f),
+                        selected: nouvelleFiliere == f,
+                        onSelected: (_) =>
+                            setDlg(() => nouvelleFiliere = f),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
               DropdownButtonFormField<String>(
-                value: nouvelleFiliere,
+                key: ValueKey(nouvelleFiliere),
+                initialValue: nouvelleFiliere,
                 decoration: const InputDecoration(
                     labelText: 'Nouvelle filière',
                     border: OutlineInputBorder()),
@@ -213,7 +281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               Text(
                 'Ensuite : importe le colloscope de ta nouvelle classe et le programme de ta nouvelle filière (le dédoublonnage protège des ré-imports).',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
               ),
             ],
           ),
@@ -238,6 +306,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Devenir 5/2 : on GARDE la filiere et tout l'historique (chapitres,
+  /// notes, erreurs — c'est le capital de l'annee passee), on active le
+  /// mode 5/2, et on propose le menage des kholles passees. Les deux
+  /// prochaines etapes (bilan de concours, reactivation d'ete) sont
+  /// pointees explicitement.
+  Future<void> _devenirCinqDemi() async {
+    final m = AppModel.instance;
+    var nettoyer = true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDlg) => AlertDialog(
+          title: const Text('Je refais ma 2e année 💪'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Tout ton historique est conservé : chapitres, notes, cahier '
+                'd\'erreurs — c\'est ton capital pour cette année.',
+                style: TextStyle(fontSize: 13),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Supprimer les khôlles passées',
+                    style: TextStyle(fontSize: 14)),
+                subtitle: const Text(
+                    'Le nouveau colloscope arrivera à la rentrée.',
+                    style: TextStyle(fontSize: 11.5)),
+                value: nettoyer,
+                onChanged: (v) => setDlg(() => nettoyer = v ?? true),
+              ),
+              Text(
+                'Ensuite, deux réflexes de 5/2 :\n'
+                '1. 🎯 Bilan de concours — saisis tes notes de l\'an dernier '
+                'pour cibler où tu perds des points ;\n'
+                '2. ☀️ Réactivation d\'été — étale la révision du programme '
+                'sur les vacances.',
+                style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('C\'est parti')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    m.setCinqDemi(true);
+    if (nettoyer) m.nettoyerCollesPassees();
+    if (!mounted) return;
+    setState(() {});
+    _snack(
+        'Mode 5/2 activé 💪 La section « Ma 5/2 » est apparue juste en dessous du profil.');
+  }
+
   // ---------- Jalons TIPE / SCEI (version "a confirmer" : les dates
   // exactes changent chaque annee — on PROPOSE, l'utilisateur ajuste) ----------
 
@@ -259,7 +389,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Text(
                 'Dates PROPOSÉES d\'après les années précédentes — vérifie-les sur scei-concours.fr et ajuste avant d\'ajouter.',
-                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12.5, color: couleurSecondaire(context)),
               ),
               const SizedBox(height: 10),
               ListTile(
@@ -431,46 +561,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       if (!mounted) return;
       setState(() {});
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('Ta clé de compte 🔑'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: SelectableText(
-                  cle,
-                  style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2),
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'NOTE-LA précieusement : c\'est elle — et elle seule — qui '
-                'permet de retrouver tes données ailleurs. Elle reste visible '
-                'ici (icône copier).',
-                style: TextStyle(fontSize: 13),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: cle));
-              },
-              child: const Text('Copier'),
-            ),
-            FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('C\'est noté')),
-          ],
-        ),
-      );
+      await montrerCleCompte(context, cle,
+          rappel: 'Elle reste visible ici (icône copier).');
     } catch (e) {
       if (mounted) _snack('Création impossible : ${_msg(e)}', secondes: 6);
     }
@@ -478,28 +570,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _connecterCompte() async {
     final m = AppModel.instance;
-    final ctl = TextEditingController();
-    final cle = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Ma clé de compte'),
-        content: TextField(
-          controller: ctl,
-          autofocus: true,
-          textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(
-              border: OutlineInputBorder(), hintText: '18 caractères'),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuler')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, ctl.text),
-              child: const Text('Se connecter')),
-        ],
-      ),
-    );
+    final cle = await demanderCleCompte(context);
     if (cle == null || cle.trim().isEmpty || !mounted) return;
     try {
       final resume = await m.connecterCompte(cle);
@@ -589,7 +660,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text('Mon profil', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: kFilieres.contains(m.filiere) ? m.filiere : 'Autre',
+            initialValue: kFilieres.contains(m.filiere) ? m.filiere : 'Autre',
             decoration: const InputDecoration(
                 labelText: 'Filière', border: OutlineInputBorder()),
             items: [
@@ -616,7 +687,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             title: const Text('Je suis 5/2'),
             subtitle: const Text(
-                'Je refais ma 2e année — adapte l\'import du programme (chapitres déjà vus).'),
+                'Je refais ma 2e année — chapitres importés « déjà vus », bilan de concours, et réactivation d\'été.'),
             value: m.cinqDemi,
             onChanged: (v) {
               m.setCinqDemi(v);
@@ -634,20 +705,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
               trailing: const Icon(Icons.chevron_right),
               onTap: _passageDeuxiemeAnnee,
             ),
+          if (kFilieresDeuxiemeAnnee.contains(m.filiere) && !m.cinqDemi)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Text('💪', style: TextStyle(fontSize: 20)),
+              title: const Text('Je refais ma 2e année (5/2)'),
+              subtitle: const Text(
+                  'Garde ta filière, active le mode 5/2 : bilan de concours, réactivation d\'été, ménage des khôlles passées.',
+                  style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _devenirCinqDemi,
+            ),
+          if (m.cinqDemi) ...[
+            const SizedBox(height: 24),
+            Text('Ma 5/2', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Text('🎯', style: TextStyle(fontSize: 20)),
+              title: const Text('Bilan de concours'),
+              subtitle: const Text(
+                  'Tes notes de l\'an dernier par épreuve → où tu perds des points → priorités de matières.',
+                  style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const BilanConcoursScreen()),
+              ).then((_) => setState(() {})),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Text('☀️', style: TextStyle(fontSize: 20)),
+              title: const Text('Planifier ma réactivation d\'été'),
+              subtitle: const Text(
+                  'Répartit la révision de tous tes chapitres sur les jours restants des grandes vacances (matières prioritaires d\'abord).',
+                  style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _planifierReactivation,
+            ),
+          ],
           const SizedBox(height: 24),
           Text('Compte', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           if (m.serverUrl.isEmpty)
             Text(
               'Renseigne d\'abord l\'URL du serveur (plus bas) pour activer les comptes.',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
             )
           else if (m.compteCle.isEmpty) ...[
             Text(
               'Un compte = tes données sauvegardées en ligne et synchronisées '
               'entre ton téléphone et ton PC. Gratuit et anonyme : une simple '
               'clé secrète, pas d\'email ni de mot de passe.',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
             ),
             const SizedBox(height: 8),
             Row(
@@ -719,12 +829,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 4),
           Text(
             'Pondère le plan de travail (coefficients aux concours, matière à rattraper…).',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
           ),
           const SizedBox(height: 8),
           if (m.matieres.isEmpty)
             Text('Les matières apparaîtront après ton premier import.',
-                style: TextStyle(color: Colors.grey.shade600)),
+                style: TextStyle(color: couleurSecondaire(context))),
           for (final mat in m.matieres)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -735,7 +845,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Padding(
                       padding: const EdgeInsets.only(left: 6),
                       child: ChoiceChip(
-                        label: Text('${'★' * p}'),
+                        label: Text('★' * p),
                         selected: (m.prios[mat] ?? 2) == p,
                         onSelected: (_) {
                           m.setPrio(mat, p);
@@ -778,13 +888,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'À l\'approche des écrits, active le mode révisions : le plan du '
               'soir bascule sur la rotation de TOUS tes chapitres (jamais revus '
               'd\'abord, puis les plus anciens), avec le compte à rebours J-X.',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
             ),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.flag),
-              label: const Text('Fixer la date des écrits'),
-              onPressed: _choisirConcours,
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.flag),
+                    label: const Text('Fixer la date des écrits'),
+                    onPressed: _choisirConcours,
+                  ),
+                ),
+                // Filiere de 2e annee : la date approximative est connue
+                // d'avance (les ecrits demarrent ~ 20 avril) — un tap
+                // suffit, ajustable ensuite.
+                if (kFilieresDeuxiemeAnnee.contains(m.filiere)) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.auto_awesome),
+                      label: const Text('≈ 20 avril'),
+                      onPressed: () {
+                        final now = DateTime.now();
+                        final annee =
+                            now.month >= 8 ? now.year + 1 : now.year;
+                        m.setDateConcours(DateTime(annee, 4, 20));
+                        setState(() {});
+                        _snack(
+                            'Écrits pré-remplis au 20 avril $annee — ajuste la date exacte quand elle sera connue.');
+                      },
+                    ),
+                  ),
+                ],
+              ],
             ),
           ] else
             ListTile(
@@ -815,6 +952,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const AnnalesScreen())),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Text('📖', style: TextStyle(fontSize: 20)),
+            title: const Text('Œuvres de français'),
+            subtitle: Text(
+                m.oeuvres.isEmpty
+                    ? 'Les 3 livres de l\'année — à lire pendant l\'été, le plan s\'en charge.'
+                    : '${m.oeuvres.where((o) => o.finie).length}/${m.oeuvres.length} lues',
+                style: const TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const LecturesScreen())),
           ),
           if (kFilieresDeuxiemeAnnee.contains(m.filiere))
             ListTile(
@@ -847,7 +997,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 4),
             Text(
               'Des rappels la VEILLE au soir (19 h), et uniquement ça — pas de spam. (Sur la version web PC, les notifications n\'existent pas.)',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -907,7 +1057,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'Fixe une heure limite : le plan du soir se raccourcit tout seul '
             'pour finir avant. Le sommeil consolide la mémoire — travailler '
             'jusqu\'à 1h du matin fait perdre plus qu\'il ne fait gagner.',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
           ),
           const SizedBox(height: 8),
           if (m.heureLimiteMin == null)
@@ -939,7 +1089,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 4),
             Text(
               'Un doublon qui résiste (« LV1 » et « Anglais », un khôlleur qui écrit autrement…) ? Tout ce qui est dans la première passera dans la seconde — khôlles, notes, chapitres, heures.',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
@@ -957,7 +1107,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'appareil à l\'autre. Sur iPhone en AltStore (compte Apple gratuit), '
             'l\'app peut expirer : sauvegarde régulièrement pour ne jamais perdre '
             'ton semestre — colloscope, notes et chapitres compris.',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
           ),
           const SizedBox(height: 8),
           Row(
@@ -988,7 +1138,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'simple CODE : personne n\'a besoin de clé API. Colle ici l\'URL du '
             'serveur (ex. https://khompas.deno.dev) — la section « Code de '
             'classe » apparaîtra sur l\'écran d\'import.',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -998,6 +1148,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               labelText: 'Serveur Khompas (URL)',
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
+                tooltip: 'Enregistrer l\'URL du serveur',
                 icon: const Icon(Icons.save),
                 onPressed: () async {
                   await m.saveServerUrl(serverCtl.text);
@@ -1019,7 +1170,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             Text(
               'Photos du colloscope, extractions et programmes partagés compris. (Les photos expirent de toute façon après ~4 mois.)',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 11.5),
             ),
           ],
           // Sans serveur (ou si une cle est deja enregistree), on propose la
@@ -1031,7 +1182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'clé API Claude ci-dessous (console.anthropic.com → API keys, quelques '
               'centimes par import), ou l\'import GRATUIT par copier-coller avec ton '
               'appli d\'IA (ChatGPT, Claude, Gemini).',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
             ),
             const SizedBox(height: 8),
             TextField(
@@ -1041,6 +1192,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 labelText: 'Clé API Anthropic (facultative)',
                 border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
+                  tooltip: 'Enregistrer la clé API',
                   icon: const Icon(Icons.save),
                   onPressed: () async {
                     await m.saveApiKey(keyCtl.text);

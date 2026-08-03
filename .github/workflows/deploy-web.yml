@@ -30,8 +30,9 @@ jobs:
       # ATTENTION : ne jamais nommer ces configs flutter_launcher_icons-*.yaml
       # (motif réservé aux « flavors » : l'outil les traiterait TOUTES).
       - run: dart run flutter_launcher_icons -f icones-web.yaml
-      # Les tests du moteur de suggestions tournent avant tout déploiement :
+      # Analyse statique + tests du moteur avant tout déploiement :
       # s'ils échouent, la version en ligne n'est pas remplacée.
+      - run: flutter analyze
       - run: flutter test
       # Le base-href reprend automatiquement le nom du dépôt, quel qu'il soit.
       - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"

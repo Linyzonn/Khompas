@@ -109,10 +109,15 @@ class _RootScaffoldState extends State<RootScaffold> {
           // apres un changement de donnees (chips durée/méthode figées...).
           final corps = IndexedStack(
             index: tab,
+            // ignore: prefer_const_literals_to_create_immutables
             children: [
+              // ignore: prefer_const_constructors
               TodayScreen(),
+              // ignore: prefer_const_constructors
               AgendaScreen(),
+              // ignore: prefer_const_constructors
               GradesScreen(),
+              // ignore: prefer_const_constructors
               ChaptersScreen(),
             ],
           );
@@ -136,6 +141,7 @@ class _RootScaffoldState extends State<RootScaffold> {
                   ),
                 ],
                 IconButton(
+                  tooltip: 'Réglages',
                   icon: const Icon(Icons.settings_outlined),
                   onPressed: () => Navigator.push(
                       context,

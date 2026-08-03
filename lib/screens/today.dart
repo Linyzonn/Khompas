@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../engine.dart';
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'dialogs.dart';
 import 'erreurs.dart';
 import 'minuteur.dart';
@@ -96,7 +97,7 @@ class _TodayScreenState extends State<TodayScreen> {
               const SizedBox(height: 4),
               Text(
                 '10 secondes par créneau : ce qui a été fait nourrit ton plan du soir.',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
               ),
               const SizedBox(height: 8),
               for (final c in kholles)
@@ -239,7 +240,7 @@ class _TodayScreenState extends State<TodayScreen> {
             children: [
               Text(
                 'Khôlle du ${frDateCourte(c.start)}. Colle le texte du programme (Cahier de prépa, mail, photo du tableau recopiée…).',
-                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12.5, color: couleurSecondaire(context)),
               ),
               const SizedBox(height: 10),
               TextField(
@@ -342,7 +343,7 @@ class _TodayScreenState extends State<TodayScreen> {
         style: Theme.of(context)
             .textTheme
             .titleSmall
-            ?.copyWith(color: Colors.grey.shade600),
+            ?.copyWith(color: couleurSecondaire(context)),
       ),
     );
 
@@ -498,10 +499,10 @@ class _TodayScreenState extends State<TodayScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
-      color: couleur.withOpacity(0.08),
+      color: couleur.withValues(alpha: 0.08),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: couleur.withOpacity(0.5)),
+        side: BorderSide(color: couleur.withValues(alpha: 0.5)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -529,10 +530,10 @@ class _TodayScreenState extends State<TodayScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
-      color: couleur.withOpacity(0.08),
+      color: couleur.withValues(alpha: 0.08),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: couleur.withOpacity(0.5)),
+        side: BorderSide(color: couleur.withValues(alpha: 0.5)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -565,7 +566,7 @@ class _TodayScreenState extends State<TodayScreen> {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
       ),
       child: IntrinsicHeight(
         child: Row(
@@ -617,7 +618,7 @@ class _TodayScreenState extends State<TodayScreen> {
         icone: Icons.record_voice_over,
         titre: 'Prochaine khôlle',
         enfant: Text('Aucune à venir — importe ton colloscope.',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+            style: TextStyle(fontSize: 13, color: couleurSecondaire(context))),
       );
     }
     final color = Color(subjectColor(c.matiere));
@@ -674,7 +675,7 @@ class _TodayScreenState extends State<TodayScreen> {
       titre: 'À rendre',
       enfant: aRendre.isEmpty
           ? Text('Rien en attente 🎉',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600))
+              style: TextStyle(fontSize: 13, color: couleurSecondaire(context)))
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -700,7 +701,7 @@ class _TodayScreenState extends State<TodayScreen> {
       titre: 'Cette semaine',
       enfant: (semaineColles.isEmpty && semaineDs.isEmpty)
           ? Text('Rien au programme 🎉',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600))
+              style: TextStyle(fontSize: 13, color: couleurSecondaire(context)))
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -801,7 +802,7 @@ class _TodayScreenState extends State<TodayScreen> {
           : lignes.isEmpty
               ? Text(
                   'Rien à l\'emploi du temps. (Réglages → Mon emploi du temps.)',
-                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600))
+                  style: TextStyle(fontSize: 12.5, color: couleurSecondaire(context)))
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -840,7 +841,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   '${e.labelHeure}${e.matiere.isEmpty ? '' : ' · ${e.matiere}'} · ponctuel',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 11, color: couleurSecondaire(context)),
                 ),
               ],
             ),
@@ -883,7 +884,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           if (total == 0)
             Text('Coche tes sessions du soir pour compter.',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
           for (final e in parMatiere.take(4)) ...[
             const SizedBox(height: 6),
             Row(
@@ -902,14 +903,14 @@ class _TodayScreenState extends State<TodayScreen> {
                       value: e.value / maxV,
                       minHeight: 6,
                       color: Color(subjectColor(e.key)),
-                      backgroundColor: Colors.grey.withOpacity(0.15),
+                      backgroundColor: Colors.grey.withValues(alpha: 0.15),
                     ),
                   ),
                 ),
                 const SizedBox(width: 6),
                 Text(_labelMin(e.value),
                     style: TextStyle(
-                        fontSize: 11, color: Colors.grey.shade600)),
+                        fontSize: 11, color: couleurSecondaire(context))),
               ],
             ),
           ],
@@ -939,7 +940,7 @@ class _TodayScreenState extends State<TodayScreen> {
                       fontSize: 13, fontWeight: FontWeight.w500)),
             ),
             Text(sous,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                style: TextStyle(fontSize: 11, color: couleurSecondaire(context))),
           ],
         ),
       ),
@@ -958,7 +959,9 @@ class _TodayScreenState extends State<TodayScreen> {
     final labelLim = '${hLim ~/ 60}h${(hLim % 60).toString().padLeft(2, '0')}';
     // Jour libre (week-end sans cours, vacances) : la JOURNEE remplace la
     // soiree — en-tete et presets de duree adaptes.
-    final jourLibre = m.plageSansCours(now) != null ||
+    final plageJour = m.plageSansCours(now);
+    final ete = plageJour?.type == 'ete';
+    final jourLibre = plageJour != null ||
         (m.routines.isNotEmpty && m.routinesLe(now).isEmpty);
     final durees = jourLibre
         ? const [
@@ -975,12 +978,51 @@ class _TodayScreenState extends State<TodayScreen> {
             d.date.year == now.year &&
             d.date.month == now.month &&
             d.date.day == now.day);
+    // JOURNEE OFF : pas de plan du tout — carte dediee, sans culpabiliser.
+    if (m.estJourOff(now)) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+              color: scheme.primary.withValues(alpha: 0.35), width: 1.5),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('🏖 Journée off',
+                  style:
+                      TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              Text(
+                'Profite — aujourd\'hui rien n\'est prévu, et c\'est voulu. '
+                'Le plan reprend demain, et ce qui était programmé '
+                'aujourd\'hui reviendra tout seul.',
+                style: TextStyle(color: couleurSecondaire(context)),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.undo, size: 18),
+                label: const Text('Finalement, je peux travailler'),
+                onPressed: () {
+                  m.toggleJourOff(now);
+                  setState(() {});
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: scheme.primary.withOpacity(0.35), width: 1.5),
+        side: BorderSide(color: scheme.primary.withValues(alpha: 0.35), width: 1.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -999,6 +1041,19 @@ class _TodayScreenState extends State<TodayScreen> {
                         ?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
+            if (ete)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  now.weekday == DateTime.sunday
+                      ? '☀️ Été · dimanche = repos — un seul bloc léger, et seulement si tu en as envie.'
+                      : '☀️ Été · réactivation du programme — régularité douce, pas de marathon.',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.primary),
+                ),
+              ),
             if (dsPasseAujourdhui)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -1037,7 +1092,7 @@ class _TodayScreenState extends State<TodayScreen> {
               children: [
                 Text('Méthode : ',
                     style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
                 for (final me in const [
                   ('checklist', '✅ Checklist'),
                   ('pomo25', '🍅 25/5'),
@@ -1069,7 +1124,7 @@ class _TodayScreenState extends State<TodayScreen> {
             if (suggestions.isEmpty && !plafonne)
               Text(
                 'Importe ton colloscope et ajoute quelques chapitres : je te proposerai un plan pour chaque soirée.',
-                style: TextStyle(color: Colors.grey.shade600),
+                style: TextStyle(color: couleurSecondaire(context)),
               )
             else if (m.methodeTravail == 'checklist')
               ...[for (final s in suggestions) _suggestionCard(context, s)]
@@ -1080,9 +1135,21 @@ class _TodayScreenState extends State<TodayScreen> {
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
                   'Déjà travaillé cette semaine : ${_labelMin(minSem['']!)} 💪',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
                 ),
               ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                icon: const Icon(Icons.beach_access_outlined, size: 16),
+                label: const Text('Je ne peux pas travailler aujourd\'hui',
+                    style: TextStyle(fontSize: 12)),
+                onPressed: () {
+                  m.toggleJourOff(now);
+                  setState(() {});
+                },
+              ),
+            ),
           ],
         ),
       ),
@@ -1160,7 +1227,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style:
-                      TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      TextStyle(fontSize: 11, color: couleurSecondaire(context)),
                 ),
               ],
             ),
@@ -1242,7 +1309,7 @@ class _TodayScreenState extends State<TodayScreen> {
               const SizedBox(height: 8),
               Text(
                 'Cours → tu choisiras le chapitre vu (et s\'il est fini ou encore en cours).',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
               ),
               const Divider(height: 20),
               Text('On vous a donné du travail ?',
@@ -1412,6 +1479,10 @@ class _TodayScreenState extends State<TodayScreen> {
   List<BlocPomodoro> _blocsPomodoro(List<Suggestion> suggestions) {
     final m = AppModel.instance;
     final blocs = <BlocPomodoro>[];
+    // Pause LONGUE (20 min) apres 4 tomates de 25 ou 2 de 50, comme le
+    // protocole Pomodoro canonique : 3 h en 50/10 enchainees sans vraie
+    // coupure, c'est la fatigue attentionnelle assuree.
+    var tomates = 0;
     for (final s in suggestions) {
       int travail, pause;
       if (m.methodeTravail == 'pomoAuto') {
@@ -1422,15 +1493,27 @@ class _TodayScreenState extends State<TodayScreen> {
         travail = m.methodeTravail == 'pomo50' ? 50 : 25;
         pause = m.methodeTravail == 'pomo50' ? 10 : 5;
       }
+      final seuilLongue = travail >= 50 ? 2 : 4;
       var reste = s.minutes;
+      final blocsAvant = blocs.length;
       while (reste >= 15) {
         final w = reste >= travail ? travail : reste;
         if (blocs.isNotEmpty) {
-          blocs.add(BlocPomodoro('Pause', '', pause, pause: true));
+          final longue = tomates > 0 && tomates % seuilLongue == 0;
+          blocs.add(BlocPomodoro('Pause', '', longue ? 20 : pause, pause: true));
         }
         blocs.add(
             BlocPomodoro(s.titre, s.matiere, w, chapitreId: s.chapitreId));
+        tomates++;
         reste -= w;
+      }
+      // Le reliquat < 15 min rejoint le dernier bloc de travail au lieu de
+      // disparaitre silencieusement du plan (60 min en 25/5 = 25+25+10).
+      if (reste > 0 && blocs.length > blocsAvant && !blocs.last.pause) {
+        final dernier = blocs.removeLast();
+        blocs.add(BlocPomodoro(
+            dernier.label, dernier.matiere, dernier.minutes + reste,
+            chapitreId: dernier.chapitreId));
       }
     }
     return blocs;
@@ -1460,20 +1543,20 @@ class _TodayScreenState extends State<TodayScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text('   ☕ Pause ${b.minutes} min',
                     style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
               )
             : Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
-                  side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+                  side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
                 ),
                 child: ListTile(
                   dense: true,
                   leading: CircleAvatar(
                     radius: 14,
                     backgroundColor:
-                        Color(subjectColor(b.matiere)).withOpacity(0.18),
+                        Color(subjectColor(b.matiere)).withValues(alpha: 0.18),
                     child: Text('${++num}',
                         style: TextStyle(
                             fontSize: 12,
@@ -1499,11 +1582,11 @@ class _TodayScreenState extends State<TodayScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
       ),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.18),
+          backgroundColor: color.withValues(alpha: 0.18),
           child: Text(
             '${s.minutes >= 60 ? '${s.minutes ~/ 60}h' : ''}${s.minutes % 60 == 0 ? '' : (s.minutes % 60).toString().padLeft(2, '0')}',
             style: TextStyle(
@@ -1524,7 +1607,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   style: TextStyle(
                       fontSize: 11.5,
                       fontStyle: FontStyle.italic,
-                      color: Colors.grey.shade600),
+                      color: couleurSecondaire(context)),
                 ),
               ),
           ],
@@ -1539,13 +1622,25 @@ class _TodayScreenState extends State<TodayScreen> {
               _evaluerRappel(s);
               return;
             }
+            if (s.oeuvreId != null) {
+              _finirLecture(s);
+              return;
+            }
             final m = AppModel.instance;
             m.addSeance(s.matiere, s.minutes);
             if (s.chapitreId != null) {
               final i = m.chapitres.indexWhere((c) => c.id == s.chapitreId);
               if (i >= 0) {
-                m.chapitres[i].dernierRevu = DateTime.now();
-                m.updateChapitre(m.chapitres[i]);
+                final c = m.chapitres[i];
+                if (c.prochaineRevision == null) {
+                  // Reviser un chapitre l'INSCRIT dans la repetition
+                  // espacee : avant, un chapitre revu hors "rappel"
+                  // n'entrait jamais dans le systeme (cul-de-sac).
+                  m.demarrerEspacement(c.id);
+                } else {
+                  c.dernierRevu = DateTime.now();
+                  m.updateChapitre(c);
+                }
               }
             }
             // Bloc DM : le ✓ propose de marquer le devoir rendu.
@@ -1571,60 +1666,58 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
+  /// ✓ sur un bloc lecture : enregistre la seance de Francais et demande
+  /// la page atteinte (c'est elle qui pilote le rythme des prochaines
+  /// seances et le rattrapage de rentree).
+  Future<void> _finirLecture(Suggestion s) async {
+    final m = AppModel.instance;
+    m.addSeance(s.matiere, s.minutes);
+    final i = m.oeuvres.indexWhere((o) => o.id == s.oeuvreId);
+    if (i < 0) return;
+    final o = m.oeuvres[i];
+    final ctl = TextEditingController(text: o.pageActuelle.toString());
+    final page = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('« ${o.titre} » — page atteinte ?'),
+        content: TextField(
+          controller: ctl,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+              labelText: o.pages == null ? 'Page' : 'Page (sur ${o.pages})'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Plus tard')),
+          FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, int.tryParse(ctl.text.trim())),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+    if (page != null) {
+      o.pageActuelle = o.pages == null ? page : page.clamp(0, o.pages!);
+      if (o.pages != null && o.pageActuelle >= o.pages!) o.finie = true;
+      m.updateOeuvre(o);
+    }
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(o.finie
+          ? '« ${o.titre} » finie 🎉 Séance enregistrée.'
+          : 'Séance de lecture enregistrée ✅'),
+    ));
+  }
+
   /// Auto-evaluation en 1 tap apres un rappel espace : la reponse regle
   /// l'ecart avant la prochaine revision (difficile -> vite, facile -> loin).
   Future<void> _evaluerRappel(Suggestion s) async {
     final m = AppModel.instance;
-    final verdict = await feuilleAdaptative<String>(
-      context,
-      (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${s.matiere} — comment ça s\'est passé ?',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
-              Text(
-                'Ta réponse règle la date de la prochaine révision. Sois honnête, personne ne regarde 😉',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  for (final v in const [
-                    ('difficile', '😮‍💨', 'Difficile'),
-                    ('cava', '🙂', 'Ça va'),
-                    ('facile', '😎', 'Facile'),
-                  ]) ...[
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context, v.$1),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Column(
-                            children: [
-                              Text(v.$2,
-                                  style: const TextStyle(fontSize: 24)),
-                              const SizedBox(height: 2),
-                              Text(v.$3,
-                                  style: const TextStyle(fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (v.$1 != 'facile') const SizedBox(width: 8),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    final verdict = await demanderAutoEvaluation(
+        context, '${s.matiere} — comment ça s\'est passé ?');
     if (verdict == null) return;
     m.evaluerRevision(s.chapitreId!, verdict);
     m.addSeance(s.matiere, s.minutes);

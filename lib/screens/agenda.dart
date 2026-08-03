@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../ics.dart';
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'dialogs.dart';
 import 'grille_semaine.dart';
 import 'import.dart';
@@ -62,7 +63,7 @@ class AgendaScreen extends StatelessWidget {
           child: Text(
             'Aucune khôlle, DS ou DM enregistré pour le moment — le ➕ en bas à droite permet d\'ajouter à la main.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 13),
           ),
         )
       else
@@ -74,7 +75,7 @@ class AgendaScreen extends StatelessWidget {
               style: Theme.of(context)
                   .textTheme
                   .titleSmall
-                  ?.copyWith(color: Colors.grey.shade600),
+                  ?.copyWith(color: couleurSecondaire(context)),
             ),
           ),
           for (final e in semaines[lundi]!) _tile(context, e),
@@ -87,7 +88,7 @@ class AgendaScreen extends StatelessWidget {
               style: Theme.of(context)
                   .textTheme
                   .titleSmall
-                  ?.copyWith(color: Colors.grey.shade600)),
+                  ?.copyWith(color: couleurSecondaire(context))),
         );
 
     return Scaffold(
@@ -161,10 +162,10 @@ class AgendaScreen extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       elevation: 0,
-      color: scheme.primary.withOpacity(0.07),
+      color: scheme.primary.withValues(alpha: 0.07),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: scheme.primary.withOpacity(0.4)),
+        side: BorderSide(color: scheme.primary.withValues(alpha: 0.4)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -214,7 +215,7 @@ class AgendaScreen extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -227,12 +228,12 @@ class AgendaScreen extends StatelessWidget {
                   fontSize: 11,
                   letterSpacing: 0.5,
                   fontWeight: FontWeight.w700,
-                  color: Colors.grey.shade600),
+                  color: couleurSecondaire(context)),
             ),
             const SizedBox(height: 8),
             if (lignes.isEmpty)
               Text('Rien à l\'horizon 🎉',
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600))
+                  style: TextStyle(fontSize: 13, color: couleurSecondaire(context)))
             else
               for (final l in lignes.take(8))
                 Padding(
@@ -255,7 +256,7 @@ class AgendaScreen extends StatelessWidget {
                         style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w700,
-                            color: Colors.grey.shade600),
+                            color: couleurSecondaire(context)),
                       ),
                     ],
                   ),
@@ -389,7 +390,7 @@ class AgendaScreen extends StatelessWidget {
       final c = e.colle!;
       return ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.18),
+          backgroundColor: color.withValues(alpha: 0.18),
           child: Icon(Icons.record_voice_over, color: color, size: 20),
         ),
         title: Text('Khôlle ${c.matiere}'),
@@ -428,7 +429,7 @@ class AgendaScreen extends StatelessWidget {
       final ev = e.evenement!;
       return ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.18),
+          backgroundColor: color.withValues(alpha: 0.18),
           child: Icon(Icons.star_outline, color: color, size: 20),
         ),
         title: Text(ev.titre),
@@ -456,7 +457,7 @@ class AgendaScreen extends StatelessWidget {
       final o = e.oral!;
       return ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.18),
+          backgroundColor: color.withValues(alpha: 0.18),
           child: Icon(Icons.school, color: color, size: 20),
         ),
         title: Text('Oral ${o.concours} — ${o.epreuve}'),
@@ -476,7 +477,7 @@ class AgendaScreen extends StatelessWidget {
           d.dateRendu.isBefore(DateTime.now().subtract(const Duration(days: 1)));
       return ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.18),
+          backgroundColor: color.withValues(alpha: 0.18),
           child: Icon(Icons.assignment_turned_in, color: color, size: 20),
         ),
         title: Text(
@@ -521,7 +522,7 @@ class AgendaScreen extends StatelessWidget {
     final d = e.ds!;
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: color.withOpacity(0.18),
+        backgroundColor: color.withValues(alpha: 0.18),
         child: Icon(Icons.edit_document, color: color, size: 20),
       ),
       title: Text('${d.titre} ${d.matiere}'

@@ -1,0 +1,24 @@
+name: Tests du serveur (Deno)
+# Le serveur est la seule surface exposée à Internet : ses tests tournent
+# à chaque push qui le touche (Deno Deploy redéploie automatiquement, donc
+# un serveur cassé partirait en prod sans ce garde-fou).
+on:
+  push:
+    paths:
+      - 'server/**'
+      - '.github/workflows/server-tests.yml'
+  pull_request:
+    paths:
+      - 'server/**'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno check server/main.ts server/main_test.ts
+      - run: deno test --unstable-kv server/

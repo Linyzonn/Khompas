@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 
 /// TRACKER D'ANNALES : les sujets de concours a faire / faits, par matiere,
 /// avec un ressenti /5. En mode revisions concours (J-45 et moins), le plan
@@ -41,7 +42,7 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
                     Text(
                       'Ajoute les annales que tu comptes faire (CCINP 2024 Maths, Centrale 2023 Physique…).\n\nÀ J-45 des écrits, le plan du soir te proposera « une annale en conditions » en piochant ici, matière la moins couverte d\'abord.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey.shade600),
+                      style: TextStyle(color: couleurSecondaire(context)),
                     ),
                   ],
                 ),
@@ -57,7 +58,7 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
                     style: Theme.of(context)
                         .textTheme
                         .titleSmall
-                        ?.copyWith(color: Colors.grey.shade600),
+                        ?.copyWith(color: couleurSecondaire(context)),
                   ),
                 ),
                 for (final mat in matieres) _section(mat),
@@ -78,13 +79,13 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
     return ExpansionTile(
       initiallyExpanded: true,
       leading: CircleAvatar(
-        backgroundColor: color.withOpacity(0.18),
+        backgroundColor: color.withValues(alpha: 0.18),
         child: Text(mat.characters.first.toUpperCase(),
             style: TextStyle(color: color, fontWeight: FontWeight.bold)),
       ),
       title: Text(mat, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text('$faites / ${liste.length} faites',
-          style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
       children: [
         for (final a in liste) _tuile(a),
       ],
@@ -118,7 +119,7 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
               children: [
                 Text('Ressenti : ',
                     style:
-                        TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 11, color: couleurSecondaire(context))),
                 for (var i = 1; i <= 5; i++)
                   GestureDetector(
                     onTap: () {

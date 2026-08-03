@@ -45,7 +45,7 @@ gratuite : **0 €**. Avec une clé Claude payante : ~1 € par classe entière 
 |---|---|---|
 | `LIMITE_IP_JOUR` | 30 | extractions max par appareil et par jour |
 | `LIMITE_GLOBALE_JOUR` | 200 | plafond total par jour (~10 € max, protège ton budget) |
-| `MAX_PHOTOS` / `MAX_B64_PAR_PHOTO` | 5 / ~1,5 Mo | borne l'envoi de photos |
+| `MAX_PHOTOS` / `MAX_B64_PAR_PHOTO` | 5 / ~2,8 Mo | borne l'envoi de photos |
 | `TTL` | ~13 mois | tout (photos, codes, caches) expire après l'année scolaire |
 
 ## Comment ça marche (pour plus tard)

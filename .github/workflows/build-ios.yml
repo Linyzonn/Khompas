@@ -20,6 +20,9 @@ jobs:
           plutil -insert NSCameraUsageDescription -string "Khompas photographie ton colloscope pour l’importer." ios/Runner/Info.plist
           plutil -insert NSPhotoLibraryUsageDescription -string "Khompas lit tes captures d’écran de colloscope pour les importer." ios/Runner/Info.plist
       - run: flutter pub get
+      # Analyse statique + tests : un binaire casse ne part pas en release.
+      - run: flutter analyze
+      - run: flutter test
       # Icône de l'app générée depuis assets/icone.png (toutes les tailles iOS).
       - run: dart run flutter_launcher_icons -f icones-ios.yaml
       - run: flutter build ios --release --no-codesign

@@ -14,13 +14,29 @@ class Suggestion {
   final String? chapitreId;
   // Devoir vise (DM/exos) : le ✓ propose de le marquer "rendu".
   final String? devoirId;
+  // Oeuvre de francais visee (bloc lecture) : le ✓ demande la page atteinte.
+  final String? oeuvreId;
   // Rappel espace : le ✓ declenche l'auto-evaluation en 1 tap.
   final bool rappel;
   // Consigne d'action testable (rappel actif) affichee sous la suggestion.
   final String consigne;
   Suggestion(this.matiere, this.titre, this.raison, this.minutes,
-      {this.chapitreId, this.devoirId, this.rappel = false, this.consigne = ''});
+      {this.chapitreId,
+      this.devoirId,
+      this.oeuvreId,
+      this.rappel = false,
+      this.consigne = ''});
 }
+
+/// Le mode revisions concours ne s'active qu'a l'approche des ecrits :
+/// avant ce seuil, saisir sa date de concours (des septembre, par exemple)
+/// ne doit PAS faire disparaitre kholles, DM et cahier d'erreurs du plan
+/// du soir pendant des mois.
+const int kSeuilModeRevisionsJours = 90;
+
+/// Ancre fixe et arbitraire pour les rotations "un jour sur N" : seul le
+/// nombre de jours ecoules modulo N compte, pas la date elle-meme.
+final DateTime kAncreRotation = DateTime(2026);
 
 /// Minutes reellement disponibles ce soir compte tenu de l'heure limite de
 /// sommeil. Fonction PURE (testable) : [nowMin] = minutes depuis minuit.
@@ -50,22 +66,42 @@ int budgetSoir(
 /// 3. Scoring par matiere : urgence (kholle/DS/DM) x priorite x fragilite
 ///    (moyenne + minimum) x bonus cours du jour x jachere (matieres delaissees)
 /// En mode REVISIONS CONCOURS : rotation des chapitres, revisions dues d'abord.
-List<Suggestion> suggere(AppModel m, int minutesDispo) {
+/// En mode ETE (grandes vacances) : reactivation douce du programme.
+///
+/// [maintenant] : horloge injectable (tests deterministes) — par defaut
+/// l'heure reelle.
+List<Suggestion> suggere(AppModel m, int minutesDispo, {DateTime? maintenant}) {
+  final now = maintenant ?? DateTime.now();
+  // JOUR OFF (trajet, famille, journee ou travailler est impossible) :
+  // pas de plan du tout — la culpabilisation ne fait pas reviser, et le
+  // travail reprogramme retombera naturellement demain (rappels en
+  // retard, rotation). L'UI affiche une carte dediee.
+  if (m.estJourOff(now)) return [];
   // Mode ORAUX (post-ecrits) : prioritaire sur tout le reste.
   if (m.modeOraux && m.oraux.isNotEmpty) {
-    return _suggereOraux(m, minutesDispo);
+    return _suggereOraux(m, minutesDispo, now);
+  }
+  // GRANDES VACANCES : la plage « été » du calendrier bascule le plan en
+  // reactivation douce (rotation du programme, annales, repos) — un ete de
+  // 5/2 ne ressemble ni a une soiree de semaine ni aux revisions d'avril.
+  final plage = m.plageSansCours(now);
+  if (plage != null &&
+      plage.type == 'ete' &&
+      m.chapitres.any((c) => c.etape > 0)) {
+    return _suggereEte(m, minutesDispo, now, plage);
   }
   if (m.dateConcours != null &&
-      DateTime.now().isBefore(m.dateConcours!) &&
+      now.isBefore(m.dateConcours!) &&
+      m.dateConcours!.difference(now).inDays <= kSeuilModeRevisionsJours &&
       m.chapitres.any((c) => c.etape > 0)) {
-    return _suggereRevisions(m, minutesDispo);
+    return _suggereRevisions(m, minutesDispo, now);
   }
-  return _suggereNormal(m, minutesDispo);
+  return _suggereNormal(m, minutesDispo, now);
 }
 
 /// Chapitres dont la revision espacee est due (aujourd'hui ou en retard).
-List<Chapitre> rappelsDus(AppModel m) {
-  final now = DateTime.now();
+List<Chapitre> rappelsDus(AppModel m, {DateTime? maintenant}) {
+  final now = maintenant ?? DateTime.now();
   final finJour = DateTime(now.year, now.month, now.day, 23, 59);
   return m.chapitres
       .where((c) =>
@@ -74,8 +110,7 @@ List<Chapitre> rappelsDus(AppModel m) {
     ..sort((a, b) => a.prochaineRevision!.compareTo(b.prochaineRevision!));
 }
 
-List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
-  final now = DateTime.now();
+List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
   final horizon = now.add(const Duration(days: 10));
   final out = <Suggestion>[];
   var budget = minutesDispo;
@@ -88,16 +123,27 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
       plage != null || (m.routines.isNotEmpty && m.routinesLe(now).isEmpty);
 
   // ---- 1. Rappels du jour (repetition espacee) ----
-  // Blocs courts (15 min), au plus 3, jamais plus de la moitie de la soiree.
-  final dus = rappelsDus(m);
-  for (final c in dus.take(3)) {
+  // Blocs courts (15 min), jamais plus de la moitie de la soiree. Le nombre
+  // s'adapte au budget (3 sur une petite soiree, jusqu'a 5 sur une grosse) :
+  // avec un programme complet importe, un plafond fixe a 3 laissait la file
+  // des revisions dues grossir sans limite ni signal.
+  final dus = rappelsDus(m, maintenant: now);
+  final capRappels = (minutesDispo ~/ 60 + 2).clamp(3, 5);
+  for (final c in dus.take(capRappels)) {
     if (budget < 30 || (minutesDispo - budget) + 15 > minutesDispo ~/ 2) break;
     final retard =
         DateTime(now.year, now.month, now.day).difference(c.prochaineRevision!).inDays;
+    // La dette de revisions est AFFICHEE (transparence) au lieu de rester
+    // cachee derriere le plafond du soir.
+    final enAttente =
+        dus.length > capRappels ? ' · ${dus.length} chapitres en attente' : '';
     out.add(Suggestion(
       c.matiere,
       'Rappel 🔁 ${c.nom}',
-      retard > 0 ? 'Révision espacée — en attente depuis $retard j' : 'Révision espacée — c\'est le bon jour',
+      (retard > 0
+              ? 'Révision espacée — en attente depuis $retard j'
+              : 'Révision espacée — c\'est le bon jour') +
+          enAttente,
       15,
       chapitreId: c.id,
       rappel: true,
@@ -134,13 +180,19 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
         .where((d) => d.dateRendu.difference(now).inDays >= 3)
         .toList();
     if (aEtaler.isNotEmpty) {
-      final d = aEtaler.first;
-      final joursRestants = d.dateRendu.difference(now).inDays + 1;
-      var cadence = joursRestants ~/ (aEtaler.length * 2); // ~2 creneaux/DM
+      // La cadence se calcule sur l'echeance la plus proche, et les creneaux
+      // TOURNENT entre les DM : avant, seul le premier DM etait servi, les
+      // suivants n'avaient jamais de creneau alors que la cadence etait
+      // pourtant calculee pour eux.
+      final joursDevant = aEtaler.first.dateRendu.difference(now).inDays + 1;
+      var cadence = joursDevant ~/ (aEtaler.length * 2); // ~2 creneaux/DM
       if (cadence < 1) cadence = 1;
       if (cadence > 3) cadence = 3;
       final aujourdHui = DateTime(now.year, now.month, now.day);
-      if (aujourdHui.difference(DateTime(2026)).inDays % cadence == 0) {
+      final jourIdx = aujourdHui.difference(kAncreRotation).inDays;
+      if (jourIdx % cadence == 0) {
+        final d = aEtaler[(jourIdx ~/ cadence) % aEtaler.length];
+        final joursRestants = d.dateRendu.difference(now).inDays + 1;
         out.add(Suggestion(
           d.matiere,
           '📥 Créneau DM : ${d.titre}${d.remarque.isEmpty ? '' : ' · ${d.remarque}'}',
@@ -188,6 +240,32 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
     }
   }
 
+  // ---- 2 quater. Rattrapage lecture : une oeuvre de francais pas finie
+  // pendant l'ete revient UN JOUR SUR TROIS en debut d'annee (cadence
+  // transparente), tant qu'il en reste — toutes les kholles de francais
+  // de l'annee s'appuient sur ces livres.
+  final aLire = m.oeuvresNonFinies();
+  if (aLire.isNotEmpty && budget >= 45) {
+    final jourIdx =
+        DateTime(now.year, now.month, now.day).difference(kAncreRotation).inDays;
+    if (jourIdx % 3 == 0) {
+      final o = aLire[(jourIdx ~/ 3) % aLire.length];
+      final progression = (o.pages != null && o.pages! > 0)
+          ? ' (page ${o.pageActuelle}/${o.pages})'
+          : '';
+      out.add(Suggestion(
+        'Français',
+        '📖 Rattrape « ${o.titre} »$progression',
+        'Œuvre pas finie — un jour sur 3 avant que les khôlles de français ne s\'enchaînent',
+        30,
+        oeuvreId: o.id,
+        consigne:
+            'Lecture ACTIVE : marque les passages forts et relève 2-3 citations — ce sont elles qui font la note.',
+      ));
+      budget -= 30;
+    }
+  }
+
   // ---- 3. Echeances par matiere (kholle, DS, devoir a rendre) ----
   final Map<String, _Echeance> echeances = {};
   for (final c in m.collesAvenir()) {
@@ -201,8 +279,13 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
           'kholle');
     }
   }
+  // Les DS sont dates a MINUIT : comparer a `now` (18h au moment du calcul)
+  // ecartait le DS du jour meme, et la branche "AUJOURD'HUI" etait donc
+  // inatteignable pour un DS. On compare a minuit, comme le cahier
+  // d'erreurs plus haut.
+  final minuit = DateTime(now.year, now.month, now.day);
   for (final d in m.ds) {
-    if (d.date.isBefore(now) || d.date.isAfter(horizon)) continue;
+    if (d.date.isBefore(minuit) || d.date.isAfter(horizon)) continue;
     final e = echeances[d.matiere];
     if (e == null || d.date.isBefore(e.date)) {
       echeances[d.matiere] = _Echeance(d.date, '${d.titre} ', '', 'ds');
@@ -305,7 +388,11 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
     // la moyenne seule masquait un chapitre a zero au milieu de bons.
     final chs =
         m.chapitres.where((c) => c.matiere == mat && c.etape > 0).toList();
-    double fragilite = 1.3;
+    // Sans donnees, on ne sait rien : leger benefice du doute (1.15), mais
+    // pas au point qu'une matiere jamais renseignee passe devant une
+    // matiere reellement fragile (l'ancien 1.3 battait une matiere
+    // parfaitement maitrisee a 1.0).
+    double fragilite = 1.15;
     if (chs.isNotEmpty) {
       final avg = chs.map((c) => c.maitrise).reduce((a, b) => a + b) / chs.length;
       final mini = chs.map((c) => c.maitrise).reduce(min);
@@ -365,9 +452,21 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
     // Contenu conseille + consigne d'action (rappel actif).
     var quoi = '';
     var typeConsigne = 'fond';
+    String? chapitreId;
+    // Second demi-bloc (interleaving) : sur un long bloc SANS echeance
+    // imminente, alterner deux chapitres distincts consolide mieux que
+    // 60-90 min monolithiques sur le meme theme (Rohrer & Taylor 2007).
+    String? quoi2;
+    String? typeConsigne2;
+    String? chapitreId2;
     final e = echeances[mat];
     final aRevoir =
         m.chapitres.where((c) => c.matiere == mat && c.etape == 1).toList();
+    final fragiles = m.chapitres
+        .where((c) => c.matiere == mat && c.maitrise <= 2 && c.etape > 0)
+        .toList()
+      ..sort((a, b) => a.maitrise.compareTo(b.maitrise));
+    final interleave = mins >= 60 && e == null;
     if (e != null && e.genre == 'dm' && e.tache.isNotEmpty) {
       // Le travail impose s'affiche comme LA TACHE, pas comme un bloc de
       // matiere abstrait ("avance le DM 3 (exos 1 à 4)").
@@ -377,37 +476,78 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo) {
       quoi = 'Programme : ${e.programme.trim()}';
       typeConsigne = e.genre;
     } else if (aRevoir.isNotEmpty) {
-      quoi =
-          'À revoir (vu en cours) : ${aRevoir.take(2).map((c) => c.nom).join(', ')}';
-      typeConsigne = 'rappel';
-    } else {
-      final fragiles = m.chapitres
-          .where((c) => c.matiere == mat && c.maitrise <= 2 && c.etape > 0)
-          .toList()
-        ..sort((a, b) => a.maitrise.compareTo(b.maitrise));
-      if (fragiles.isNotEmpty) {
+      final ancien = fragiles.where((c) => c.id != aRevoir.first.id).toList();
+      if (interleave && (ancien.isNotEmpty || aRevoir.length >= 2)) {
+        // Demi-bloc 1 : le chapitre recent. Demi-bloc 2 : un chapitre plus
+        // ancien a consolider (ou le 2e chapitre recent, a defaut).
+        quoi = 'À revoir (vu en cours) : ${aRevoir.first.nom}';
+        typeConsigne = 'rappel';
+        chapitreId = aRevoir.first.id;
+        if (ancien.isNotEmpty) {
+          quoi2 = 'À consolider : ${ancien.first.nom}';
+          typeConsigne2 = 'consolider';
+          chapitreId2 = ancien.first.id;
+        } else {
+          quoi2 = 'À revoir (vu en cours) : ${aRevoir[1].nom}';
+          typeConsigne2 = 'rappel';
+          chapitreId2 = aRevoir[1].id;
+        }
+      } else {
         quoi =
-            'À consolider : ${fragiles.take(2).map((c) => c.maitrise == 0 ? '⚠ ${c.nom} (jamais consolidé)' : c.nom).join(', ')}';
-        typeConsigne = 'consolider';
+            'À revoir (vu en cours) : ${aRevoir.take(2).map((c) => c.nom).join(', ')}';
+        typeConsigne = 'rappel';
+        if (aRevoir.length == 1) chapitreId = aRevoir.first.id;
+      }
+    } else {
+      if (fragiles.isNotEmpty) {
+        if (interleave && fragiles.length >= 2) {
+          quoi = 'À consolider : ${_nomFragile(fragiles[0])}';
+          typeConsigne = 'consolider';
+          chapitreId = fragiles[0].id;
+          quoi2 = 'À consolider : ${_nomFragile(fragiles[1])}';
+          typeConsigne2 = 'consolider';
+          chapitreId2 = fragiles[1].id;
+        } else {
+          quoi =
+              'À consolider : ${fragiles.take(2).map(_nomFragile).join(', ')}';
+          typeConsigne = 'consolider';
+          if (fragiles.length == 1) chapitreId = fragiles.first.id;
+        }
       } else {
         quoi = 'Exercices + reprise du dernier cours';
         typeConsigne = e == null ? 'fond' : e.genre;
       }
     }
-    if (e != null && typeConsigne == 'fond') typeConsigne = e.genre;
 
-    out.add(Suggestion(mat, quoi, raisons[mat] ?? '', mins,
-        devoirId: e?.genre == 'dm' ? e?.devoirId : null,
-        consigne: typeConsigne == 'dm' ? '' : consigneDe(mat, typeConsigne)));
+    if (quoi2 != null) {
+      // Moitie du bloc chacun, arrondie au quart d'heure (le reliquat va au
+      // premier demi-bloc).
+      final demi = ((mins ~/ 2) ~/ 15) * 15;
+      out.add(Suggestion(mat, quoi, raisons[mat] ?? '', mins - demi,
+          chapitreId: chapitreId,
+          consigne: consigneDe(mat, typeConsigne)));
+      out.add(Suggestion(
+          mat, quoi2, 'Alterner les thèmes consolide mieux (interleaving)', demi,
+          chapitreId: chapitreId2,
+          consigne: consigneDe(mat, typeConsigne2 ?? 'consolider')));
+    } else {
+      out.add(Suggestion(mat, quoi, raisons[mat] ?? '', mins,
+          chapitreId: chapitreId,
+          devoirId: e?.genre == 'dm' ? e?.devoirId : null,
+          consigne: consigneDe(mat, typeConsigne)));
+    }
   }
   return out;
 }
 
+String _nomFragile(Chapitre c) =>
+    c.maitrise == 0 ? '⚠ ${c.nom} (jamais consolidé)' : c.nom;
+
 /// MODE REVISIONS CONCOURS : couvrir tout le programme avant les ecrits.
 /// Revisions espacees dues d'abord, puis jamais revus (fragiles en tete),
 /// puis les plus anciens — en alternant les matieres (interleaving).
-List<Suggestion> _suggereRevisions(AppModel m, int minutesDispo) {
-  final now = DateTime.now();
+List<Suggestion> _suggereRevisions(
+    AppModel m, int minutesDispo, DateTime now) {
   final jours = m.dateConcours!.difference(now).inDays + 1;
   final out = <Suggestion>[];
   var reste = minutesDispo;
@@ -432,6 +572,43 @@ List<Suggestion> _suggereRevisions(AppModel m, int minutesDispo) {
       consigne: consigneDe(prochainDs.matiere, 'ds'),
     ));
     reste -= mins;
+  }
+
+  // Le travail IMPOSE ne disparait pas parce que les ecrits approchent :
+  // une kholle imminente ou un DM a rendre gardent leur place dans le plan
+  // (avant, saisir la date de concours les faisait disparaitre des mois).
+  for (final c in m.collesAvenir()) {
+    if (!c.start.isBefore(now.add(const Duration(days: 2, hours: 12)))) break;
+    if (reste < 30) break;
+    final prog = c.programme.trim();
+    out.add(Suggestion(
+      c.matiere,
+      'Prépa khôlle${prog.isEmpty ? '' : ' — programme : $prog'}',
+      'Khôlle ${frJour(c.start)} ${frHeure(c.start)} — le travail imposé d\'abord',
+      30,
+      consigne: consigneDe(c.matiere, 'kholle'),
+    ));
+    reste -= 30;
+    break; // une seule kholle en tete, le reste au circuit revision
+  }
+  for (final d in m.devoirsARendre()) {
+    final dj = DateTime(d.dateRendu.year, d.dateRendu.month, d.dateRendu.day)
+        .difference(aujourdHui)
+        .inDays;
+    if (dj > 3 || reste < 30) break;
+    final mins = reste >= 90 ? 45 : 30;
+    out.add(Suggestion(
+      d.matiere,
+      '📥 Avance ${d.titre}${d.remarque.isEmpty ? '' : ' (${d.remarque})'}',
+      dj < 0
+          ? '${d.titre} EN RETARD — rends-le vite'
+          : 'À rendre ${frJour(d.dateRendu)} — même en mode révisions',
+      mins,
+      devoirId: d.id,
+      consigne: consigneDe(d.matiere, 'dm'),
+    ));
+    reste -= mins;
+    break; // un seul DM par soir en mode revisions
   }
 
   // Annales, version REALISTE : une epreuve de concours fait 3-4 h — la
@@ -498,41 +675,7 @@ List<Suggestion> _suggereRevisions(AppModel m, int minutesDispo) {
   }
 
   final finJour = DateTime(now.year, now.month, now.day, 23, 59);
-  final aReviser = m.chapitres.where((c) => c.etape > 0).toList()
-    ..sort((a, b) {
-      // 1. Revisions espacees dues d'abord.
-      final aDue = a.prochaineRevision != null &&
-          a.prochaineRevision!.isBefore(finJour);
-      final bDue = b.prochaineRevision != null &&
-          b.prochaineRevision!.isBefore(finJour);
-      if (aDue != bDue) return aDue ? -1 : 1;
-      // 2. Jamais revus (les plus fragiles en tete).
-      if (a.dernierRevu == null && b.dernierRevu != null) return -1;
-      if (a.dernierRevu != null && b.dernierRevu == null) return 1;
-      if (a.dernierRevu == null && b.dernierRevu == null) {
-        return a.maitrise.compareTo(b.maitrise);
-      }
-      // 3. Revus les plus anciens.
-      final cmp = a.dernierRevu!.compareTo(b.dernierRevu!);
-      return cmp != 0 ? cmp : a.maitrise.compareTo(b.maitrise);
-    });
-
-  // Interleaving : on alterne les matieres en respectant l'ordre ci-dessus.
-  final files = <String, List<Chapitre>>{};
-  for (final c in aReviser) {
-    files.putIfAbsent(c.matiere, () => []).add(c);
-  }
-  final ordreMatieres = <String>[];
-  for (final c in aReviser) {
-    if (!ordreMatieres.contains(c.matiere)) ordreMatieres.add(c.matiere);
-  }
-  final alternes = <Chapitre>[];
-  while (alternes.length < aReviser.length) {
-    for (final mat in ordreMatieres) {
-      final file = files[mat]!;
-      if (file.isNotEmpty) alternes.add(file.removeAt(0));
-    }
-  }
+  final alternes = _chapitresAlternes(m, finJour);
 
   var i = 0;
   while (reste >= 30 && i < alternes.length) {
@@ -560,12 +703,262 @@ List<Suggestion> _suggereRevisions(AppModel m, int minutesDispo) {
   return out;
 }
 
+/// Chapitres commences (etape > 0) tries — revisions dues d'abord, puis
+/// jamais revus (fragiles en tete), puis revus les plus anciens — et
+/// ALTERNES par matiere (interleaving, Rohrer & Taylor). [parPriorite] :
+/// insere la priorite de matiere (m.prios) juste apres le critere « du »,
+/// pour que le bilan de concours d'un 5/2 pilote l'ordre de reactivation.
+List<Chapitre> _chapitresAlternes(AppModel m, DateTime finJour,
+    {bool parPriorite = false}) {
+  final aReviser = m.chapitres.where((c) => c.etape > 0).toList()
+    ..sort((a, b) {
+      // 1. Revisions espacees dues d'abord.
+      final aDue = a.prochaineRevision != null &&
+          a.prochaineRevision!.isBefore(finJour);
+      final bDue = b.prochaineRevision != null &&
+          b.prochaineRevision!.isBefore(finJour);
+      if (aDue != bDue) return aDue ? -1 : 1;
+      // 1 bis. Matieres prioritaires d'abord (mode ete).
+      if (parPriorite) {
+        final pa = m.prios[a.matiere] ?? 2;
+        final pb = m.prios[b.matiere] ?? 2;
+        if (pa != pb) return pb.compareTo(pa);
+      }
+      // 2. Jamais revus (les plus fragiles en tete).
+      if (a.dernierRevu == null && b.dernierRevu != null) return -1;
+      if (a.dernierRevu != null && b.dernierRevu == null) return 1;
+      if (a.dernierRevu == null && b.dernierRevu == null) {
+        return a.maitrise.compareTo(b.maitrise);
+      }
+      // 3. Revus les plus anciens.
+      final cmp = a.dernierRevu!.compareTo(b.dernierRevu!);
+      return cmp != 0 ? cmp : a.maitrise.compareTo(b.maitrise);
+    });
+
+  // Interleaving : on alterne les matieres en respectant l'ordre ci-dessus.
+  final files = <String, List<Chapitre>>{};
+  for (final c in aReviser) {
+    files.putIfAbsent(c.matiere, () => []).add(c);
+  }
+  final ordreMatieres = <String>[];
+  for (final c in aReviser) {
+    if (!ordreMatieres.contains(c.matiere)) ordreMatieres.add(c.matiere);
+  }
+  final alternes = <Chapitre>[];
+  while (alternes.length < aReviser.length) {
+    for (final mat in ordreMatieres) {
+      final file = files[mat]!;
+      if (file.isNotEmpty) alternes.add(file.removeAt(0));
+    }
+  }
+  return alternes;
+}
+
+/// MODE ETE (grandes vacances) : la reactivation douce du programme —
+/// pensee pour le 5/2 qui prepare sa nouvelle annee, utile a tous.
+/// Principes (et leur justification) :
+///  - la repetition espacee continue (les « rappels du jour » d'abord) :
+///    c'est l'ete que le programme de l'an passe s'evapore ;
+///  - rotation du programme par matieres PRIORITAIRES d'abord (le bilan de
+///    concours regle les prios -> l'ete travaille la ou les points se
+///    perdent) ;
+///  - une annale en douceur par semaine glissante, correction active en
+///    priorite le lendemain (effet de test, pas de bachotage estival) ;
+///  - le dimanche est un JOUR DE REPOS : un seul bloc leger facultatif —
+///    la consolidation exige aussi de la recuperation, et une 5/2 se gagne
+///    sur dix mois, pas sur un ete d'epuisement ;
+///  - derniere semaine : messages de remise en rythme avant la rentree.
+List<Suggestion> _suggereEte(
+    AppModel m, int minutesDispo, DateTime now, PlageSansCours plage) {
+  final out = <Suggestion>[];
+  var reste = minutesDispo;
+  final aujourdHui = DateTime(now.year, now.month, now.day);
+  final finJour = DateTime(now.year, now.month, now.day, 23, 59);
+  final joursAvantRentree = DateTime(plage.fin.year, plage.fin.month,
+          plage.fin.day)
+      .difference(aujourdHui)
+      .inDays;
+  final rentreeProche = joursAvantRentree <= 7;
+  final contexte = rentreeProche
+      ? 'Rentrée dans $joursAvantRentree j — remise en rythme'
+      : 'Été · réactivation';
+
+  // ---- Dimanche : repos. Un unique bloc leger, explicitement facultatif.
+  if (now.weekday == DateTime.sunday) {
+    final dus = rappelsDus(m, maintenant: now);
+    final c = dus.isNotEmpty
+        ? dus.first
+        : (_chapitresAlternes(m, finJour, parPriorite: true).firstOrNull);
+    if (c != null) {
+      out.add(Suggestion(
+        c.matiere,
+        'Si tu y tiens : ${c.nom} (léger)',
+        'Dimanche = repos 😌 La consolidation se fait aussi en dormant — un seul petit bloc, et seulement si tu en as envie',
+        30,
+        chapitreId: c.id,
+        rappel: dus.isNotEmpty && c.id == dus.first.id,
+        consigne: consigneDe(c.matiere, 'rappel'),
+      ));
+    }
+    return out;
+  }
+
+  // ---- 1. Rappels du jour (repetition espacee) : le squelette de l'ete.
+  // Cap plus genereux qu'en periode scolaire : c'est le canal principal
+  // quand la reactivation a ete planifiee (etalerReactivation).
+  final dus = rappelsDus(m, maintenant: now);
+  final capRappels = (minutesDispo ~/ 45).clamp(2, 6);
+  for (final c in dus.take(capRappels)) {
+    if (reste < 15) break;
+    final enAttente =
+        dus.length > capRappels ? ' · ${dus.length} chapitres en attente' : '';
+    out.add(Suggestion(
+      c.matiere,
+      'Rappel 🔁 ${c.nom}',
+      '$contexte — révision espacée$enAttente',
+      15,
+      chapitreId: c.id,
+      rappel: true,
+      consigne: consigneDe(c.matiere, 'rappel'),
+    ));
+    reste -= 15;
+  }
+
+  // ---- 2. DM de vacances saisis (rare mais possible pour un 3/2).
+  for (final d in m.devoirsARendre()) {
+    if (reste < 60) break;
+    final dj = DateTime(d.dateRendu.year, d.dateRendu.month, d.dateRendu.day)
+        .difference(aujourdHui)
+        .inDays;
+    if (dj > 10) continue;
+    out.add(Suggestion(
+      d.matiere,
+      '📥 Avance ${d.titre}${d.remarque.isEmpty ? '' : ' (${d.remarque})'}',
+      dj < 0 ? '${d.titre} EN RETARD' : 'À rendre ${frDateCourte(d.dateRendu)}',
+      60,
+      devoirId: d.id,
+      consigne: consigneDe(d.matiere, 'dm'),
+    ));
+    reste -= 60;
+    break; // un seul par jour
+  }
+
+  // ---- 3. Annale en douceur : ~1 par semaine glissante, correction
+  // active en priorite (c'est la qu'on apprend).
+  if (m.annales.isNotEmpty && reste >= 45) {
+    final recente = m.annales
+        .where((a) =>
+            a.fait &&
+            a.dateFait != null &&
+            now.difference(a.dateFait!).inDays <= 2)
+        .toList()
+      ..sort((x, y) => y.dateFait!.compareTo(x.dateFait!));
+    final derniereFaite = m.annales
+        .where((a) => a.fait && a.dateFait != null)
+        .fold<DateTime?>(null,
+            (t, a) => t == null || a.dateFait!.isAfter(t) ? a.dateFait : t);
+    final joursSansAnnale = derniereFaite == null
+        ? 999
+        : now.difference(derniereFaite).inDays;
+    if (recente.isNotEmpty && recente.first.ressenti <= 3) {
+      final a = recente.first;
+      out.add(Suggestion(
+        a.matiere,
+        '🧾 Correction active : ${a.concours} ${a.annee} — ${a.matiere}',
+        '$contexte · la correction est là où on apprend',
+        45,
+        consigne:
+            'Reprends ta copie question par question SANS regarder la correction d\'abord, puis compare — et note chaque erreur dans le cahier d\'erreurs.',
+      ));
+      reste -= 45;
+    } else if (joursSansAnnale >= 5 && reste >= 120) {
+      final nonFaites = m.annales.where((a) => !a.fait).toList();
+      if (nonFaites.isNotEmpty) {
+        // Matiere la moins couverte d'abord (meme regle qu'en revisions).
+        final faitesParMatiere = <String, int>{};
+        for (final a in m.annales) {
+          if (a.fait) {
+            faitesParMatiere[a.matiere] =
+                (faitesParMatiere[a.matiere] ?? 0) + 1;
+          }
+        }
+        nonFaites.sort((x, y) {
+          final fx = faitesParMatiere[x.matiere] ?? 0;
+          final fy = faitesParMatiere[y.matiere] ?? 0;
+          return fx != fy ? fx.compareTo(fy) : y.annee.compareTo(x.annee);
+        });
+        final a = nonFaites.first;
+        out.add(Suggestion(
+          a.matiere,
+          '📜 Une PARTIE de l\'annale ${a.concours} ${a.annee} — ${a.matiere}',
+          '$contexte · une annale douce par semaine garde le niveau concours',
+          90,
+          consigne:
+              'Choisis un problème ou une partie, chrono, sans le cours. La correction active aura sa séance demain.',
+        ));
+        reste -= 90;
+      }
+    }
+  }
+
+  // ---- 3 bis. Lecture des oeuvres de francais : un jour sur deux.
+  // L'ete est LE moment pour les 3 livres (l'annee ne laisse plus le temps
+  // de lire), et chaque kholle de francais de l'annee s'appuiera dessus.
+  final aLire = m.oeuvresNonFinies();
+  final jourIdx = aujourdHui.difference(kAncreRotation).inDays;
+  if (aLire.isNotEmpty && reste >= 45 && jourIdx % 2 == 0) {
+    final o = aLire[(jourIdx ~/ 2) % aLire.length];
+    var progression = '';
+    if (o.pages != null && o.pages! > 0) {
+      final restantes = (o.pages! - o.pageActuelle).clamp(0, o.pages!);
+      final seances = (joursAvantRentree ~/ 2).clamp(1, 99);
+      final parSeance = (restantes / seances).ceil();
+      progression =
+          ' · page ${o.pageActuelle}/${o.pages} — ~$parSeance p./séance pour finir avant la rentrée';
+    }
+    out.add(Suggestion(
+      'Français',
+      '📖 Lis « ${o.titre} »${o.auteur.isEmpty ? '' : ' (${o.auteur})'}',
+      '$contexte · les œuvres se lisent l\'été$progression',
+      45,
+      oeuvreId: o.id,
+      consigne:
+          'Lecture ACTIVE : marque les passages forts et relève 2-3 citations par séance — ce sont elles qui font la note en khôlle et en dissertation.',
+    ));
+    reste -= 45;
+  }
+
+  // ---- 4. Rotation de reactivation : matieres prioritaires d'abord
+  // (bilan de concours), interleaving, blocs moyens de 45 min.
+  final alternes = _chapitresAlternes(m, finJour, parPriorite: true)
+      .where((c) => !out.any((s) => s.chapitreId == c.id))
+      .toList();
+  var i = 0;
+  while (reste >= 30 && i < alternes.length) {
+    final c = alternes[i];
+    final mins = reste >= 60 ? 45 : (reste ~/ 15) * 15;
+    final quandRevu = c.dernierRevu == null
+        ? 'jamais revu'
+        : 'revu il y a ${now.difference(c.dernierRevu!).inDays} j';
+    out.add(Suggestion(
+      c.matiere,
+      'Réactiver : ${c.nom}',
+      '$contexte · $quandRevu',
+      mins > reste ? reste : mins,
+      chapitreId: c.id,
+      consigne: consigneDe(c.matiere, 'revision'),
+    ));
+    reste -= mins;
+    i++;
+  }
+  return out;
+}
+
 /// MODE ORAUX : apres les ecrits, le plan du soir prepare les epreuves
 /// orales. Un oral date dans ≤ 7 jours prend la tete ; les autres epreuves
 /// tournent (l'ordre de depart change chaque jour — couverture complete
 /// sans etat supplementaire).
-List<Suggestion> _suggereOraux(AppModel m, int minutesDispo) {
-  final now = DateTime.now();
+List<Suggestion> _suggereOraux(AppModel m, int minutesDispo, DateTime now) {
   final aujourdHui = DateTime(now.year, now.month, now.day);
   final out = <Suggestion>[];
   var reste = minutesDispo;
@@ -592,7 +985,11 @@ List<Suggestion> _suggereOraux(AppModel m, int minutesDispo) {
     break; // aVenir est deja trie par date
   }
   if (urgent != null && reste >= 30) {
-    final mins = reste >= 90 ? 60 : (reste ~/ 15) * 15;
+    // Le JOUR de l'oral, le message dit "echauffement leger" : la duree
+    // doit dire la meme chose (20 min, pas une seance complete).
+    final jourJ = urgent.date != null &&
+        urgent.date!.difference(aujourdHui).inDays == 0;
+    final mins = jourJ ? 20 : (reste >= 90 ? 60 : (reste ~/ 15) * 15);
     out.add(Suggestion(
       urgent.epreuve,
       'Oral ${urgent.concours} — ${urgent.epreuve}',
@@ -606,7 +1003,7 @@ List<Suggestion> _suggereOraux(AppModel m, int minutesDispo) {
   // 2. Rotation quotidienne des autres epreuves.
   final autres = aVenir.where((o) => o.id != urgent?.id).toList();
   if (autres.isEmpty) return out;
-  final depart = aujourdHui.difference(DateTime(2026)).inDays % autres.length;
+  final depart = aujourdHui.difference(kAncreRotation).inDays % autres.length;
   var i = 0;
   while (reste >= 30 && i < autres.length) {
     final o = autres[(depart + i) % autres.length];

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 
 /// GRILLE HORAIRE facon Google Calendar (Agenda sur grand ecran) :
 /// heures en gouttiere a gauche, 7 colonnes-jours qui remplissent la
@@ -189,11 +190,11 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                   child: Container(
                     decoration: BoxDecoration(
                       color: estAujourdhui
-                          ? scheme.primary.withOpacity(0.045)
+                          ? scheme.primary.withValues(alpha: 0.045)
                           : null,
                       border: Border(
                           left: BorderSide(
-                              color: Colors.grey.withOpacity(0.18))),
+                              color: Colors.grey.withValues(alpha: 0.18))),
                     ),
                   ),
                 ),
@@ -203,7 +204,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                     left: 0,
                     right: 0,
                     child: Container(
-                        height: 1, color: Colors.grey.withOpacity(0.13)),
+                        height: 1, color: Colors.grey.withValues(alpha: 0.13)),
                   ),
                 for (var b = 0; b < blocs.length; b++)
                   Positioned(
@@ -219,7 +220,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                         color: Color.alphaBlend(
                             blocs[b]
                                 .couleur
-                                .withOpacity(blocs[b].important ? 0.30 : 0.16),
+                                .withValues(alpha: blocs[b].important ? 0.30 : 0.16),
                             Theme.of(context).canvasColor),
                         borderRadius: BorderRadius.circular(6),
                         border: Border(
@@ -334,7 +335,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 5, vertical: 2),
                                           decoration: BoxDecoration(
-                                            color: j.$2.withOpacity(0.16),
+                                            color: j.$2.withValues(alpha: 0.16),
                                             borderRadius:
                                                 BorderRadius.circular(6),
                                           ),
@@ -384,7 +385,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                                   '${h}h',
                                   style: TextStyle(
                                       fontSize: 10.5,
-                                      color: Colors.grey.shade500),
+                                      color: couleurSecondaire(context)),
                                 ),
                               ),
                           ],

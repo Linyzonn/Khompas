@@ -1,0 +1,9 @@
+# Active flutter_lints (declare dans pubspec.yaml mais inoperant sans ce
+# fichier : les lints ne tournaient tout simplement pas).
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # L'app utilise volontairement des apostrophes echappees dans du texte
+    # francais long ; on ne se bat pas contre ca.
+    avoid_escaping_inner_quotes: false

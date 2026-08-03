@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'dialogs.dart';
 import 'import_chapitres.dart';
 
@@ -181,7 +182,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
       key: ValueKey('$mat|$filtre|$recherche'),
       initiallyExpanded: actif,
       leading: CircleAvatar(
-        backgroundColor: color.withOpacity(0.18),
+        backgroundColor: color.withValues(alpha: 0.18),
         child: Text(mat.characters.first.toUpperCase(),
             style: TextStyle(color: color, fontWeight: FontWeight.bold)),
       ),
@@ -198,7 +199,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                   value: tous.isEmpty ? 0 : revus / tous.length,
                   minHeight: 5,
                   color: color,
-                  backgroundColor: Colors.grey.withOpacity(0.15),
+                  backgroundColor: Colors.grey.withValues(alpha: 0.15),
                 ),
               ),
             ),
@@ -210,7 +211,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 '${fragiles == 0 ? '' : ' · ⚠ $fragiles fragile(s)'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 11.5, color: couleurSecondaire(context)),
               ),
             ),
           ],
@@ -253,7 +254,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.withOpacity(0.25)),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.25)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -273,7 +274,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
-                    color: couleurEtape.withOpacity(0.14),
+                    color: couleurEtape.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -302,7 +303,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                           size: 9,
                           color: i < c.maitrise
                               ? _couleurMaitrise(c.maitrise)
-                              : Colors.grey.withOpacity(0.5),
+                              : Colors.grey.withValues(alpha: 0.5),
                         ),
                       ),
                   ],
@@ -346,20 +347,20 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 ),
                 Text(c.matiere,
                     style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
                 if (c.prochaineRevision != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       '🔁 Prochaine révision espacée : ${frDateCourte(c.prochaineRevision!)}',
                       style: TextStyle(
-                          fontSize: 12, color: Colors.grey.shade600),
+                          fontSize: 12, color: couleurSecondaire(context)),
                     ),
                   ),
                 const SizedBox(height: 12),
                 Text('Étape',
                     style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
                 const SizedBox(height: 4),
                 Wrap(
                   spacing: 5,
@@ -382,7 +383,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 const SizedBox(height: 10),
                 Text('Maîtrise',
                     style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
                 const SizedBox(height: 4),
                 Row(
                   children: [
@@ -411,7 +412,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                     const SizedBox(width: 8),
                     Text(_labelMaitrise(c.maitrise),
                         style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade600)),
+                            fontSize: 12, color: couleurSecondaire(context))),
                   ],
                 ),
                 const SizedBox(height: 12),

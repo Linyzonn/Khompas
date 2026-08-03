@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 
 /// Colonnes-jours compactes (blocs teintes) : la carte « Ma semaine » du
 /// tableau de bord, et l'Agenda sur TELEPHONE. Sur PC, l'Agenda utilise la
@@ -144,14 +145,14 @@ class VueSemaineColonnes extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         color: estAujourdhui
-            ? scheme.primary.withOpacity(0.07)
+            ? scheme.primary.withValues(alpha: 0.07)
             : plage != null
-                ? Colors.grey.withOpacity(0.10)
-                : Colors.grey.withOpacity(0.04),
+                ? Colors.grey.withValues(alpha: 0.10)
+                : Colors.grey.withValues(alpha: 0.04),
         border: Border.all(
           color: estAujourdhui
-              ? scheme.primary.withOpacity(0.55)
-              : Colors.grey.withOpacity(0.18),
+              ? scheme.primary.withValues(alpha: 0.55)
+              : Colors.grey.withValues(alpha: 0.18),
         ),
       ),
       child: Column(
@@ -194,7 +195,7 @@ class VueSemaineColonnes extends StatelessWidget {
             Text('🏖 ${plage.titre}',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600))
+                style: TextStyle(fontSize: 11, color: couleurSecondaire(context)))
           else if (items.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -209,7 +210,7 @@ class VueSemaineColonnes extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               width: double.infinity,
               decoration: BoxDecoration(
-                color: it.$3.withOpacity(it.$4 ? 0.16 : 0.09),
+                color: it.$3.withValues(alpha: it.$4 ? 0.16 : 0.09),
                 borderRadius: BorderRadius.circular(6),
                 border: Border(
                     left: BorderSide(color: it.$3, width: 3)),
@@ -227,7 +228,7 @@ class VueSemaineColonnes extends StatelessWidget {
             ),
           if (items.length > maxItems)
             Text('+${items.length - maxItems} autres',
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                style: TextStyle(fontSize: 10, color: couleurSecondaire(context))),
         ],
       ),
     );

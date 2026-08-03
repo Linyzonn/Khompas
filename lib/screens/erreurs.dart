@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 
 /// CAHIER D'ERREURS : chaque erreur notee apres une kholle / un DS / un TD,
 /// classee par type. Le but n'est pas la liste — c'est de REFAIRE chaque
@@ -38,7 +39,7 @@ class _ErreursScreenState extends State<ErreursScreen> {
                     Text(
                       'Après chaque khôlle, DS ou TD raté : note l\'erreur ici (20 s), puis refais-la un autre soir jusqu\'à la maîtriser.\n\nLes erreurs non refaites remontent dans ton plan du soir avant une épreuve de la matière.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey.shade600),
+                      style: TextStyle(color: couleurSecondaire(context)),
                     ),
                   ],
                 ),
@@ -79,7 +80,7 @@ class _ErreursScreenState extends State<ErreursScreen> {
     return ExpansionTile(
       initiallyExpanded: aRefaire > 0,
       leading: CircleAvatar(
-        backgroundColor: color.withOpacity(0.18),
+        backgroundColor: color.withValues(alpha: 0.18),
         child: Text(mat.characters.first.toUpperCase(),
             style: TextStyle(color: color, fontWeight: FontWeight.bold)),
       ),
@@ -88,7 +89,7 @@ class _ErreursScreenState extends State<ErreursScreen> {
         aRefaire == 0
             ? 'Tout est refait 🎉'
             : '$aRefaire à refaire${ligneStats.isEmpty ? '' : ' · $ligneStats'}',
-        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
       ),
       children: [
         for (final e in liste) _tuile(e, color),
@@ -122,7 +123,7 @@ class _ErreursScreenState extends State<ErreursScreen> {
       subtitle: Text(
         '${e.type} · ${e.source} · ${frDateCourte(e.date)}'
         '${chapitreNom == null ? '' : ' · $chapitreNom'}',
-        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+        style: TextStyle(fontSize: 11, color: couleurSecondaire(context)),
       ),
       trailing: PopupMenuButton<String>(
         onSelected: (v) async {
@@ -206,7 +207,7 @@ Future<bool> ajouterErreurDialog(BuildContext context,
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text('Type', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Text('Type', style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
                 Wrap(
                   spacing: 6,
                   children: [
@@ -219,7 +220,7 @@ Future<bool> ajouterErreurDialog(BuildContext context,
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text('Vue en…', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Text('Vue en…', style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
                 Wrap(
                   spacing: 6,
                   children: [

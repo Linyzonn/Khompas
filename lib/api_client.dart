@@ -70,14 +70,19 @@ class ApiKhompas {
   }
 
   /// Envoie une piece du colloscope (photo jpeg, ou PDF si [pdf]) pour la
-  /// classe [code].
+  /// classe [code]. [gestion] = code de gestion du createur : le serveur
+  /// n'accepte l'envoi de photos que de lui (sinon n'importe quel detenteur
+  /// du code de classe pourrait ecraser le colloscope).
   Future<void> envoyerPhoto(String code, int index, Uint8List bytes,
-      {bool pdf = false}) async {
+      {bool pdf = false, String gestion = ''}) async {
     final r = await http
         .put(
           Uri.parse(
               '$base/api/classes/$code/photos/$index?mime=${pdf ? 'pdf' : 'jpg'}'),
-          headers: {'content-type': 'text/plain'},
+          headers: {
+            'content-type': 'text/plain',
+            if (gestion.isNotEmpty) 'x-khompas-gestion': gestion,
+          },
           body: base64Encode(bytes),
         )
         .timeout(const Duration(seconds: 90));

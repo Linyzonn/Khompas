@@ -99,50 +99,43 @@ class Notifs {
         return tz.TZDateTime.from(quand, tz.local);
       }
 
-      Future<void> planifier(DateTime evt, String titre, String corps) async {
-        final quand = veilleDe(evt);
-        if (quand == null || id > 60) return; // iOS plafonne a 64 en attente
-        await _plugin.zonedSchedule(
-          id: id++,
-          title: titre,
-          body: corps,
-          scheduledDate: quand,
-          notificationDetails: _details,
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        );
-      }
+      // On COLLECTE tout, puis on trie par date avant de planifier : le
+      // plafond iOS (64 notifications en attente) doit couper les
+      // evenements les plus LOINTAINS — pas ceux traites en dernier dans
+      // le code (avant, c'etaient les jalons critiques 🚨 qui sautaient).
+      final aPlannifier = <(DateTime, String, String)>[];
 
       if (m.notifVeilleKholle) {
         for (final c in m.collesAvenir()) {
-          await planifier(
+          aPlannifier.add((
             c.start,
             'Khôlle demain — ${c.matiere}',
             '${frHeure(c.start)}'
-            '${c.salle.isEmpty ? '' : ' · salle ${c.salle}'}'
-            '${c.kholleur.isEmpty ? '' : ' · ${c.kholleur}'}'
-            '${c.programme.trim().isEmpty ? '\n⚠ Programme manquant — colle-le dans l\'app' : '\n📋 ${c.programme}'}',
-          );
+                '${c.salle.isEmpty ? '' : ' · salle ${c.salle}'}'
+                '${c.kholleur.isEmpty ? '' : ' · ${c.kholleur}'}'
+                '${c.programme.trim().isEmpty ? '\n⚠ Programme manquant — colle-le dans l\'app' : '\n📋 ${c.programme}'}',
+          ));
         }
         for (final o in m.oraux) {
           if (o.date == null || o.date!.isBefore(now)) continue;
-          await planifier(
+          aPlannifier.add((
             o.date!,
             'Oral demain — ${o.concours}',
             '${o.epreuve}'
-            '${o.debutMin == null ? '' : ' · ${o.debutMin! ~/ 60}h${(o.debutMin! % 60).toString().padLeft(2, '0')}'}'
-            '${o.lieu.isEmpty ? '' : ' · ${o.lieu}'}',
-          );
+                '${o.debutMin == null ? '' : ' · ${o.debutMin! ~/ 60}h${(o.debutMin! % 60).toString().padLeft(2, '0')}'}'
+                '${o.lieu.isEmpty ? '' : ' · ${o.lieu}'}',
+          ));
         }
       }
 
       if (m.notifVeilleDm) {
         for (final d in m.devoirsARendre()) {
           if (d.dateRendu.isBefore(now)) continue;
-          await planifier(
+          aPlannifier.add((
             d.dateRendu,
             'À rendre demain — ${d.matiere}',
             '${d.titre}${d.remarque.isEmpty ? '' : ' · ${d.remarque}'}',
-          );
+          ));
         }
       }
 
@@ -150,10 +143,25 @@ class Notifs {
       // quels que soient les sous-reglages — les rater coute une annee.
       for (final e in m.evenements) {
         if (!e.titre.contains('🚨') || e.date.isBefore(now)) continue;
-        await planifier(
+        aPlannifier.add((
           e.date,
           'Demain — ${e.titre.replaceAll('🚨 ', '')}',
           'Ne le rate pas : vérifie l\'heure exacte sur le site du concours.',
+        ));
+      }
+
+      aPlannifier.sort((a, b) => a.$1.compareTo(b.$1));
+      for (final n in aPlannifier) {
+        if (id > 60) break; // marge sous le plafond iOS de 64
+        final quand = veilleDe(n.$1);
+        if (quand == null) continue;
+        await _plugin.zonedSchedule(
+          id: id++,
+          title: n.$2,
+          body: n.$3,
+          scheduledDate: quand,
+          notificationDetails: _details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         );
       }
     } catch (_) {

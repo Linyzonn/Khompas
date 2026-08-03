@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../api_client.dart';
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
+import 'dialogs.dart';
 import 'edt.dart';
 import 'import.dart';
 import 'import_chapitres.dart';
@@ -56,48 +57,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         // le push automatique reessaiera a la prochaine modification
       }
       if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('Ta clé de compte 🔑'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: SelectableText(
-                  cle,
-                  style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2),
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'NOTE-LA précieusement (notes du téléphone, mail à toi-même…) : '
-                'c\'est elle — et elle seule — qui permet de retrouver tes '
-                'données sur un autre appareil ou après une réinstallation. '
-                'Elle reste visible dans Réglages.',
-                style: TextStyle(fontSize: 13),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: cle));
-              },
-              child: const Text('Copier'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('C\'est noté'),
-            ),
-          ],
-        ),
-      );
+      await montrerCleCompte(context, cle,
+          rappel: 'Elle reste visible dans Réglages.');
       if (mounted) setState(() => etape = 1);
     } catch (e) {
       if (mounted) {
@@ -111,30 +72,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _dejaUneCle() async {
     final m = AppModel.instance;
-    final ctl = TextEditingController();
-    final cle = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Ma clé de compte'),
-        content: TextField(
-          controller: ctl,
-          autofocus: true,
-          textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            hintText: '18 caractères',
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuler')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, ctl.text),
-              child: const Text('Se connecter')),
-        ],
-      ),
-    );
+    final cle = await demanderCleCompte(context);
     if (cle == null || cle.trim().isEmpty || !mounted) return;
     setState(() => busy = true);
     try {
@@ -173,8 +111,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
               color: faits[i]
-                  ? Colors.green.withOpacity(0.6)
-                  : Colors.grey.withOpacity(0.3)),
+                  ? Colors.green.withValues(alpha: 0.6)
+                  : Colors.grey.withValues(alpha: 0.3)),
         ),
         child: ListTile(
           leading: Text(faits[i] ? '✅' : emoji,
@@ -211,7 +149,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Text(
               'Chaque étape se saute et se refait plus tard — mais avec les trois, le plan du soir devient vraiment intelligent.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 13),
             ),
           ),
         ),
@@ -254,11 +192,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
             Center(
               child: Text('Le compagnon de ta prépa',
-                  style: TextStyle(color: Colors.grey.shade600)),
+                  style: TextStyle(color: couleurSecondaire(context))),
             ),
             const SizedBox(height: 28),
             DropdownButtonFormField<String>(
-              value: filiere,
+              initialValue: filiere,
               decoration: const InputDecoration(
                   labelText: 'Ma filière', border: OutlineInputBorder()),
               items: [
@@ -297,7 +235,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 'Gratuit et anonyme : une simple clé secrète. Tes données sont '
                 'sauvegardées en ligne et synchronisées entre ton téléphone et ton PC.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
@@ -310,7 +248,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             if (!busy)
               TextButton(
                 onPressed: _sansCompte,
-                child: Text(
+                child: const Text(
                   kIsWeb
                       ? 'Continuer sans compte (⚠ déconseillé sur navigateur : un nettoyage des données du navigateur efface tout)'
                       : 'Continuer sans compte (local seulement)',

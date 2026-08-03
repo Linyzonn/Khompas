@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:khompas/ai_extractor.dart';
 import 'package:khompas/engine.dart';
+import 'package:khompas/ics.dart';
+import 'package:khompas/vacances_officielles.dart';
 import 'package:khompas/methodes.dart';
 import 'package:khompas/models.dart';
 import 'package:khompas/store.dart';
@@ -19,6 +21,10 @@ void reset(AppModel m) {
   m.erreurs = [];
   m.annales = [];
   m.oraux = [];
+  m.resultatsConcours = [];
+  m.oeuvres = [];
+  m.joursOff = [];
+  m.zoneVacances = '';
   m.modeOraux = false;
   m.refSemaineA = null;
   m.dateConcours = null;
@@ -556,5 +562,509 @@ Voici le résultat demandé :
     expect(r.ds.first.coeff, 2.0);
     expect(r.ds[1].titre, 'DS'); // titre par defaut
     expect(r.ds[1].coeff, 1.0); // coeff par defaut
+  });
+
+  // ---------- DS du jour ----------
+
+  test('un DS AUJOURD\'HUI (daté à minuit) reste visible dans le scoring', () {
+    final now = DateTime.now();
+    // Les DS sont dates a minuit : a 18 h, l'ancien code (isBefore(now))
+    // ecartait le DS du jour et la branche AUJOURD'HUI etait morte.
+    m.ds.add(Ds(
+        matiere: 'Physique',
+        titre: 'DS 4',
+        date: DateTime(now.year, now.month, now.day),
+        note: null));
+    final s = suggere(m, 120);
+    expect(s.any((x) => x.matiere == 'Physique'), isTrue);
+    expect(
+        s.firstWhere((x) => x.matiere == 'Physique').raison,
+        contains('AUJOURD\'HUI'));
+  });
+
+  // ---------- Repetition espacee : verdicts et memoire des echecs ----------
+
+  test('"ça va" multiplie par 1,7 (et non 2) — progression douce', () {
+    final c = Chapitre(
+        matiere: 'Maths',
+        nom: 'Suites',
+        etape: 1,
+        intervalleJours: 10,
+        prochaineRevision: DateTime.now());
+    m.chapitres.add(c);
+    m.evaluerRevision(c.id, 'cava');
+    expect(c.intervalleJours, 17);
+  });
+
+  test('chapitre chroniquement difficile : la progression ralentit à x1,5',
+      () {
+    final c = Chapitre(
+        matiere: 'Maths',
+        nom: 'Intégrales',
+        etape: 1,
+        intervalleJours: 8,
+        prochaineRevision: DateTime.now());
+    m.chapitres.add(c);
+    m.evaluerRevision(c.id, 'difficile'); // echecs = 1, intervalle = 2
+    m.evaluerRevision(c.id, 'difficile'); // echecs = 2, intervalle = 2
+    m.evaluerRevision(c.id, 'cava'); // x1,5 au lieu de x1,7
+    expect(c.intervalleJours, 3);
+    // Un "facile" efface la memoire des echecs.
+    m.evaluerRevision(c.id, 'facile');
+    expect(c.echecs, 0);
+  });
+
+  test('révision en retard (< 7 j) : la suivante s\'ancre sur la date DUE',
+      () {
+    final now = DateTime.now();
+    final due = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 3));
+    final c = Chapitre(
+        matiere: 'Maths',
+        nom: 'Espaces vectoriels',
+        etape: 1,
+        intervalleJours: 10,
+        prochaineRevision: due);
+    m.chapitres.add(c);
+    m.evaluerRevision(c.id, 'cava'); // 10 -> 17 j, ancre sur la date due
+    expect(c.prochaineRevision, due.add(Duration(days: c.intervalleJours)));
+  });
+
+  test('recalibrerChapitres : maîtrise plafonnée à 2, révision demain', () {
+    final c = Chapitre(
+        matiere: 'Physique',
+        nom: 'Ondes',
+        etape: 3,
+        maitrise: 4,
+        intervalleJours: 30);
+    m.chapitres.add(c);
+    m.recalibrerChapitres([c.id]);
+    expect(c.maitrise, 2);
+    expect(c.intervalleJours, 1);
+    final now = DateTime.now();
+    expect(
+        c.prochaineRevision,
+        DateTime(now.year, now.month, now.day)
+            .add(const Duration(days: 1)));
+  });
+
+  test('demarrerEspacement : étape ≥ 1, révision demain, dernierRevu posé',
+      () {
+    final c = Chapitre(matiere: 'Chimie', nom: 'Cinétique', etape: 0);
+    m.chapitres.add(c);
+    m.demarrerEspacement(c.id);
+    expect(c.etape, 1);
+    expect(c.intervalleJours, 1);
+    expect(c.prochaineRevision, isNotNull);
+    expect(c.dernierRevu, isNotNull);
+  });
+
+  // ---------- Seuil J-90 du mode revisions ----------
+
+  test('date de concours lointaine (> 90 j) : le mode normal continue', () {
+    m.dateConcours = DateTime.now().add(const Duration(days: 200));
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    // Une khôlle demain doit toujours apparaitre : en mode revisions
+    // premature, elle disparaissait pendant des mois.
+    m.colles.add(Colle(
+        matiere: 'Physique',
+        start: DateTime.now().add(const Duration(hours: 26))));
+    final s = suggere(m, 120);
+    expect(s.any((x) => x.matiere == 'Physique'), isTrue,
+        reason: 'la khôlle de demain doit rester dans le plan');
+    expect(s.any((x) => x.titre.startsWith('Réviser :')), isFalse,
+        reason: 'pas de rotation concours a J-200');
+  });
+
+  test('mode révisions : une khôlle imminente garde sa place dans le plan',
+      () {
+    m.dateConcours = DateTime.now().add(const Duration(days: 30));
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    m.colles.add(Colle(
+        matiere: 'Anglais',
+        programme: 'Press review',
+        start: DateTime.now().add(const Duration(hours: 26))));
+    final s = suggere(m, 120);
+    expect(s.any((x) => x.titre.contains('khôlle')), isTrue);
+  });
+
+  // ---------- Rotation des DM de vacances ----------
+
+  test('vacances + 2 DM : les créneaux tournent entre les DM', () {
+    final now = DateTime.now();
+    m.sansCours.add(PlageSansCours(
+      titre: 'Vacances',
+      debut: DateTime(now.year, now.month, now.day)
+          .subtract(const Duration(days: 2)),
+      fin: DateTime(now.year, now.month, now.day).add(const Duration(days: 12)),
+    ));
+    m.devoirs.add(Devoir(
+        matiere: 'Maths',
+        titre: 'DM 5',
+        dateRendu: now.add(const Duration(days: 10)),
+        dateDonne: now.subtract(const Duration(days: 1))));
+    m.devoirs.add(Devoir(
+        matiere: 'Physique',
+        titre: 'DM 3',
+        dateRendu: now.add(const Duration(days: 12)),
+        dateDonne: now.subtract(const Duration(days: 1))));
+    // Cadence 1 (10 jours / 4 creneaux vises) : un creneau par jour, servi
+    // alternativement a chaque DM selon le jour. On verifie simplement
+    // qu'un creneau existe et cible l'un des deux DM (la rotation depend
+    // du jour du test).
+    final s = suggere(m, 240);
+    final creneau = s.where((x) => x.titre.contains('Créneau DM')).toList();
+    expect(creneau, isNotEmpty);
+    expect(
+        creneau.first.titre.contains('DM 5') ||
+            creneau.first.titre.contains('DM 3'),
+        isTrue);
+  });
+
+  // ---------- Pliage .ics (RFC 5545) ----------
+
+  test('plieIcs : aucune ligne ne dépasse 75 octets, contenu preservé', () {
+    final longue = 'DESCRIPTION:${'Programme de colle très détaillé — ' * 8}';
+    final pliee = plieIcs(longue);
+    for (final ligne in pliee.split('\r\n')) {
+      // Longueur en OCTETS UTF-8 (les accents comptent double).
+      final octets = ligne.runes.fold<int>(0, (t, r) => t + utf8Len(r));
+      expect(octets, lessThanOrEqualTo(75));
+    }
+    // Depliage : retirer les "\r\n " redonne exactement la ligne d'origine.
+    expect(pliee.replaceAll('\r\n ', ''), longue);
+  });
+
+  test('buildIcs : un long programme de colle produit un fichier plié', () {
+    final ics = buildIcs([
+      Colle(
+        matiere: 'Maths',
+        start: DateTime(2026, 3, 12, 16),
+        programme: 'Chapitre 12 : espaces euclidiens, projecteurs '
+            'orthogonaux, adjoint, réduction des endomorphismes symétriques, '
+            'formes quadratiques, et toutes les démonstrations exigibles '
+            'du programme officiel de la semaine.',
+      ),
+    ]);
+    for (final ligne in ics.split('\r\n')) {
+      final octets = ligne.runes.fold<int>(0, (t, r) => t + utf8Len(r));
+      expect(octets, lessThanOrEqualTo(75));
+    }
+  });
+
+  // ---------- Mode ETE (grandes vacances, 5/2) ----------
+  // Horloge INJECTEE partout : ces tests sont deterministes quel que soit
+  // le jour ou l'heure ou ils tournent.
+
+  PlageSansCours plageEte(DateTime debut, DateTime fin) =>
+      PlageSansCours(titre: 'Grandes vacances', debut: debut, fin: fin, type: 'ete');
+
+  test('plage été : le plan bascule en réactivation, prios en premier', () {
+    // Mardi 4 août 2026, plage été jusqu'au 31 août.
+    final now = DateTime(2026, 8, 4, 10);
+    m.sansCours.add(plageEte(DateTime(2026, 7, 1), DateTime(2026, 8, 31)));
+    m.chapitres.add(
+        Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 3));
+    m.chapitres.add(
+        Chapitre(matiere: 'SII', nom: 'Asservissements', etape: 2, maitrise: 3));
+    m.prios = {'SII': 3, 'Maths': 1};
+    final s = suggere(m, 180, maintenant: now);
+    expect(s, isNotEmpty);
+    expect(s.first.titre, startsWith('Réactiver :'));
+    // Le bilan de concours (via prios) pilote l'ordre : SII d'abord.
+    expect(s.first.matiere, 'SII');
+    expect(s.first.raison, contains('Été'));
+  });
+
+  test('plage été · dimanche : un seul bloc léger facultatif', () {
+    final now = DateTime(2026, 8, 2, 10); // un dimanche
+    m.sansCours.add(plageEte(DateTime(2026, 7, 1), DateTime(2026, 8, 31)));
+    m.chapitres.add(
+        Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    m.chapitres.add(
+        Chapitre(matiere: 'Physique-Chimie', nom: 'Ondes', etape: 2, maitrise: 2));
+    final s = suggere(m, 240, maintenant: now);
+    expect(s.length, 1);
+    expect(s.first.minutes, 30);
+    expect(s.first.raison.toLowerCase(), contains('repos'));
+  });
+
+  test('plage été · dernière semaine : message de remise en rythme', () {
+    final now = DateTime(2026, 8, 27, 10); // jeudi, rentrée le 31
+    m.sansCours.add(plageEte(DateTime(2026, 7, 1), DateTime(2026, 8, 31)));
+    m.chapitres.add(
+        Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    final s = suggere(m, 120, maintenant: now);
+    expect(s.any((x) => x.raison.contains('Rentrée dans')), isTrue);
+  });
+
+  test('plage été : les rappels espacés dus passent en tête', () {
+    final now = DateTime(2026, 8, 4, 10); // mardi
+    m.sansCours.add(plageEte(DateTime(2026, 7, 1), DateTime(2026, 8, 31)));
+    m.chapitres.add(Chapitre(
+        matiere: 'Maths',
+        nom: 'Suites',
+        etape: 2,
+        maitrise: 2,
+        prochaineRevision: DateTime(2026, 8, 4)));
+    m.chapitres.add(
+        Chapitre(matiere: 'SII', nom: 'Asservissements', etape: 2, maitrise: 2));
+    final s = suggere(m, 120, maintenant: now);
+    expect(s.first.rappel, isTrue);
+    expect(s.first.titre, contains('Suites'));
+  });
+
+  test('etalerReactivation : tout le programme réparti sur la plage', () {
+    final now = DateTime(2026, 8, 4, 10);
+    m.sansCours.add(plageEte(DateTime(2026, 7, 1), DateTime(2026, 8, 31)));
+    for (var i = 0; i < 27; i++) {
+      m.chapitres.add(Chapitre(
+          matiere: i % 2 == 0 ? 'Maths' : 'SII',
+          nom: 'Chapitre $i',
+          etape: 1,
+          maitrise: 2));
+    }
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Pas vu', etape: 0, maitrise: 0));
+    final n = m.etalerReactivation(maintenant: now);
+    expect(n, 27); // les etape == 0 ne sont pas planifies
+    // Toutes les revisions tombent entre demain et la fin de la plage.
+    final fin = DateTime(2026, 8, 31);
+    for (final c in m.chapitres.where((c) => c.etape > 0)) {
+      expect(c.prochaineRevision, isNotNull);
+      expect(c.prochaineRevision!.isAfter(DateTime(2026, 8, 4)), isTrue);
+      expect(c.prochaineRevision!.isAfter(fin), isFalse);
+      expect(c.intervalleJours, 1);
+    }
+    // Et elles sont REPARTIES, pas toutes le meme jour.
+    final jours = m.chapitres
+        .where((c) => c.etape > 0)
+        .map((c) => c.prochaineRevision!.day)
+        .toSet();
+    expect(jours.length, greaterThan(5));
+  });
+
+  test('etalerReactivation sans plage été : ne fait rien', () {
+    m.chapitres.add(
+        Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    expect(m.etalerReactivation(maintenant: DateTime(2026, 8, 4)), 0);
+    expect(m.chapitres.first.prochaineRevision, isNull);
+  });
+
+  // ---------- Bilan de concours (5/2) ----------
+
+  test('deficitsConcours : coeff × points sous la barre, par matière', () {
+    m.resultatsConcours.add(ResultatConcours(
+        concours: 'CCINP', epreuve: 'Maths', matiere: 'Maths',
+        annee: 2026, note: 6, barre: 10, coeff: 2)); // deficit 8
+    m.resultatsConcours.add(ResultatConcours(
+        concours: 'CCINP', epreuve: 'SII', matiere: 'SII',
+        annee: 2026, note: 12, barre: 10, coeff: 3)); // au-dessus : 0
+    m.resultatsConcours.add(ResultatConcours(
+        concours: 'Centrale-Supélec', epreuve: 'Maths 1', matiere: 'Maths',
+        annee: 2026, note: 8, barre: 11, coeff: 1)); // deficit 3
+    final d = m.deficitsConcours();
+    expect(d['Maths'], closeTo(11, 0.001)); // 8 + 3
+    expect(d['SII'], 0);
+  });
+
+  test('appliquerPrioritesDepuisDeficits : le plus gros déficit passe à 3',
+      () {
+    m.resultatsConcours.add(ResultatConcours(
+        concours: 'CCINP', epreuve: 'Maths', matiere: 'Maths',
+        annee: 2026, note: 5, barre: 10, coeff: 2));
+    m.resultatsConcours.add(ResultatConcours(
+        concours: 'CCINP', epreuve: 'Physique', matiere: 'Physique-Chimie',
+        annee: 2026, note: 9, barre: 10, coeff: 2));
+    m.resultatsConcours.add(ResultatConcours(
+        concours: 'CCINP', epreuve: 'Anglais', matiere: 'Anglais',
+        annee: 2026, note: 14, barre: 10, coeff: 1));
+    m.appliquerPrioritesDepuisDeficits();
+    expect(m.prios['Maths'], 3);
+    expect(m.prios['Anglais'], 1); // aucun point perdu
+    expect(m.prios['Physique-Chimie'], greaterThanOrEqualTo(1));
+    expect(m.prios['Maths']!, greaterThan(m.prios['Physique-Chimie']!));
+  });
+
+  // ---------- Retro-compatibilite du type de plage ----------
+
+  test('PlageSansCours.fromJson sans type : été détecté, Toussaint non', () {
+    final ete = PlageSansCours.fromJson({
+      'titre': 'Vacances',
+      'debut': '2026-07-04T00:00:00.000',
+      'fin': '2026-08-31T00:00:00.000',
+    });
+    expect(ete.type, 'ete');
+    final toussaint = PlageSansCours.fromJson({
+      'titre': 'Toussaint',
+      'debut': '2026-10-17T00:00:00.000',
+      'fin': '2026-11-01T00:00:00.000',
+    });
+    expect(toussaint.type, 'vacances');
+    // Round-trip : le type explicite est conserve.
+    expect(PlageSansCours.fromJson(ete.toJson()).type, 'ete');
+  });
+
+  // ---------- Planning d'oraux par filiere ----------
+
+  test('kEpreuvesOralesPour : épreuves PSI cohérentes par banque', () {
+    final ccinp = kEpreuvesOralesPour('PSI', 'CCINP');
+    expect(ccinp, containsAll(['Maths', 'Physique-Chimie', 'SII', 'TIPE']));
+    final mines = kEpreuvesOralesPour('PSI', 'Mines-Ponts');
+    expect(mines, contains('Français')); // Mines a un oral de francais
+    final centrale = kEpreuvesOralesPour('PSI', 'Centrale-Supélec');
+    expect(centrale, contains('SII (manip)'));
+    // Une banque inconnue retourne au moins le socle sciences + TIPE.
+    expect(kEpreuvesOralesPour('PSI', 'Banque mystère'), contains('TIPE'));
+  });
+
+  // ---------- Vacances officielles (parseur pur, pas de reseau) ----------
+
+  test('plagesDepuisJson : mapping API -> plages, été borné au 31 août', () {
+    const corps = '''
+{"records": [
+  {"fields": {"description": "Vacances de la Toussaint",
+    "start_date": "2026-10-17T00:00:00+02:00",
+    "end_date": "2026-11-02T00:00:00+01:00"}},
+  {"fields": {"description": "Vacances d'Été",
+    "start_date": "2027-07-06T00:00:00+02:00",
+    "end_date": "2027-09-01T00:00:00+02:00"}},
+  {"fields": {"description": "Pré-rentrée", "start_date": "2026-08-31T00:00:00+02:00"}}
+]}
+''';
+    final plages = plagesDepuisJson(corps);
+    expect(plages.length, 2); // la pre-rentree sans end_date est ignoree
+    expect(plages.first.titre, 'Vacances de la Toussaint');
+    expect(plages.first.type, 'vacances');
+    final ete = plages.last;
+    expect(ete.type, 'ete');
+    // L'API fait courir l'été jusqu'à la rentrée suivante : borné.
+    expect(ete.fin, DateTime(2027, 8, 31));
+  });
+
+  test('plageEnDouble : chevauchement détecté, plages disjointes acceptées',
+      () {
+    final existantes = [
+      PlageSansCours(
+          titre: 'Toussaint',
+          debut: DateTime(2026, 10, 17),
+          fin: DateTime(2026, 11, 2)),
+    ];
+    expect(
+        plageEnDouble(
+            PlageSansCours(
+                titre: 'Vacances de la Toussaint',
+                debut: DateTime(2026, 10, 18),
+                fin: DateTime(2026, 11, 1)),
+            existantes),
+        isTrue);
+    expect(
+        plageEnDouble(
+            PlageSansCours(
+                titre: 'Noël',
+                debut: DateTime(2026, 12, 19),
+                fin: DateTime(2027, 1, 3)),
+            existantes),
+        isFalse);
+  });
+
+  // ---------- Oeuvres de francais ----------
+
+  test('été : bloc lecture un jour sur deux, avec rythme de pages', () {
+    m.sansCours.add(PlageSansCours(
+        titre: 'Été',
+        debut: DateTime(2026, 7, 1),
+        fin: DateTime(2026, 8, 31),
+        type: 'ete'));
+    m.chapitres.add(
+        Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    m.oeuvres.add(
+        Oeuvre(titre: 'Le Rouge et le Noir', auteur: 'Stendhal', pages: 500));
+    // On cherche deux jours de semaine consecutifs (hors dimanche) : la
+    // lecture doit apparaitre sur exactement UN des deux (un jour sur 2).
+    final j1 = DateTime(2026, 8, 4, 10); // mardi
+    final j2 = DateTime(2026, 8, 5, 10); // mercredi
+    bool aLecture(DateTime d) => suggere(m, 180, maintenant: d)
+        .any((s) => s.oeuvreId != null);
+    expect(aLecture(j1) != aLecture(j2), isTrue,
+        reason: 'la lecture doit tomber un jour sur deux');
+    // Le jour avec lecture affiche le rythme de pages.
+    final jour = aLecture(j1) ? j1 : j2;
+    final bloc = suggere(m, 180, maintenant: jour)
+        .firstWhere((s) => s.oeuvreId != null);
+    expect(bloc.matiere, 'Français');
+    expect(bloc.raison, contains('p./séance'));
+  });
+
+  test('rentrée : œuvre pas finie -> rattrapage un jour sur trois', () {
+    // Pas de plage d'ete : mode normal (mi-septembre).
+    m.oeuvres.add(Oeuvre(titre: 'Candide', pages: 150, pageActuelle: 60));
+    m.chapitres.add(
+        Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    // Sur 3 jours consecutifs, le rattrapage apparait exactement 1 fois.
+    var vus = 0;
+    for (var d = 0; d < 3; d++) {
+      final s = suggere(m, 120,
+          maintenant: DateTime(2026, 9, 14 + d, 19));
+      if (s.any((x) => x.oeuvreId != null)) vus++;
+    }
+    expect(vus, 1);
+    // Une oeuvre FINIE ne revient pas.
+    m.oeuvres.first.finie = true;
+    for (var d = 0; d < 3; d++) {
+      final s = suggere(m, 120,
+          maintenant: DateTime(2026, 9, 14 + d, 19));
+      expect(s.any((x) => x.oeuvreId != null), isFalse);
+    }
+  });
+
+  test('Oeuvre : round-trip JSON', () {
+    final o = Oeuvre(
+        titre: 'Candide', auteur: 'Voltaire', pages: 150, pageActuelle: 42);
+    final r = Oeuvre.fromJson(o.toJson());
+    expect(r.titre, 'Candide');
+    expect(r.pages, 150);
+    expect(r.pageActuelle, 42);
+    expect(r.finie, isFalse);
+  });
+
+  // ---------- Jours off ----------
+
+  test('jour off : plan vide, quel que soit le mode', () {
+    final now = DateTime(2026, 8, 4, 10);
+    m.joursOff.add(DateTime(2026, 8, 4));
+    m.chapitres.add(
+        Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    m.colles.add(
+        Colle(matiere: 'Physique', start: now.add(const Duration(hours: 26))));
+    expect(suggere(m, 180, maintenant: now), isEmpty);
+    // Le lendemain, le plan revient.
+    expect(suggere(m, 180, maintenant: DateTime(2026, 8, 5, 10)), isNotEmpty);
+  });
+
+  test('etalerReactivation : les jours off sont évités', () {
+    final now = DateTime(2026, 8, 4, 10);
+    m.sansCours.add(PlageSansCours(
+        titre: 'Été',
+        debut: DateTime(2026, 7, 1),
+        fin: DateTime(2026, 8, 14),
+        type: 'ete'));
+    // Les 15 et 16 août n'existent pas dans la plage ; on bloque les 6-8.
+    m.joursOff.addAll([
+      DateTime(2026, 8, 6),
+      DateTime(2026, 8, 7),
+      DateTime(2026, 8, 8),
+    ]);
+    for (var i = 0; i < 10; i++) {
+      m.chapitres.add(Chapitre(
+          matiere: 'Maths', nom: 'Chapitre $i', etape: 1, maitrise: 2));
+    }
+    m.etalerReactivation(maintenant: now);
+    for (final c in m.chapitres) {
+      expect(m.estJourOff(c.prochaineRevision!), isFalse,
+          reason: '${c.nom} planifié un jour off (${c.prochaineRevision})');
+    }
   });
 }
