@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 
 /// GRILLE HORAIRE facon Google Calendar (Agenda sur grand ecran) :
 /// heures en gouttiere a gauche, 7 colonnes-jours qui remplissent la
@@ -384,7 +385,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                                   '${h}h',
                                   style: TextStyle(
                                       fontSize: 10.5,
-                                      color: Colors.grey.shade500),
+                                      color: couleurSecondaire(context)),
                                 ),
                               ),
                           ],

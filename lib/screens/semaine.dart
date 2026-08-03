@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 
 /// Colonnes-jours compactes (blocs teintes) : la carte « Ma semaine » du
 /// tableau de bord, et l'Agenda sur TELEPHONE. Sur PC, l'Agenda utilise la
@@ -194,7 +195,7 @@ class VueSemaineColonnes extends StatelessWidget {
             Text('🏖 ${plage.titre}',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600))
+                style: TextStyle(fontSize: 11, color: couleurSecondaire(context)))
           else if (items.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -227,7 +228,7 @@ class VueSemaineColonnes extends StatelessWidget {
             ),
           if (items.length > maxItems)
             Text('+${items.length - maxItems} autres',
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                style: TextStyle(fontSize: 10, color: couleurSecondaire(context))),
         ],
       ),
     );

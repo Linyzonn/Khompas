@@ -141,6 +141,7 @@ class _RootScaffoldState extends State<RootScaffold> {
                   ),
                 ],
                 IconButton(
+                  tooltip: 'Réglages',
                   icon: const Icon(Icons.settings_outlined),
                   onPressed: () => Navigator.push(
                       context,

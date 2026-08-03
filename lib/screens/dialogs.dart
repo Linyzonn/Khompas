@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'erreurs.dart';
 
 /// Sur telephone : bottom sheet classique. Sur GRAND ECRAN : boite de
@@ -119,7 +120,7 @@ Future<String?> demanderAutoEvaluation(BuildContext context, String titre) {
             const SizedBox(height: 4),
             Text(
               'Ta réponse règle la date de la prochaine révision. Sois honnête, personne ne regarde 😉',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
             ),
             const SizedBox(height: 14),
             Row(
@@ -712,7 +713,7 @@ Future<double?> noteAvecRecalibrage(BuildContext context,
               const SizedBox(height: 6),
               Text(
                 'Quels chapitres t\'ont posé problème ? Ils repasseront en priorité dans ton plan du soir.',
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 13, color: couleurSecondaire(context)),
               ),
               const SizedBox(height: 10),
               Flexible(

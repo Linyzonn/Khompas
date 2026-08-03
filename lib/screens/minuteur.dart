@@ -5,6 +5,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'dialogs.dart';
 
 /// Un bloc de la session Pomodoro : travail (matiere + contenu) ou pause.
@@ -193,7 +194,7 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
                     child: Text(bloc.label,
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                            fontSize: 13, color: Colors.grey.shade600)),
+                            fontSize: 13, color: couleurSecondaire(context))),
                   ),
                 ),
               const SizedBox(height: 24),
@@ -238,7 +239,7 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
               Text(
                 'L\'écran reste allumé pendant la session.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
               ),
             ],
           ],

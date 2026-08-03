@@ -161,7 +161,12 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
                 'Les chapitres arrivent « vus en cours » avec une maîtrise moyenne, '
                 'au lieu de « pas vu » — c\'est une année de révision, pas de découverte.'),
             value: cinqDemi,
-            onChanged: (v) => setState(() => cinqDemi = v),
+            // Persiste dans le PROFIL : avant, ce switch ne changeait que
+            // l'ecran local et divergeait silencieusement des Reglages.
+            onChanged: (v) {
+              AppModel.instance.setCinqDemi(v);
+              setState(() => cinqDemi = v);
+            },
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(

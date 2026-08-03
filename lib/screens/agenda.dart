@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../ics.dart';
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'dialogs.dart';
 import 'grille_semaine.dart';
 import 'import.dart';
@@ -62,7 +63,7 @@ class AgendaScreen extends StatelessWidget {
           child: Text(
             'Aucune khôlle, DS ou DM enregistré pour le moment — le ➕ en bas à droite permet d\'ajouter à la main.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 13),
           ),
         )
       else
@@ -74,7 +75,7 @@ class AgendaScreen extends StatelessWidget {
               style: Theme.of(context)
                   .textTheme
                   .titleSmall
-                  ?.copyWith(color: Colors.grey.shade600),
+                  ?.copyWith(color: couleurSecondaire(context)),
             ),
           ),
           for (final e in semaines[lundi]!) _tile(context, e),
@@ -87,7 +88,7 @@ class AgendaScreen extends StatelessWidget {
               style: Theme.of(context)
                   .textTheme
                   .titleSmall
-                  ?.copyWith(color: Colors.grey.shade600)),
+                  ?.copyWith(color: couleurSecondaire(context))),
         );
 
     return Scaffold(
@@ -227,12 +228,12 @@ class AgendaScreen extends StatelessWidget {
                   fontSize: 11,
                   letterSpacing: 0.5,
                   fontWeight: FontWeight.w700,
-                  color: Colors.grey.shade600),
+                  color: couleurSecondaire(context)),
             ),
             const SizedBox(height: 8),
             if (lignes.isEmpty)
               Text('Rien à l\'horizon 🎉',
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600))
+                  style: TextStyle(fontSize: 13, color: couleurSecondaire(context)))
             else
               for (final l in lignes.take(8))
                 Padding(
@@ -255,7 +256,7 @@ class AgendaScreen extends StatelessWidget {
                         style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w700,
-                            color: Colors.grey.shade600),
+                            color: couleurSecondaire(context)),
                       ),
                     ],
                   ),

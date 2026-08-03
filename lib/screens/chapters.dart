@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'dialogs.dart';
 import 'import_chapitres.dart';
 
@@ -210,7 +211,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 '${fragiles == 0 ? '' : ' · ⚠ $fragiles fragile(s)'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 11.5, color: couleurSecondaire(context)),
               ),
             ),
           ],
@@ -346,20 +347,20 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 ),
                 Text(c.matiere,
                     style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
                 if (c.prochaineRevision != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       '🔁 Prochaine révision espacée : ${frDateCourte(c.prochaineRevision!)}',
                       style: TextStyle(
-                          fontSize: 12, color: Colors.grey.shade600),
+                          fontSize: 12, color: couleurSecondaire(context)),
                     ),
                   ),
                 const SizedBox(height: 12),
                 Text('Étape',
                     style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
                 const SizedBox(height: 4),
                 Wrap(
                   spacing: 5,
@@ -382,7 +383,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 const SizedBox(height: 10),
                 Text('Maîtrise',
                     style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
                 const SizedBox(height: 4),
                 Row(
                   children: [
@@ -411,7 +412,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                     const SizedBox(width: 8),
                     Text(_labelMaitrise(c.maitrise),
                         style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade600)),
+                            fontSize: 12, color: couleurSecondaire(context))),
                   ],
                 ),
                 const SizedBox(height: 12),

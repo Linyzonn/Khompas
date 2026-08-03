@@ -391,11 +391,19 @@ class PlageSansCours {
   DateTime debut;
   DateTime fin; // incluse
 
+  // Nature de la plage : pilote le comportement du plan du soir.
+  //  - 'vacances'  : petites vacances scolaires (etaleur de DM actif) ;
+  //  - 'revisions' : semaine de revisions avant les ecrits (3/2 et 5/2) ;
+  //  - 'ete'       : GRANDES vacances -> mode reactivation douce du
+  //                  programme (rotation des chapitres, annales, repos).
+  String type;
+
   PlageSansCours({
     String? id,
     required this.titre,
     required this.debut,
     required this.fin,
+    this.type = 'vacances',
   }) : id = id ?? _newId();
 
   bool contient(DateTime d) {
@@ -409,15 +417,38 @@ class PlageSansCours {
         'titre': titre,
         'debut': debut.toIso8601String(),
         'fin': fin.toIso8601String(),
+        'type': type,
       };
 
-  static PlageSansCours fromJson(Map<String, dynamic> j) => PlageSansCours(
-        id: j['id'] as String?,
-        titre: (j['titre'] ?? '') as String,
-        debut: DateTime.parse(j['debut'] as String),
-        fin: DateTime.parse(j['fin'] as String),
-      );
+  static PlageSansCours fromJson(Map<String, dynamic> j) {
+    final debut = DateTime.parse(j['debut'] as String);
+    final fin = DateTime.parse(j['fin'] as String);
+    var type = (j['type'] ?? '') as String;
+    if (type.isEmpty) {
+      // Donnees d'avant le champ : une longue plage touchant juillet ou
+      // aout est de toute evidence l'ete.
+      final longue = fin.difference(debut).inDays >= 40;
+      final toucheEte = [debut.month, fin.month]
+              .any((mois) => mois == 7 || mois == 8) ||
+          (debut.month <= 6 && fin.month >= 9);
+      type = (longue && toucheEte) ? 'ete' : 'vacances';
+    }
+    return PlageSansCours(
+      id: j['id'] as String?,
+      titre: (j['titre'] ?? '') as String,
+      debut: debut,
+      fin: fin,
+      type: type,
+    );
+  }
 }
+
+/// Types de plage sans cours proposes a la creation (etiquette + emoji).
+const List<(String, String, String)> kTypesPlage = [
+  ('vacances', '🏖', 'Vacances'),
+  ('revisions', '📖', 'Révisions'),
+  ('ete', '☀️', 'Été (grandes vacances)'),
+];
 
 /// Types de creneau pour le bilan de journee.
 const List<String> kTypesBilan = ['Cours', 'Exos', 'TP'];
@@ -705,6 +736,91 @@ class EpreuveOrale {
         debutMin: j['debutMin'] as int?,
         lieu: (j['lieu'] ?? '') as String,
         remarque: (j['remarque'] ?? '') as String,
+      );
+}
+
+/// Epreuves ORALES d'une banque de concours pour une filiere de 2e annee
+/// (liste indicative — la saisie libre reste possible). Sert au bouton
+/// « Générer mon planning d'oraux » : les dates/salles se remplissent
+/// apres l'admissibilite.
+List<String> kEpreuvesOralesPour(String filiere, String concours) {
+  final f = filiere.toUpperCase();
+  final c = concours.toLowerCase();
+  // Matiere « sciences » selon la filiere.
+  final sciences = switch (f) {
+    'MP' || 'MPI' => ['Maths', 'Physique'],
+    'PC' => ['Maths', 'Physique-Chimie'],
+    'PSI' => ['Maths', 'Physique-Chimie', 'SII'],
+    'PT' => ['Maths', 'Physique', 'SII (manip)'],
+    _ => ['Maths', 'Physique'],
+  };
+  if (c.contains('ccinp')) {
+    return [...sciences, 'TIPE', 'Anglais'];
+  }
+  if (c.contains('centrale')) {
+    return [...sciences, if (f == 'PSI' || f == 'PT') 'SII (manip)', 'TIPE', 'Anglais'];
+  }
+  if (c.contains('mines-ponts') || c == 'mines ponts') {
+    return [...sciences, 'TIPE', 'Anglais', 'Français'];
+  }
+  if (c.contains('x-ens') || c.contains('polytechnique')) {
+    return [...sciences, 'TIPE', 'ADS', 'Anglais', 'Français'];
+  }
+  if (c.contains('mines-télécom') || c.contains('mines-telecom')) {
+    return [...sciences, 'Entretien', 'Anglais'];
+  }
+  if (c.contains('e3a')) {
+    return [...sciences, 'TIPE', 'Anglais'];
+  }
+  // Banque inconnue : le socle commun.
+  return [...sciences, 'TIPE', 'Anglais'];
+}
+
+/// Un RESULTAT d'epreuve ecrite d'un concours deja passe (3/2 devenu 5/2) :
+/// la note, le coefficient, et si on la connait la BARRE (admissibilite ou
+/// moyenne). C'est la donnee la plus precieuse d'une 5/2 : elle dit ou se
+/// perdent reellement les points, et pilote les priorites de matieres.
+class ResultatConcours {
+  String id;
+  String concours;
+  String epreuve; // 'Maths 1', 'Physique-Chimie', 'Français'...
+  String matiere; // matiere de l'app a laquelle rattacher l'epreuve
+  int annee;
+  double? note; // /20
+  double? barre; // barre d'admissibilite (ou moyenne) sur la MEME echelle
+  double coeff;
+
+  ResultatConcours({
+    String? id,
+    required this.concours,
+    required this.epreuve,
+    required this.matiere,
+    required this.annee,
+    this.note,
+    this.barre,
+    this.coeff = 1,
+  }) : id = id ?? _newId();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'concours': concours,
+        'epreuve': epreuve,
+        'matiere': matiere,
+        'annee': annee,
+        'note': note,
+        'barre': barre,
+        'coeff': coeff,
+      };
+
+  static ResultatConcours fromJson(Map<String, dynamic> j) => ResultatConcours(
+        id: j['id'] as String?,
+        concours: (j['concours'] ?? '') as String,
+        epreuve: (j['epreuve'] ?? '') as String,
+        matiere: (j['matiere'] ?? '') as String,
+        annee: ((j['annee'] ?? 2020) as num).toInt(),
+        note: (j['note'] as num?)?.toDouble(),
+        barre: (j['barre'] as num?)?.toDouble(),
+        coeff: ((j['coeff'] ?? 1) as num).toDouble(),
       );
 }
 

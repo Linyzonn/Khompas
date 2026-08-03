@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
+import 'bilan_concours.dart';
 import 'dialogs.dart';
 import 'erreurs.dart';
 
@@ -38,12 +40,27 @@ class GradesScreen extends StatelessWidget {
             aRefaire == 0
                 ? 'Note tes erreurs de khôlle/DS — refais-les jusqu\'à les maîtriser.'
                 : '$aRefaire erreur(s) à refaire',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
           ),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => Navigator.push(context,
               MaterialPageRoute(builder: (_) => const ErreursScreen())),
         ),
+        if (m.cinqDemi)
+          ListTile(
+            leading: const Text('🎯', style: TextStyle(fontSize: 22)),
+            title: const Text('Bilan de concours (5/2)',
+                style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              m.resultatsConcours.isEmpty
+                  ? 'Tes notes de l\'an dernier par épreuve → où tu perds des points.'
+                  : '${m.resultatsConcours.length} résultat(s) saisi(s)',
+              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const BilanConcoursScreen())),
+          ),
         const Divider(height: 1),
         for (final mat in matieres) _section(context, mat),
       ],
@@ -146,7 +163,7 @@ class GradesScreen extends StatelessWidget {
       subtitle: Text(
         'Khôlles : ${mc == null ? '—' : mc.toStringAsFixed(1)}/20'
         '   ·   DS : ${md == null ? '—' : md.toStringAsFixed(1)}/20',
-        style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+        style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
       ),
       children: [
         if (t != null)
@@ -198,7 +215,7 @@ class GradesScreen extends StatelessWidget {
                     'classe : ${d.moyenneClasse!.toStringAsFixed(1)} — tu es '
                     '${d.note! >= d.moyenneClasse! + 1 ? 'au-dessus 💪' : d.note! >= d.moyenneClasse! - 1 ? 'dans la moyenne' : 'un peu en dessous — ça se rattrape'}',
                     style: TextStyle(
-                        fontSize: 11, color: Colors.grey.shade600)),
+                        fontSize: 11, color: couleurSecondaire(context))),
             trailing: _noteChip(context, d.note, color, () async {
               final n = await noteAvecRecalibrage(context,
                   matiere: d.matiere,
@@ -312,7 +329,7 @@ class GradesScreen extends StatelessWidget {
             ? '+ note'
             : '${note.toStringAsFixed(note == note.roundToDouble() ? 0 : 1)}/20',
         style: TextStyle(
-          color: note == null ? Colors.grey.shade600 : color,
+          color: note == null ? couleurSecondaire(context) : color,
           fontWeight: FontWeight.bold,
           fontSize: 12,
         ),

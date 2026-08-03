@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 
 /// Calendrier interne : roulement des semaines (A/B) et periodes SANS cours
 /// (vacances, semaines de revisions avant les concours). L'emploi du temps
@@ -31,7 +32,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
             'lundi de semaine A : l\'app saura ensuite quelle semaine tu vis, '
             'et n\'affichera que les bons créneaux (marqués « Semaine A/B » '
             'dans Mon emploi du temps).',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
           ),
           const SizedBox(height: 8),
           if (m.refSemaineA == null)
@@ -75,7 +76,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
             'Vacances, et — pour les 3/2 et 5/2 — semaines de révisions avant '
             'les concours : l\'emploi du temps se met en veille sur ces '
             'périodes (pas de « cours du jour » dans le plan du soir).',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
           ),
           const SizedBox(height: 8),
           if (m.sansCours.isEmpty)
@@ -84,11 +85,14 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
           for (final p in m.sansCours)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                p.titre.toLowerCase().contains('révision') ||
-                        p.titre.toLowerCase().contains('revision')
-                    ? Icons.menu_book
-                    : Icons.beach_access,
+              // Le TYPE de plage (et plus une heuristique sur le titre)
+              // choisit l'icone — et pilote le plan du soir (mode ete).
+              leading: Text(
+                kTypesPlage
+                    .firstWhere((t) => t.$1 == p.type,
+                        orElse: () => kTypesPlage.first)
+                    .$2,
+                style: const TextStyle(fontSize: 22),
               ),
               title: Text(p.titre),
               subtitle:
@@ -125,6 +129,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
     final titreCtl = TextEditingController(text: 'Vacances');
     var debut = DateTime.now();
     var fin = DateTime.now().add(const Duration(days: 13));
+    var type = 'vacances';
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -138,6 +143,27 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                 controller: titreCtl,
                 decoration: const InputDecoration(
                     labelText: 'Titre (Toussaint, Révisions concours…)'),
+              ),
+              const SizedBox(height: 10),
+              // Le type pilote le plan du soir : « Été » = reactivation
+              // douce du programme (rotation, annales, dimanche de repos).
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final t in kTypesPlage)
+                    ChoiceChip(
+                      label: Text('${t.$2} ${t.$3}',
+                          style: const TextStyle(fontSize: 12)),
+                      selected: type == t.$1,
+                      onSelected: (_) => setLocal(() {
+                        type = t.$1;
+                        if (t.$1 == 'ete' &&
+                            titreCtl.text.trim() == 'Vacances') {
+                          titreCtl.text = 'Grandes vacances';
+                        }
+                      }),
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               Row(
@@ -196,6 +222,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
         titre: titreCtl.text.trim(),
         debut: debut,
         fin: fin,
+        type: type,
       ));
       if (mounted) setState(() {});
     }

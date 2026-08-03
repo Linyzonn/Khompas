@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'dialogs.dart';
 
 /// Editeur d'emploi du temps en TABLEAU : 6 colonnes (lundi -> samedi),
@@ -131,7 +132,7 @@ class _EdtScreenState extends State<EdtScreen> {
                                   child: Text('${h}h',
                                       style: TextStyle(
                                           fontSize: 10,
-                                          color: Colors.grey.shade500)),
+                                          color: couleurSecondaire(context))),
                                 ),
                             ],
                           ),
@@ -233,7 +234,7 @@ class _EdtScreenState extends State<EdtScreen> {
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 10),
               Text('Cours',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 6,
@@ -250,7 +251,7 @@ class _EdtScreenState extends State<EdtScreen> {
               ),
               const SizedBox(height: 10),
               Text('Vie quotidienne',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 6,

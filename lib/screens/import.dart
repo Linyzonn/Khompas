@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../ai_extractor.dart';
 import '../api_client.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'settings.dart';
 import 'verify.dart';
 
@@ -399,7 +400,7 @@ class _ImportScreenState extends State<ImportScreen> {
                       'Premier de ta classe ? Ajoute les photos ou le PDF du '
                       'colloscope (section suivante) puis :',
                       style:
-                          TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          TextStyle(fontSize: 12, color: couleurSecondaire(context)),
                     ),
                     const SizedBox(height: 6),
                     OutlinedButton.icon(
@@ -417,7 +418,7 @@ class _ImportScreenState extends State<ImportScreen> {
               style: Theme.of(context).textTheme.titleMedium),
           Text(
             'Envoyées à un serveur, les photos y sont stockées ~4 mois pour ta classe puis supprimées automatiquement (suppression anticipée possible par le créateur du code, dans Réglages).',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 11.5),
           ),
           const SizedBox(height: 8),
           Row(
@@ -501,7 +502,7 @@ class _ImportScreenState extends State<ImportScreen> {
           const SizedBox(height: 6),
           Text(
             'Une photo bien à plat, nette et entière (tableau + tableau des semaines + notes du bas) donne les meilleurs résultats.',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
           ),
           if (montrerClePerso) ...[
             const SizedBox(height: 20),
@@ -516,7 +517,7 @@ class _ImportScreenState extends State<ImportScreen> {
             const SizedBox(height: 6),
             Text(
               'Nécessite ta clé API dans Réglages (quelques centimes par import).',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
             ),
           ],
           const SizedBox(height: 20),
@@ -527,7 +528,7 @@ class _ImportScreenState extends State<ImportScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Text('OU',
                     style: TextStyle(
-                        color: Colors.grey.shade600,
+                        color: couleurSecondaire(context),
                         fontWeight: FontWeight.bold)),
               ),
               const Expanded(child: Divider()),
@@ -564,7 +565,7 @@ class _ImportScreenState extends State<ImportScreen> {
           const SizedBox(height: 8),
           Text(
             'Les photos restent dans ton appli d\'IA : Khompas n\'a besoin que de la réponse.',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
           ),
         ],
       ),

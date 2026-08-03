@@ -37,7 +37,14 @@ const TTL_PHOTO = 120 * 24 * 3600 * 1000;
 // Alphabet sans caracteres ambigus (pas de O/0, I/1/L...).
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
-const kv = await Deno.openKv();
+// KV injectable : en production il est ouvert au demarrage (tout en bas,
+// sous import.meta.main) ; les tests injectent un KV en memoire via
+// injecterKv() — c'est ce qui rend les 660 lignes exposees a Internet
+// enfin testables sans les deployer.
+let kv: Deno.Kv;
+export function injecterKv(k: Deno.Kv) {
+  kv = k;
+}
 
 function cors(h: Headers = new Headers()): Headers {
   h.set('access-control-allow-origin', '*');
@@ -289,19 +296,26 @@ async function extraireClaude(
     .join('\n');
 }
 
-Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
-  try {
-    return await gerer(req, info);
-  } catch (e) {
-    // Quoi qu'il arrive, repondre AVEC les en-tetes CORS : sans eux, le
-    // navigateur masque tout derriere un "Failed to fetch" indebogable.
-    // Le detail part dans les logs, pas chez le client (fuite d'infos).
-    console.error('Erreur interne :', e);
-    return erreur('Erreur interne du serveur — réessaie.', 500);
-  }
-});
+// Demarrage REEL uniquement (pas quand les tests importent ce module).
+if (import.meta.main) {
+  injecterKv(await Deno.openKv());
+  Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
+    try {
+      return await gerer(req, info);
+    } catch (e) {
+      // Quoi qu'il arrive, repondre AVEC les en-tetes CORS : sans eux, le
+      // navigateur masque tout derriere un "Failed to fetch" indebogable.
+      // Le detail part dans les logs, pas chez le client (fuite d'infos).
+      console.error('Erreur interne :', e);
+      return erreur('Erreur interne du serveur — réessaie.', 500);
+    }
+  });
+}
 
-async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Response> {
+export async function gerer(
+  req: Request,
+  info: Deno.ServeHandlerInfo,
+): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { headers: cors() });
   const url = new URL(req.url);
   const p = url.pathname.replace(/\/+$/, '');

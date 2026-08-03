@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../api_client.dart';
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'dialogs.dart';
 import 'edt.dart';
 import 'import.dart';
@@ -148,7 +149,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Text(
               'Chaque étape se saute et se refait plus tard — mais avec les trois, le plan du soir devient vraiment intelligent.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 13),
             ),
           ),
         ),
@@ -191,7 +192,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
             Center(
               child: Text('Le compagnon de ta prépa',
-                  style: TextStyle(color: Colors.grey.shade600)),
+                  style: TextStyle(color: couleurSecondaire(context))),
             ),
             const SizedBox(height: 28),
             DropdownButtonFormField<String>(
@@ -234,7 +235,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 'Gratuit et anonyme : une simple clé secrète. Tes données sont '
                 'sauvegardées en ligne et synchronisées entre ton téléphone et ton PC.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(

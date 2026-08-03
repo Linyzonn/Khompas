@@ -2,8 +2,12 @@
 
 Le manque que toutes les prépas connaissent : un outil qui comprend VRAIMENT le fonctionnement d'une CPGE — colloscope, khôlles, programmes de colles, DS du samedi — et qui t'aide à décider quoi travailler chaque soir.
 
-## ✨ Fonctionnalités (bêta 0.14)
+## ✨ Fonctionnalités (bêta 0.15)
 
+- 💪 **Vrai mode 5/2** : « Je refais ma 2e année » garde tout ton capital (chapitres, notes, cahier d'erreurs), et ouvre la section « Ma 5/2 » — 🎯 **bilan de concours** (tes notes de l'an dernier par épreuve, barres comprises → l'app calcule OÙ tu perds des points et règle tes priorités de matières sur un bouton, jamais en silence) et ☀️ **réactivation d'été**.
+- ☀️ **Mode grandes vacances** : déclare une plage « Été » dans le calendrier → le plan bascule en réactivation douce : la révision de TOUT ton programme étalée sur les vacances (matières prioritaires d'abord), une annale en douceur par semaine avec correction active le lendemain, **dimanche = repos** (un seul bloc léger facultatif — la consolidation exige de la récupération), et une remise en rythme la dernière semaine avant la rentrée.
+- 🎓 **Planning d'oraux généré** : coche tes concours → les épreuves orales classiques de ta filière sont créées (CCINP, Centrale, Mines-Ponts, X-ENS… ; maths, physique-chimie, SII, TIPE, langues, français selon la banque) — tu les dates après l'admissibilité.
+- 🧭 **Passage en 2e année honnête** : un PCSI choisit PC **ou** PSI (avant, PSI était imposé en silence), un MPSI choisit MP ou PSI ; et la date des écrits se pré-remplit en un tap (≈ 20 avril) pour les filières de 2e année.
 - 📋 **Programmes de colles partagés** : UN élève colle le programme de la semaine → toute la classe le reçoit, attaché à ses khôlles. Bouton « coller » sur la prochaine khôlle, rappel à J-3 si le programme manque.
 - 🎤 **Post-mortem de khôlle** : en sortant d'une colle, 30 secondes pour la note, une erreur au cahier, et « ce qui est tombé » (ce qui tombe en colle annonce le DS).
 - 📊 **Moyenne de classe sur les DS** (facultative) : c'est elle qui dit si une note est bonne — l'app compare à la classe, jamais de rang, jamais de rouge.
@@ -12,7 +16,7 @@ Le manque que toutes les prépas connaissent : un outil qui comprend VRAIMENT le
 - 📜 **Annales réalistes** : l'épreuve entière (3-4 h) le week-end, une partie chrono en semaine, et la correction active en priorité le lendemain d'une annale.
 - 🧭 **Fil de rentrée** : à la première ouverture, trois étapes guidées — colloscope → programme officiel → emploi du temps.
 - 🌙 **Mode sombre** (suit le réglage du téléphone/PC) et heure limite de sommeil désormais opérante même après minuit.
-- 🎓 **2e année** : écran « je passe en 2e année », jalons TIPE/SCEI à confirmer (notifiés la veille), planning d'oraux proposé automatiquement après les écrits.
+- 🎓 **2e année** : passage guidé (choix PC/PSI…), jalons TIPE/SCEI à confirmer (notifiés la veille), et planning d'oraux généré depuis tes concours (écran Oraux).
 - 🔐 **Serveur blindé** : limites anti-abus, photos de colloscope auto-supprimées après ~4 mois, suppression de classe par son créateur, détection « ton compte a plus récent » à l'ouverture.
 
 - 🧭 **Agenda repensé** : les 7 prochains jours en colonnes (cours, khôlles, DS, DM, oraux), les échéances les plus importantes sur le côté, et l'import du colloscope en une carte compacte.

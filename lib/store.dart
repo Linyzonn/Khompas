@@ -34,6 +34,8 @@ class AppModel extends ChangeNotifier {
   List<Erreur> erreurs = [];
   List<Annale> annales = [];
   List<EpreuveOrale> oraux = [];
+  // Bilan de concours (5/2) : notes/barres des epreuves de l'an dernier.
+  List<ResultatConcours> resultatsConcours = [];
   // true = le plan du soir bascule en preparation des ORAUX (post-ecrits).
   bool modeOraux = false;
   DateTime? refSemaineA;
@@ -149,6 +151,9 @@ class AppModel extends ChangeNotifier {
           final newOraux = ((j['oraux'] ?? []) as List)
               .map((e) => EpreuveOrale.fromJson(e as Map<String, dynamic>))
               .toList();
+          final newResultats = ((j['resultatsConcours'] ?? []) as List)
+              .map((e) => ResultatConcours.fromJson(e as Map<String, dynamic>))
+              .toList();
           final newModeOraux = (j['modeOraux'] ?? false) as bool;
           final newRefSemaineA = j['refSemaineA'] == null
               ? null
@@ -175,6 +180,7 @@ class AppModel extends ChangeNotifier {
           erreurs = newErreurs;
           annales = newAnnales;
           oraux = newOraux;
+          resultatsConcours = newResultats;
           modeOraux = newModeOraux;
           refSemaineA = newRefSemaineA;
           methodeTravail = newMethode;
@@ -266,6 +272,9 @@ class AppModel extends ChangeNotifier {
     for (final a in annales) {
       a.matiere = n(a.matiere);
     }
+    for (final r in resultatsConcours) {
+      r.matiere = n(r.matiere);
+    }
     // Maps par matiere : en cas de collision apres normalisation, on garde
     // la valeur la plus haute (prio) / existante (objectif).
     final nouveauxPrios = <String, int>{};
@@ -318,6 +327,9 @@ class AppModel extends ChangeNotifier {
     for (final a in annales) {
       if (a.matiere == source) a.matiere = cible;
     }
+    for (final r in resultatsConcours) {
+      if (r.matiere == source) r.matiere = cible;
+    }
     final pSource = prios.remove(source);
     if (pSource != null) {
       final pCible = prios[cible];
@@ -346,6 +358,8 @@ class AppModel extends ChangeNotifier {
         'erreurs': erreurs.map((e) => e.toJson()).toList(),
         'annales': annales.map((a) => a.toJson()).toList(),
         'oraux': oraux.map((o) => o.toJson()).toList(),
+        'resultatsConcours':
+            resultatsConcours.map((r) => r.toJson()).toList(),
         'modeOraux': modeOraux,
         'refSemaineA': refSemaineA?.toIso8601String(),
         'methodeTravail': methodeTravail,
@@ -577,6 +591,9 @@ class AppModel extends ChangeNotifier {
       final newOraux = ((decoded['oraux'] ?? []) as List)
           .map((e) => EpreuveOrale.fromJson(e as Map<String, dynamic>))
           .toList();
+      final newResultats = ((decoded['resultatsConcours'] ?? []) as List)
+          .map((e) => ResultatConcours.fromJson(e as Map<String, dynamic>))
+          .toList();
       final newModeOraux = (decoded['modeOraux'] ?? false) as bool;
       final newRefSemaineA = decoded['refSemaineA'] == null
           ? null
@@ -603,6 +620,7 @@ class AppModel extends ChangeNotifier {
       erreurs = newErreurs;
       annales = newAnnales;
       oraux = newOraux;
+      resultatsConcours = newResultats;
       modeOraux = newModeOraux;
       refSemaineA = newRefSemaineA;
       methodeTravail = newMethode;
@@ -729,15 +747,16 @@ class AppModel extends ChangeNotifier {
 
   /// Entree MANUELLE dans la repetition espacee (fiche chapitre) : "vu
   /// aujourd'hui -> reviser demain" — la porte d'entree sans EDT rempli.
-  void demarrerEspacement(String chapitreId) {
+  void demarrerEspacement(String chapitreId, {DateTime? maintenant}) {
+    final now = maintenant ?? DateTime.now();
     final i = chapitres.indexWhere((c) => c.id == chapitreId);
     if (i < 0) return;
     final c = chapitres[i];
     if (c.etape < 1) c.etape = 1;
     c.entame = false;
     c.intervalleJours = 1;
-    c.dernierRevu = DateTime.now();
-    final demain = DateTime.now().add(const Duration(days: 1));
+    c.dernierRevu = now;
+    final demain = now.add(const Duration(days: 1));
     c.prochaineRevision = DateTime(demain.year, demain.month, demain.day);
     _touch();
   }
@@ -1118,7 +1137,8 @@ class AppModel extends ChangeNotifier {
   ///  - un chapitre chroniquement dur (2 "difficile" recents ou plus)
   ///    ralentit a x1.5 : sans cette memoire des echecs, il oscillait
   ///    eternellement entre 2 et 4 jours.
-  void evaluerRevision(String chapitreId, String verdict) {
+  void evaluerRevision(String chapitreId, String verdict,
+      {DateTime? maintenant}) {
     final i = chapitres.indexWhere((c) => c.id == chapitreId);
     if (i < 0) return;
     final c = chapitres[i];
@@ -1140,7 +1160,7 @@ class AppModel extends ChangeNotifier {
     // L'espacement s'ancre sur la date OU LA REVISION ETAIT DUE (si le
     // retard reste raisonnable, < 7 j) plutot que sur aujourd'hui :
     // reviser avec 3 jours de retard ne doit pas decaler toute la suite.
-    final now = DateTime.now();
+    final now = maintenant ?? DateTime.now();
     var base = now;
     final due = c.prochaineRevision;
     if (due != null) {
@@ -1163,8 +1183,9 @@ class AppModel extends ChangeNotifier {
   /// Recalibrage apres une mauvaise note : les chapitres designes repassent
   /// fragiles (maitrise plafonnee a 2) et leur revision espacee reprend a
   /// demain avec un intervalle court.
-  void recalibrerChapitres(List<String> ids) {
-    final demain = DateTime.now().add(const Duration(days: 1));
+  void recalibrerChapitres(List<String> ids, {DateTime? maintenant}) {
+    final demain =
+        (maintenant ?? DateTime.now()).add(const Duration(days: 1));
     for (final id in ids) {
       final i = chapitres.indexWhere((c) => c.id == id);
       if (i < 0) continue;
@@ -1234,6 +1255,103 @@ class AppModel extends ChangeNotifier {
   void deleteAnnale(String id) {
     annales.removeWhere((a) => a.id == id);
     _touch();
+  }
+
+  // ---------- Bilan de concours (5/2) ----------
+
+  void addResultatConcours(ResultatConcours r) {
+    r.matiere = normaliseMatiere(r.matiere);
+    resultatsConcours.add(r);
+    resultatsConcours.sort((a, b) => a.concours != b.concours
+        ? a.concours.compareTo(b.concours)
+        : a.epreuve.compareTo(b.epreuve));
+    _touch();
+  }
+
+  void updateResultatConcours(ResultatConcours r) {
+    final i = resultatsConcours.indexWhere((x) => x.id == r.id);
+    if (i >= 0) resultatsConcours[i] = r..matiere = normaliseMatiere(r.matiere);
+    _touch();
+  }
+
+  void deleteResultatConcours(String id) {
+    resultatsConcours.removeWhere((r) => r.id == id);
+    _touch();
+  }
+
+  /// « Où tu perds des points » : deficit PONDERE par matiere, calcule sur
+  /// les resultats de concours saisis.
+  ///  - avec barre :   coeff x max(0, barre - note) ;
+  ///  - sans barre :   coeff x max(0, mediane de TES notes - note) — la
+  ///    comparaison se fait alors a ton propre niveau, pas a une barre
+  ///    inventee.
+  /// Retourne {matiere -> deficit}, trie n'est PAS garanti (trier a
+  /// l'affichage). Matieres sans deficit incluses a 0 pour la transparence.
+  Map<String, double> deficitsConcours() {
+    final notes = resultatsConcours
+        .where((r) => r.note != null)
+        .map((r) => r.note!)
+        .toList()
+      ..sort();
+    if (notes.isEmpty) return {};
+    final mediane = notes[notes.length ~/ 2];
+    final out = <String, double>{};
+    for (final r in resultatsConcours) {
+      if (r.note == null || r.matiere.trim().isEmpty) continue;
+      final ref = r.barre ?? mediane;
+      final deficit = (ref - r.note!) * r.coeff;
+      out[r.matiere] = (out[r.matiere] ?? 0) + (deficit > 0 ? deficit : 0);
+    }
+    return out;
+  }
+
+  /// Applique les deficits aux priorites de matieres (1-3) : tiers haut du
+  /// deficit -> 3, tiers moyen -> 2, reste -> 1. Ne touche que les matieres
+  /// presentes dans le bilan (les autres prios restent telles quelles).
+  /// Toujours declenche par un BOUTON explicite — jamais en silence.
+  void appliquerPrioritesDepuisDeficits() {
+    final d = deficitsConcours();
+    if (d.isEmpty) return;
+    final tri = d.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    for (var i = 0; i < tri.length; i++) {
+      final tiers = (i * 3) ~/ tri.length; // 0 = haut, 2 = bas
+      prios[tri[i].key] = tri[i].value <= 0 ? 1 : (3 - tiers).clamp(1, 3);
+    }
+    _touch();
+  }
+
+  /// Planifie la REACTIVATION D'ETE : repartit la prochaine revision de
+  /// tous les chapitres commences (etape > 0) uniformement sur les jours
+  /// restants de la plage d'ete (matieres prioritaires d'abord), intervalle
+  /// remis a 1. Le flux « rappels du jour » les sert ensuite a cadence
+  /// reguliere — au lieu d'un mur de dette le premier jour.
+  /// Retourne le nombre de chapitres planifies (0 si pas de plage d'ete).
+  int etalerReactivation({DateTime? maintenant}) {
+    final now = maintenant ?? DateTime.now();
+    final plage = plageSansCours(now);
+    if (plage == null || plage.type != 'ete') return 0;
+    final aujourdHui = DateTime(now.year, now.month, now.day);
+    final finPlage = DateTime(plage.fin.year, plage.fin.month, plage.fin.day);
+    var joursRestants = finPlage.difference(aujourdHui).inDays;
+    if (joursRestants < 1) joursRestants = 1;
+    final aPlanifier = chapitres.where((c) => c.etape > 0).toList()
+      ..sort((a, b) {
+        final pa = prios[a.matiere] ?? 2;
+        final pb = prios[b.matiere] ?? 2;
+        if (pa != pb) return pb.compareTo(pa); // prioritaires d'abord
+        return a.maitrise.compareTo(b.maitrise); // fragiles d'abord
+      });
+    if (aPlanifier.isEmpty) return 0;
+    for (var i = 0; i < aPlanifier.length; i++) {
+      final c = aPlanifier[i];
+      // Repartition uniforme : chapitre i -> jour (i * joursRestants / n),
+      // demain au plus tot (aujourd'hui est deja plein).
+      final decalage = 1 + (i * joursRestants) ~/ aPlanifier.length;
+      c.prochaineRevision = aujourdHui.add(Duration(days: decalage));
+      c.intervalleJours = 1;
+    }
+    _touch();
+    return aPlanifier.length;
   }
 
   // ---------- Oraux ----------

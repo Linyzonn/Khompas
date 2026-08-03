@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 
 /// MODE ORAUX : le planning des epreuves orales par concours (les dates
 /// tombent apres l'admissibilite — tout est facultatif sauf concours +
@@ -49,9 +50,19 @@ class _OrauxScreenState extends State<OrauxScreen> {
                   const Text('🎓', style: TextStyle(fontSize: 48)),
                   const SizedBox(height: 12),
                   Text(
-                    'Ajoute tes épreuves orales par concours (Maths CCINP, TIPE, anglais Centrale…).\n\nLes dates et salles se complètent plus tard, quand les convocations tombent — l\'app te préviendra la veille de chaque passage si les notifications sont actives.',
+                    'Coche tes concours et Khompas génère les épreuves orales '
+                    'classiques de ta filière — les dates et salles se '
+                    'complètent après l\'admissibilité, et l\'app te prévient '
+                    'la veille de chaque passage si les notifications sont '
+                    'actives. Tu peux aussi tout saisir à la main (+).',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey.shade600),
+                    style: TextStyle(color: couleurSecondaire(context)),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.auto_awesome),
+                    label: const Text('Générer mon planning d\'oraux'),
+                    onPressed: _genererPlanning,
                   ),
                 ],
               ),
@@ -76,7 +87,7 @@ class _OrauxScreenState extends State<OrauxScreen> {
       title:
           Text(concours, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text('${liste.length} épreuve(s)',
-          style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
       children: [
         for (final o in liste) _tuile(o),
       ],
@@ -108,7 +119,7 @@ class _OrauxScreenState extends State<OrauxScreen> {
       ),
       title: Text(o.epreuve),
       subtitle: Text(sous,
-          style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
+          style: TextStyle(fontSize: 11.5, color: couleurSecondaire(context))),
       trailing: PopupMenuButton<String>(
         onSelected: (v) {
           if (v == 'edit') {
@@ -124,6 +135,77 @@ class _OrauxScreenState extends State<OrauxScreen> {
         ],
       ),
     );
+  }
+
+  /// Genere le planning d'oraux depuis les concours coches : les epreuves
+  /// classiques de la filiere par banque (kEpreuvesOralesPour), sans date —
+  /// elles se datent apres l'admissibilite. C'est la promesse « planning
+  /// d'oraux propose automatiquement » du README, enfin reelle.
+  Future<void> _genererPlanning() async {
+    final m = AppModel.instance;
+    final choisis = <String>{};
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDlg) => AlertDialog(
+          title: const Text('Mes concours'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Coche les concours où tu es admissible (ou que tu vises) : '
+                  'les épreuves orales de ta filière (${m.filiere}) seront créées.',
+                  style:
+                      TextStyle(fontSize: 12.5, color: couleurSecondaire(context)),
+                ),
+                const SizedBox(height: 8),
+                for (final c in kConcoursPour(m.filiere))
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text(c),
+                    subtitle: Text(
+                      kEpreuvesOralesPour(m.filiere, c).join(' · '),
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    value: choisis.contains(c),
+                    onChanged: (v) => setDlg(() =>
+                        v == true ? choisis.add(c) : choisis.remove(c)),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed:
+                    choisis.isEmpty ? null : () => Navigator.pop(context, true),
+                child: const Text('Générer')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || choisis.isEmpty) return;
+    var crees = 0;
+    for (final c in choisis) {
+      for (final e in kEpreuvesOralesPour(m.filiere, c)) {
+        final doublon = m.oraux
+            .any((o) => o.concours == c && o.epreuve == e);
+        if (doublon) continue;
+        m.addOral(EpreuveOrale(concours: c, epreuve: e));
+        crees++;
+      }
+    }
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+          '$crees épreuve(s) créée(s) ✅ Ajuste la liste, puis date-les après l\'admissibilité.'),
+    ));
   }
 
   Future<void> _editer(EpreuveOrale? initial) async {

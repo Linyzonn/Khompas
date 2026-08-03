@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../engine.dart';
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'dialogs.dart';
 import 'erreurs.dart';
 import 'minuteur.dart';
@@ -96,7 +97,7 @@ class _TodayScreenState extends State<TodayScreen> {
               const SizedBox(height: 4),
               Text(
                 '10 secondes par créneau : ce qui a été fait nourrit ton plan du soir.',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
               ),
               const SizedBox(height: 8),
               for (final c in kholles)
@@ -239,7 +240,7 @@ class _TodayScreenState extends State<TodayScreen> {
             children: [
               Text(
                 'Khôlle du ${frDateCourte(c.start)}. Colle le texte du programme (Cahier de prépa, mail, photo du tableau recopiée…).',
-                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12.5, color: couleurSecondaire(context)),
               ),
               const SizedBox(height: 10),
               TextField(
@@ -342,7 +343,7 @@ class _TodayScreenState extends State<TodayScreen> {
         style: Theme.of(context)
             .textTheme
             .titleSmall
-            ?.copyWith(color: Colors.grey.shade600),
+            ?.copyWith(color: couleurSecondaire(context)),
       ),
     );
 
@@ -617,7 +618,7 @@ class _TodayScreenState extends State<TodayScreen> {
         icone: Icons.record_voice_over,
         titre: 'Prochaine khôlle',
         enfant: Text('Aucune à venir — importe ton colloscope.',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+            style: TextStyle(fontSize: 13, color: couleurSecondaire(context))),
       );
     }
     final color = Color(subjectColor(c.matiere));
@@ -674,7 +675,7 @@ class _TodayScreenState extends State<TodayScreen> {
       titre: 'À rendre',
       enfant: aRendre.isEmpty
           ? Text('Rien en attente 🎉',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600))
+              style: TextStyle(fontSize: 13, color: couleurSecondaire(context)))
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -700,7 +701,7 @@ class _TodayScreenState extends State<TodayScreen> {
       titre: 'Cette semaine',
       enfant: (semaineColles.isEmpty && semaineDs.isEmpty)
           ? Text('Rien au programme 🎉',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600))
+              style: TextStyle(fontSize: 13, color: couleurSecondaire(context)))
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -801,7 +802,7 @@ class _TodayScreenState extends State<TodayScreen> {
           : lignes.isEmpty
               ? Text(
                   'Rien à l\'emploi du temps. (Réglages → Mon emploi du temps.)',
-                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600))
+                  style: TextStyle(fontSize: 12.5, color: couleurSecondaire(context)))
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -840,7 +841,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   '${e.labelHeure}${e.matiere.isEmpty ? '' : ' · ${e.matiere}'} · ponctuel',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 11, color: couleurSecondaire(context)),
                 ),
               ],
             ),
@@ -883,7 +884,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           if (total == 0)
             Text('Coche tes sessions du soir pour compter.',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
           for (final e in parMatiere.take(4)) ...[
             const SizedBox(height: 6),
             Row(
@@ -909,7 +910,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 const SizedBox(width: 6),
                 Text(_labelMin(e.value),
                     style: TextStyle(
-                        fontSize: 11, color: Colors.grey.shade600)),
+                        fontSize: 11, color: couleurSecondaire(context))),
               ],
             ),
           ],
@@ -939,7 +940,7 @@ class _TodayScreenState extends State<TodayScreen> {
                       fontSize: 13, fontWeight: FontWeight.w500)),
             ),
             Text(sous,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                style: TextStyle(fontSize: 11, color: couleurSecondaire(context))),
           ],
         ),
       ),
@@ -958,7 +959,9 @@ class _TodayScreenState extends State<TodayScreen> {
     final labelLim = '${hLim ~/ 60}h${(hLim % 60).toString().padLeft(2, '0')}';
     // Jour libre (week-end sans cours, vacances) : la JOURNEE remplace la
     // soiree — en-tete et presets de duree adaptes.
-    final jourLibre = m.plageSansCours(now) != null ||
+    final plageJour = m.plageSansCours(now);
+    final ete = plageJour?.type == 'ete';
+    final jourLibre = plageJour != null ||
         (m.routines.isNotEmpty && m.routinesLe(now).isEmpty);
     final durees = jourLibre
         ? const [
@@ -999,6 +1002,19 @@ class _TodayScreenState extends State<TodayScreen> {
                         ?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
+            if (ete)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  now.weekday == DateTime.sunday
+                      ? '☀️ Été · dimanche = repos — un seul bloc léger, et seulement si tu en as envie.'
+                      : '☀️ Été · réactivation du programme — régularité douce, pas de marathon.',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.primary),
+                ),
+              ),
             if (dsPasseAujourdhui)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -1037,7 +1053,7 @@ class _TodayScreenState extends State<TodayScreen> {
               children: [
                 Text('Méthode : ',
                     style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
                 for (final me in const [
                   ('checklist', '✅ Checklist'),
                   ('pomo25', '🍅 25/5'),
@@ -1069,7 +1085,7 @@ class _TodayScreenState extends State<TodayScreen> {
             if (suggestions.isEmpty && !plafonne)
               Text(
                 'Importe ton colloscope et ajoute quelques chapitres : je te proposerai un plan pour chaque soirée.',
-                style: TextStyle(color: Colors.grey.shade600),
+                style: TextStyle(color: couleurSecondaire(context)),
               )
             else if (m.methodeTravail == 'checklist')
               ...[for (final s in suggestions) _suggestionCard(context, s)]
@@ -1080,7 +1096,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
                   'Déjà travaillé cette semaine : ${_labelMin(minSem['']!)} 💪',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
                 ),
               ),
           ],
@@ -1160,7 +1176,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style:
-                      TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      TextStyle(fontSize: 11, color: couleurSecondaire(context)),
                 ),
               ],
             ),
@@ -1242,7 +1258,7 @@ class _TodayScreenState extends State<TodayScreen> {
               const SizedBox(height: 8),
               Text(
                 'Cours → tu choisiras le chapitre vu (et s\'il est fini ou encore en cours).',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
               ),
               const Divider(height: 20),
               Text('On vous a donné du travail ?',
@@ -1476,7 +1492,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text('   ☕ Pause ${b.minutes} min',
                     style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
               )
             : Card(
                 elevation: 0,
@@ -1540,7 +1556,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   style: TextStyle(
                       fontSize: 11.5,
                       fontStyle: FontStyle.italic,
-                      color: Colors.grey.shade600),
+                      color: couleurSecondaire(context)),
                 ),
               ),
           ],
