@@ -653,6 +653,47 @@ const List<String> kEpreuvesOrales = [
   'Français', // Mines-Ponts a un oral de francais
 ];
 
+/// Une ŒUVRE du programme de francais-philo de l'annee (3 livres + un
+/// theme). La lecture se fait idealement PENDANT L'ETE — le plan d'ete
+/// programme des seances de lecture, et le debut d'annee rattrape ce qui
+/// manque. [pages] facultatif : s'il est connu, l'app calcule le rythme
+/// (« ~N pages par seance pour finir avant la rentree »).
+class Oeuvre {
+  String id;
+  String titre;
+  String auteur;
+  int? pages;
+  int pageActuelle;
+  bool finie;
+
+  Oeuvre({
+    String? id,
+    required this.titre,
+    this.auteur = '',
+    this.pages,
+    this.pageActuelle = 0,
+    this.finie = false,
+  }) : id = id ?? _newId();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'titre': titre,
+        'auteur': auteur,
+        'pages': pages,
+        'pageActuelle': pageActuelle,
+        'finie': finie,
+      };
+
+  static Oeuvre fromJson(Map<String, dynamic> j) => Oeuvre(
+        id: j['id'] as String?,
+        titre: (j['titre'] ?? '') as String,
+        auteur: (j['auteur'] ?? '') as String,
+        pages: (j['pages'] as num?)?.toInt(),
+        pageActuelle: ((j['pageActuelle'] ?? 0) as num).toInt(),
+        finie: (j['finie'] ?? false) as bool,
+      );
+}
+
 /// Une annale (sujet de concours) a faire ou faite. [ressenti] : 0 = pas
 /// note, sinon 1 (rate) a 5 (maitrise).
 class Annale {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import '../vacances_officielles.dart';
 
 /// Calendrier interne : roulement des semaines (A/B) et periodes SANS cours
 /// (vacances, semaines de revisions avant les concours). L'emploi du temps
@@ -79,6 +80,14 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
             style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
           ),
           const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.cloud_download_outlined),
+            label: Text(m.zoneVacances.isEmpty
+                ? 'Importer les vacances officielles (zone A/B/C)'
+                : 'Importer les vacances officielles (zone ${m.zoneVacances})'),
+            onPressed: _importerVacancesOfficielles,
+          ),
+          const SizedBox(height: 8),
           if (m.sansCours.isEmpty)
             Text('Aucune période pour le moment.',
                 style: TextStyle(color: Colors.grey.shade400)),
@@ -105,9 +114,156 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                 },
               ),
             ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: Text('Jours off',
+                    style: Theme.of(context).textTheme.titleMedium),
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Ajouter'),
+                onPressed: _ajouterJourOff,
+              ),
+            ],
+          ),
+          Text(
+            'Trajet, fête de famille, journée où travailler est impossible : '
+            'le plan du soir se tait ce jour-là, et la réactivation d\'été '
+            'évite ces dates en s\'étalant.',
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          if (m.joursOff.isEmpty)
+            Text('Aucun jour off prévu.',
+                style: TextStyle(color: Colors.grey.shade400)),
+          for (final j in m.joursOff)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: const Text('🏖', style: TextStyle(fontSize: 20)),
+              title: Text(frDate(j)),
+              trailing: IconButton(
+                tooltip: 'Retirer ce jour off',
+                icon: const Icon(Icons.delete_outline, size: 20),
+                onPressed: () {
+                  m.toggleJourOff(j);
+                  setState(() {});
+                },
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  /// Import des vacances officielles : choix de la zone (memorisee) et de
+  /// l'annee scolaire, appel a l'open data de l'Education nationale, puis
+  /// ajout SANS doublon (une plage saisie a la main qui chevauche est
+  /// conservee telle quelle).
+  Future<void> _importerVacancesOfficielles() async {
+    final m = AppModel.instance;
+    var zone = m.zoneVacances.isEmpty ? 'A' : m.zoneVacances;
+    var annee = anneeScolaireCourante(DateTime.now());
+    final anneeSuivante =
+        '${int.parse(annee.split('-').first) + 1}-${int.parse(annee.split('-').last) + 1}';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDlg) => AlertDialog(
+          title: const Text('Vacances officielles'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Ta zone de vacances :',
+                  style: TextStyle(fontSize: 13)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final z in kZonesVacances)
+                    ChoiceChip(
+                      label: Text('Zone $z'),
+                      selected: zone == z,
+                      onSelected: (_) => setDlg(() => zone = z),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text('Année scolaire :', style: TextStyle(fontSize: 13)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final a in [annee, anneeSuivante])
+                    ChoiceChip(
+                      label: Text(a),
+                      selected: annee == a,
+                      onSelected: (_) => setDlg(() => annee = a),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Source : data.education.gouv.fr (calendrier scolaire '
+                'officiel). Les périodes déjà présentes ne sont pas dupliquées.',
+                style:
+                    TextStyle(fontSize: 11.5, color: couleurSecondaire(context)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Importer')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    m.setZoneVacances(zone);
+    try {
+      final plages = await vacancesOfficielles(zone, annee);
+      var ajoutees = 0;
+      for (final p in plages) {
+        if (plageEnDouble(p, m.sansCours)) continue;
+        m.addPlageSansCours(p);
+        ajoutees++;
+      }
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ajoutees == 0
+            ? 'Rien à ajouter : ces périodes sont déjà dans ton calendrier.'
+            : '$ajoutees période(s) de vacances ajoutée(s) (zone $zone, $annee) ✅'),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 6),
+        content: Text(
+            'Import impossible : ${e.toString().replaceFirst('Exception: ', '')}'),
+      ));
+    }
+  }
+
+  Future<void> _ajouterJourOff() async {
+    final m = AppModel.instance;
+    final d = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      helpText: 'Jour où travailler est impossible',
+    );
+    if (d == null || !mounted) return;
+    if (!m.estJourOff(d)) m.toggleJourOff(d);
+    setState(() {});
   }
 
   Future<void> _definirSemaineA() async {

@@ -14,12 +14,18 @@ class Suggestion {
   final String? chapitreId;
   // Devoir vise (DM/exos) : le ✓ propose de le marquer "rendu".
   final String? devoirId;
+  // Oeuvre de francais visee (bloc lecture) : le ✓ demande la page atteinte.
+  final String? oeuvreId;
   // Rappel espace : le ✓ declenche l'auto-evaluation en 1 tap.
   final bool rappel;
   // Consigne d'action testable (rappel actif) affichee sous la suggestion.
   final String consigne;
   Suggestion(this.matiere, this.titre, this.raison, this.minutes,
-      {this.chapitreId, this.devoirId, this.rappel = false, this.consigne = ''});
+      {this.chapitreId,
+      this.devoirId,
+      this.oeuvreId,
+      this.rappel = false,
+      this.consigne = ''});
 }
 
 /// Le mode revisions concours ne s'active qu'a l'approche des ecrits :
@@ -66,6 +72,11 @@ int budgetSoir(
 /// l'heure reelle.
 List<Suggestion> suggere(AppModel m, int minutesDispo, {DateTime? maintenant}) {
   final now = maintenant ?? DateTime.now();
+  // JOUR OFF (trajet, famille, journee ou travailler est impossible) :
+  // pas de plan du tout — la culpabilisation ne fait pas reviser, et le
+  // travail reprogramme retombera naturellement demain (rappels en
+  // retard, rotation). L'UI affiche une carte dediee.
+  if (m.estJourOff(now)) return [];
   // Mode ORAUX (post-ecrits) : prioritaire sur tout le reste.
   if (m.modeOraux && m.oraux.isNotEmpty) {
     return _suggereOraux(m, minutesDispo, now);
@@ -226,6 +237,32 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
       ));
       budget -= 15;
       break; // un seul bloc erreurs par soir
+    }
+  }
+
+  // ---- 2 quater. Rattrapage lecture : une oeuvre de francais pas finie
+  // pendant l'ete revient UN JOUR SUR TROIS en debut d'annee (cadence
+  // transparente), tant qu'il en reste — toutes les kholles de francais
+  // de l'annee s'appuient sur ces livres.
+  final aLire = m.oeuvresNonFinies();
+  if (aLire.isNotEmpty && budget >= 45) {
+    final jourIdx =
+        DateTime(now.year, now.month, now.day).difference(kAncreRotation).inDays;
+    if (jourIdx % 3 == 0) {
+      final o = aLire[(jourIdx ~/ 3) % aLire.length];
+      final progression = (o.pages != null && o.pages! > 0)
+          ? ' (page ${o.pageActuelle}/${o.pages})'
+          : '';
+      out.add(Suggestion(
+        'Français',
+        '📖 Rattrape « ${o.titre} »$progression',
+        'Œuvre pas finie — un jour sur 3 avant que les khôlles de français ne s\'enchaînent',
+        30,
+        oeuvreId: o.id,
+        consigne:
+            'Lecture ACTIVE : marque les passages forts et relève 2-3 citations — ce sont elles qui font la note.',
+      ));
+      budget -= 30;
     }
   }
 
@@ -862,6 +899,33 @@ List<Suggestion> _suggereEte(
         reste -= 90;
       }
     }
+  }
+
+  // ---- 3 bis. Lecture des oeuvres de francais : un jour sur deux.
+  // L'ete est LE moment pour les 3 livres (l'annee ne laisse plus le temps
+  // de lire), et chaque kholle de francais de l'annee s'appuiera dessus.
+  final aLire = m.oeuvresNonFinies();
+  final jourIdx = aujourdHui.difference(kAncreRotation).inDays;
+  if (aLire.isNotEmpty && reste >= 45 && jourIdx % 2 == 0) {
+    final o = aLire[(jourIdx ~/ 2) % aLire.length];
+    var progression = '';
+    if (o.pages != null && o.pages! > 0) {
+      final restantes = (o.pages! - o.pageActuelle).clamp(0, o.pages!);
+      final seances = (joursAvantRentree ~/ 2).clamp(1, 99);
+      final parSeance = (restantes / seances).ceil();
+      progression =
+          ' · page ${o.pageActuelle}/${o.pages} — ~$parSeance p./séance pour finir avant la rentrée';
+    }
+    out.add(Suggestion(
+      'Français',
+      '📖 Lis « ${o.titre} »${o.auteur.isEmpty ? '' : ' (${o.auteur})'}',
+      '$contexte · les œuvres se lisent l\'été$progression',
+      45,
+      oeuvreId: o.id,
+      consigne:
+          'Lecture ACTIVE : marque les passages forts et relève 2-3 citations par séance — ce sont elles qui font la note en khôlle et en dissertation.',
+    ));
+    reste -= 45;
   }
 
   // ---- 4. Rotation de reactivation : matieres prioritaires d'abord

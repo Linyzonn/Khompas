@@ -36,6 +36,13 @@ class AppModel extends ChangeNotifier {
   List<EpreuveOrale> oraux = [];
   // Bilan de concours (5/2) : notes/barres des epreuves de l'an dernier.
   List<ResultatConcours> resultatsConcours = [];
+  // Zone de vacances scolaires (A/B/C) pour l'import officiel.
+  String zoneVacances = '';
+  // Oeuvres de francais de l'annee (lecture d'ete + rattrapage de rentree).
+  List<Oeuvre> oeuvres = [];
+  // Jours OFF (trajet, famille...) : le plan du soir se tait, l'etalement
+  // d'ete les evite. Dates a minuit.
+  List<DateTime> joursOff = [];
   // true = le plan du soir bascule en preparation des ORAUX (post-ecrits).
   bool modeOraux = false;
   DateTime? refSemaineA;
@@ -154,6 +161,14 @@ class AppModel extends ChangeNotifier {
           final newResultats = ((j['resultatsConcours'] ?? []) as List)
               .map((e) => ResultatConcours.fromJson(e as Map<String, dynamic>))
               .toList();
+          final newZone = (j['zoneVacances'] ?? '') as String;
+          final newOeuvres = ((j['oeuvres'] ?? []) as List)
+              .map((e) => Oeuvre.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newJoursOff = ((j['joursOff'] ?? []) as List)
+              .map((e) => DateTime.tryParse(e.toString()))
+              .whereType<DateTime>()
+              .toList();
           final newModeOraux = (j['modeOraux'] ?? false) as bool;
           final newRefSemaineA = j['refSemaineA'] == null
               ? null
@@ -181,6 +196,9 @@ class AppModel extends ChangeNotifier {
           annales = newAnnales;
           oraux = newOraux;
           resultatsConcours = newResultats;
+          zoneVacances = newZone;
+          oeuvres = newOeuvres;
+          joursOff = newJoursOff;
           modeOraux = newModeOraux;
           refSemaineA = newRefSemaineA;
           methodeTravail = newMethode;
@@ -360,6 +378,9 @@ class AppModel extends ChangeNotifier {
         'oraux': oraux.map((o) => o.toJson()).toList(),
         'resultatsConcours':
             resultatsConcours.map((r) => r.toJson()).toList(),
+        'zoneVacances': zoneVacances,
+        'oeuvres': oeuvres.map((o) => o.toJson()).toList(),
+        'joursOff': joursOff.map((d) => d.toIso8601String()).toList(),
         'modeOraux': modeOraux,
         'refSemaineA': refSemaineA?.toIso8601String(),
         'methodeTravail': methodeTravail,
@@ -594,6 +615,14 @@ class AppModel extends ChangeNotifier {
       final newResultats = ((decoded['resultatsConcours'] ?? []) as List)
           .map((e) => ResultatConcours.fromJson(e as Map<String, dynamic>))
           .toList();
+      final newZone = (decoded['zoneVacances'] ?? zoneVacances) as String;
+      final newOeuvres = ((decoded['oeuvres'] ?? []) as List)
+          .map((e) => Oeuvre.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final newJoursOff = ((decoded['joursOff'] ?? []) as List)
+          .map((e) => DateTime.tryParse(e.toString()))
+          .whereType<DateTime>()
+          .toList();
       final newModeOraux = (decoded['modeOraux'] ?? false) as bool;
       final newRefSemaineA = decoded['refSemaineA'] == null
           ? null
@@ -621,6 +650,9 @@ class AppModel extends ChangeNotifier {
       annales = newAnnales;
       oraux = newOraux;
       resultatsConcours = newResultats;
+      zoneVacances = newZone;
+      oeuvres = newOeuvres;
+      joursOff = newJoursOff;
       modeOraux = newModeOraux;
       refSemaineA = newRefSemaineA;
       methodeTravail = newMethode;
@@ -1000,6 +1032,56 @@ class AppModel extends ChangeNotifier {
       ..sort((a, b) => a.debutMin.compareTo(b.debutMin));
   }
 
+  void setZoneVacances(String zone) {
+    zoneVacances = zone.trim().toUpperCase();
+    _touch();
+  }
+
+  // ---------- Oeuvres de francais ----------
+
+  void addOeuvre(Oeuvre o) {
+    oeuvres.add(o);
+    _touch();
+  }
+
+  void updateOeuvre(Oeuvre o) {
+    final i = oeuvres.indexWhere((x) => x.id == o.id);
+    if (i >= 0) oeuvres[i] = o;
+    _touch();
+  }
+
+  void deleteOeuvre(String id) {
+    oeuvres.removeWhere((o) => o.id == id);
+    _touch();
+  }
+
+  List<Oeuvre> oeuvresNonFinies() =>
+      oeuvres.where((o) => !o.finie).toList();
+
+  // ---------- Jours off ----------
+
+  bool estJourOff(DateTime d) {
+    final jour = DateTime(d.year, d.month, d.day);
+    return joursOff.any((o) =>
+        o.year == jour.year && o.month == jour.month && o.day == jour.day);
+  }
+
+  /// Ajoute ou retire un jour off. Purge au passage les jours off de plus
+  /// de 60 jours dans le passe (meme regle que les evenements).
+  void toggleJourOff(DateTime d) {
+    final jour = DateTime(d.year, d.month, d.day);
+    final limite = DateTime.now().subtract(const Duration(days: 60));
+    joursOff.removeWhere((o) => o.isBefore(limite));
+    if (estJourOff(jour)) {
+      joursOff.removeWhere((o) =>
+          o.year == jour.year && o.month == jour.month && o.day == jour.day);
+    } else {
+      joursOff.add(jour);
+      joursOff.sort();
+    }
+    _touch();
+  }
+
   void addPlageSansCours(PlageSansCours p) {
     sansCours.add(p);
     sansCours.sort((a, b) => a.debut.compareTo(b.debut));
@@ -1342,12 +1424,20 @@ class AppModel extends ChangeNotifier {
         return a.maitrise.compareTo(b.maitrise); // fragiles d'abord
       });
     if (aPlanifier.isEmpty) return 0;
+    // Jours DISPONIBLES de la plage (demain -> fin), jours off exclus :
+    // un chapitre ne doit jamais tomber sur un jour marque « impossible
+    // de travailler ».
+    final joursDispo = <DateTime>[];
+    for (var d = 1; d <= joursRestants; d++) {
+      final jour = aujourdHui.add(Duration(days: d));
+      if (!estJourOff(jour)) joursDispo.add(jour);
+    }
+    if (joursDispo.isEmpty) joursDispo.add(aujourdHui.add(const Duration(days: 1)));
     for (var i = 0; i < aPlanifier.length; i++) {
       final c = aPlanifier[i];
-      // Repartition uniforme : chapitre i -> jour (i * joursRestants / n),
-      // demain au plus tot (aujourd'hui est deja plein).
-      final decalage = 1 + (i * joursRestants) ~/ aPlanifier.length;
-      c.prochaineRevision = aujourdHui.add(Duration(days: decalage));
+      // Repartition uniforme sur les jours disponibles.
+      c.prochaineRevision =
+          joursDispo[(i * joursDispo.length) ~/ aPlanifier.length];
       c.intervalleJours = 1;
     }
     _touch();

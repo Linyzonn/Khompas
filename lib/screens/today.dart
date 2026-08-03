@@ -978,6 +978,45 @@ class _TodayScreenState extends State<TodayScreen> {
             d.date.year == now.year &&
             d.date.month == now.month &&
             d.date.day == now.day);
+    // JOURNEE OFF : pas de plan du tout — carte dediee, sans culpabiliser.
+    if (m.estJourOff(now)) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+              color: scheme.primary.withValues(alpha: 0.35), width: 1.5),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('🏖 Journée off',
+                  style:
+                      TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              Text(
+                'Profite — aujourd\'hui rien n\'est prévu, et c\'est voulu. '
+                'Le plan reprend demain, et ce qui était programmé '
+                'aujourd\'hui reviendra tout seul.',
+                style: TextStyle(color: couleurSecondaire(context)),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.undo, size: 18),
+                label: const Text('Finalement, je peux travailler'),
+                onPressed: () {
+                  m.toggleJourOff(now);
+                  setState(() {});
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
@@ -1099,6 +1138,18 @@ class _TodayScreenState extends State<TodayScreen> {
                   style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
                 ),
               ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                icon: const Icon(Icons.beach_access_outlined, size: 16),
+                label: const Text('Je ne peux pas travailler aujourd\'hui',
+                    style: TextStyle(fontSize: 12)),
+                onPressed: () {
+                  m.toggleJourOff(now);
+                  setState(() {});
+                },
+              ),
+            ),
           ],
         ),
       ),
@@ -1571,6 +1622,10 @@ class _TodayScreenState extends State<TodayScreen> {
               _evaluerRappel(s);
               return;
             }
+            if (s.oeuvreId != null) {
+              _finirLecture(s);
+              return;
+            }
             final m = AppModel.instance;
             m.addSeance(s.matiere, s.minutes);
             if (s.chapitreId != null) {
@@ -1609,6 +1664,52 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
       ),
     );
+  }
+
+  /// ✓ sur un bloc lecture : enregistre la seance de Francais et demande
+  /// la page atteinte (c'est elle qui pilote le rythme des prochaines
+  /// seances et le rattrapage de rentree).
+  Future<void> _finirLecture(Suggestion s) async {
+    final m = AppModel.instance;
+    m.addSeance(s.matiere, s.minutes);
+    final i = m.oeuvres.indexWhere((o) => o.id == s.oeuvreId);
+    if (i < 0) return;
+    final o = m.oeuvres[i];
+    final ctl = TextEditingController(text: o.pageActuelle.toString());
+    final page = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('« ${o.titre} » — page atteinte ?'),
+        content: TextField(
+          controller: ctl,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+              labelText: o.pages == null ? 'Page' : 'Page (sur ${o.pages})'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Plus tard')),
+          FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, int.tryParse(ctl.text.trim())),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+    if (page != null) {
+      o.pageActuelle = o.pages == null ? page : page.clamp(0, o.pages!);
+      if (o.pages != null && o.pageActuelle >= o.pages!) o.finie = true;
+      m.updateOeuvre(o);
+    }
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(o.finie
+          ? '« ${o.titre} » finie 🎉 Séance enregistrée.'
+          : 'Séance de lecture enregistrée ✅'),
+    ));
   }
 
   /// Auto-evaluation en 1 tap apres un rappel espace : la reponse regle

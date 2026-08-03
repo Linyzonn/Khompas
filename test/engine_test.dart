@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:khompas/ai_extractor.dart';
 import 'package:khompas/engine.dart';
 import 'package:khompas/ics.dart';
+import 'package:khompas/vacances_officielles.dart';
 import 'package:khompas/methodes.dart';
 import 'package:khompas/models.dart';
 import 'package:khompas/store.dart';
@@ -21,6 +22,9 @@ void reset(AppModel m) {
   m.annales = [];
   m.oraux = [];
   m.resultatsConcours = [];
+  m.oeuvres = [];
+  m.joursOff = [];
+  m.zoneVacances = '';
   m.modeOraux = false;
   m.refSemaineA = null;
   m.dateConcours = null;
@@ -914,5 +918,153 @@ Voici le résultat demandé :
     expect(centrale, contains('SII (manip)'));
     // Une banque inconnue retourne au moins le socle sciences + TIPE.
     expect(kEpreuvesOralesPour('PSI', 'Banque mystère'), contains('TIPE'));
+  });
+
+  // ---------- Vacances officielles (parseur pur, pas de reseau) ----------
+
+  test('plagesDepuisJson : mapping API -> plages, été borné au 31 août', () {
+    const corps = '''
+{"records": [
+  {"fields": {"description": "Vacances de la Toussaint",
+    "start_date": "2026-10-17T00:00:00+02:00",
+    "end_date": "2026-11-02T00:00:00+01:00"}},
+  {"fields": {"description": "Vacances d'Été",
+    "start_date": "2027-07-06T00:00:00+02:00",
+    "end_date": "2027-09-01T00:00:00+02:00"}},
+  {"fields": {"description": "Pré-rentrée", "start_date": "2026-08-31T00:00:00+02:00"}}
+]}
+''';
+    final plages = plagesDepuisJson(corps);
+    expect(plages.length, 2); // la pre-rentree sans end_date est ignoree
+    expect(plages.first.titre, 'Vacances de la Toussaint');
+    expect(plages.first.type, 'vacances');
+    final ete = plages.last;
+    expect(ete.type, 'ete');
+    // L'API fait courir l'été jusqu'à la rentrée suivante : borné.
+    expect(ete.fin, DateTime(2027, 8, 31));
+  });
+
+  test('plageEnDouble : chevauchement détecté, plages disjointes acceptées',
+      () {
+    final existantes = [
+      PlageSansCours(
+          titre: 'Toussaint',
+          debut: DateTime(2026, 10, 17),
+          fin: DateTime(2026, 11, 2)),
+    ];
+    expect(
+        plageEnDouble(
+            PlageSansCours(
+                titre: 'Vacances de la Toussaint',
+                debut: DateTime(2026, 10, 18),
+                fin: DateTime(2026, 11, 1)),
+            existantes),
+        isTrue);
+    expect(
+        plageEnDouble(
+            PlageSansCours(
+                titre: 'Noël',
+                debut: DateTime(2026, 12, 19),
+                fin: DateTime(2027, 1, 3)),
+            existantes),
+        isFalse);
+  });
+
+  // ---------- Oeuvres de francais ----------
+
+  test('été : bloc lecture un jour sur deux, avec rythme de pages', () {
+    m.sansCours.add(PlageSansCours(
+        titre: 'Été',
+        debut: DateTime(2026, 7, 1),
+        fin: DateTime(2026, 8, 31),
+        type: 'ete'));
+    m.chapitres.add(
+        Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    m.oeuvres.add(
+        Oeuvre(titre: 'Le Rouge et le Noir', auteur: 'Stendhal', pages: 500));
+    // On cherche deux jours de semaine consecutifs (hors dimanche) : la
+    // lecture doit apparaitre sur exactement UN des deux (un jour sur 2).
+    final j1 = DateTime(2026, 8, 4, 10); // mardi
+    final j2 = DateTime(2026, 8, 5, 10); // mercredi
+    bool aLecture(DateTime d) => suggere(m, 180, maintenant: d)
+        .any((s) => s.oeuvreId != null);
+    expect(aLecture(j1) != aLecture(j2), isTrue,
+        reason: 'la lecture doit tomber un jour sur deux');
+    // Le jour avec lecture affiche le rythme de pages.
+    final jour = aLecture(j1) ? j1 : j2;
+    final bloc = suggere(m, 180, maintenant: jour)
+        .firstWhere((s) => s.oeuvreId != null);
+    expect(bloc.matiere, 'Français');
+    expect(bloc.raison, contains('p./séance'));
+  });
+
+  test('rentrée : œuvre pas finie -> rattrapage un jour sur trois', () {
+    // Pas de plage d'ete : mode normal (mi-septembre).
+    m.oeuvres.add(Oeuvre(titre: 'Candide', pages: 150, pageActuelle: 60));
+    m.chapitres.add(
+        Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    // Sur 3 jours consecutifs, le rattrapage apparait exactement 1 fois.
+    var vus = 0;
+    for (var d = 0; d < 3; d++) {
+      final s = suggere(m, 120,
+          maintenant: DateTime(2026, 9, 14 + d, 19));
+      if (s.any((x) => x.oeuvreId != null)) vus++;
+    }
+    expect(vus, 1);
+    // Une oeuvre FINIE ne revient pas.
+    m.oeuvres.first.finie = true;
+    for (var d = 0; d < 3; d++) {
+      final s = suggere(m, 120,
+          maintenant: DateTime(2026, 9, 14 + d, 19));
+      expect(s.any((x) => x.oeuvreId != null), isFalse);
+    }
+  });
+
+  test('Oeuvre : round-trip JSON', () {
+    final o = Oeuvre(
+        titre: 'Candide', auteur: 'Voltaire', pages: 150, pageActuelle: 42);
+    final r = Oeuvre.fromJson(o.toJson());
+    expect(r.titre, 'Candide');
+    expect(r.pages, 150);
+    expect(r.pageActuelle, 42);
+    expect(r.finie, isFalse);
+  });
+
+  // ---------- Jours off ----------
+
+  test('jour off : plan vide, quel que soit le mode', () {
+    final now = DateTime(2026, 8, 4, 10);
+    m.joursOff.add(DateTime(2026, 8, 4));
+    m.chapitres.add(
+        Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    m.colles.add(
+        Colle(matiere: 'Physique', start: now.add(const Duration(hours: 26))));
+    expect(suggere(m, 180, maintenant: now), isEmpty);
+    // Le lendemain, le plan revient.
+    expect(suggere(m, 180, maintenant: DateTime(2026, 8, 5, 10)), isNotEmpty);
+  });
+
+  test('etalerReactivation : les jours off sont évités', () {
+    final now = DateTime(2026, 8, 4, 10);
+    m.sansCours.add(PlageSansCours(
+        titre: 'Été',
+        debut: DateTime(2026, 7, 1),
+        fin: DateTime(2026, 8, 14),
+        type: 'ete'));
+    // Les 15 et 16 août n'existent pas dans la plage ; on bloque les 6-8.
+    m.joursOff.addAll([
+      DateTime(2026, 8, 6),
+      DateTime(2026, 8, 7),
+      DateTime(2026, 8, 8),
+    ]);
+    for (var i = 0; i < 10; i++) {
+      m.chapitres.add(Chapitre(
+          matiere: 'Maths', nom: 'Chapitre $i', etape: 1, maitrise: 2));
+    }
+    m.etalerReactivation(maintenant: now);
+    for (final c in m.chapitres) {
+      expect(m.estJourOff(c.prochaineRevision!), isFalse,
+          reason: '${c.nom} planifié un jour off (${c.prochaineRevision})');
+    }
   });
 }

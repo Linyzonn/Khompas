@@ -18,6 +18,7 @@ import 'bilan_concours.dart';
 import 'calendrier.dart';
 import 'dialogs.dart';
 import 'edt.dart';
+import 'lectures.dart';
 import 'oraux.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -951,6 +952,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const AnnalesScreen())),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Text('📖', style: TextStyle(fontSize: 20)),
+            title: const Text('Œuvres de français'),
+            subtitle: Text(
+                m.oeuvres.isEmpty
+                    ? 'Les 3 livres de l\'année — à lire pendant l\'été, le plan s\'en charge.'
+                    : '${m.oeuvres.where((o) => o.finie).length}/${m.oeuvres.length} lues',
+                style: const TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const LecturesScreen())),
           ),
           if (kFilieresDeuxiemeAnnee.contains(m.filiere))
             ListTile(
