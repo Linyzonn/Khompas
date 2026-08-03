@@ -26,7 +26,7 @@ const MODELES_GEMINI = [
   'gemini-3.5-flash-lite',
 ];
 const MAX_PHOTOS = 5;
-const MAX_B64_PAR_PHOTO = 4_000_000; // ~3 Mo une fois decode (photo ou PDF)
+const MAX_B64_PAR_PHOTO = 4_000_000; // ~2,8 Mo une fois decode (photo ou PDF)
 const CHUNK = 60_000; // Deno KV limite chaque valeur a 64 Ko
 const LIMITE_IP_JOUR = 30; // extractions max / appareil / jour
 const LIMITE_GLOBALE_JOUR = 200; // extractions max / jour (protege le budget)
@@ -41,8 +41,11 @@ const kv = await Deno.openKv();
 
 function cors(h: Headers = new Headers()): Headers {
   h.set('access-control-allow-origin', '*');
-  h.set('access-control-allow-headers', 'content-type, x-khompas-cle');
-  h.set('access-control-allow-methods', 'GET,POST,PUT,OPTIONS');
+  h.set(
+    'access-control-allow-headers',
+    'content-type, x-khompas-cle, x-khompas-gestion',
+  );
+  h.set('access-control-allow-methods', 'GET,POST,PUT,DELETE,OPTIONS');
   return h;
 }
 
@@ -101,22 +104,36 @@ Réponds UNIQUEMENT avec ce JSON, sans aucun texte autour :
 `;
 }
 
+// Incremente un compteur journalier de facon ATOMIQUE (check sur le
+// versionstamp + retentatives) : sans cela, N requetes envoyees en parallele
+// lisaient toutes "0" et passaient toutes sous la limite.
+async function incrementerCompteur(
+  key: Deno.KvKey,
+  max: number,
+): Promise<boolean> {
+  for (let essai = 0; essai < 5; essai++) {
+    const e = await kv.get(key);
+    const n = ((e.value as number | null) ?? 0) + 1;
+    if (n > max) return false;
+    const ok = await kv.atomic()
+      .check({ key, versionstamp: e.versionstamp })
+      .set(key, n, { expireIn: 2 * 24 * 3600 * 1000 })
+      .commit();
+    if (ok.ok) return true;
+  }
+  // Contention anormale apres 5 essais : on refuse par prudence.
+  return false;
+}
+
 // Retourne null si OK, sinon le message d'erreur a renvoyer (429).
 async function limiterDebit(ip: string): Promise<string | null> {
   const jour = new Date().toISOString().slice(0, 10);
-  const kIp = ['rl', ip, jour];
-  const kG = ['rlg', jour];
-  const [a, b] = await Promise.all([kv.get(kIp), kv.get(kG)]);
-  const ni = ((a.value as number | null) ?? 0) + 1;
-  const ng = ((b.value as number | null) ?? 0) + 1;
-  if (ni > LIMITE_IP_JOUR) {
+  if (!(await incrementerCompteur(['rl', ip, jour], LIMITE_IP_JOUR))) {
     return 'Limite quotidienne atteinte pour cet appareil — réessaie demain.';
   }
-  if (ng > LIMITE_GLOBALE_JOUR) {
+  if (!(await incrementerCompteur(['rlg', jour], LIMITE_GLOBALE_JOUR))) {
     return 'Le serveur a atteint sa limite du jour — réessaie demain.';
   }
-  await kv.set(kIp, ni, { expireIn: 2 * 24 * 3600 * 1000 });
-  await kv.set(kG, ng, { expireIn: 2 * 24 * 3600 * 1000 });
   return null;
 }
 
@@ -191,9 +208,15 @@ async function extraireGemini(
   let indisponibles = '';
   for (const modele of modeles) {
     for (let essai = 0; essai < 2; essai++) {
+      // La cle passe en EN-TETE, jamais dans l'URL : une query string finit
+      // dans les logs de plateforme et les traces de proxy.
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cle}`,
-        { method: 'POST', headers: { 'content-type': 'application/json' }, body },
+        `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-goog-api-key': cle },
+          body,
+        },
       );
       if (res.ok) {
         const data = await res.json() as {
@@ -215,7 +238,12 @@ async function extraireGemini(
         await new Promise((r) => setTimeout(r, 8000));
         continue;
       }
-      throw new Error(`API Gemini ${res.status} : ${texte}`);
+      // Le detail (corps amont) reste dans les logs serveur ; le client ne
+      // recoit que le statut — pas d'infos sur notre configuration.
+      console.error(`API Gemini ${res.status} (${modele}) : ${texte}`);
+      throw new Error(
+        `le moteur d'extraction a répondu HTTP ${res.status} — réessaie dans quelques minutes.`,
+      );
     }
   }
   throw new Error(
@@ -249,7 +277,10 @@ async function extraireClaude(
     }),
   });
   if (!res.ok) {
-    throw new Error(`API ${res.status} : ${(await res.text()).slice(0, 300)}`);
+    console.error(`API Claude ${res.status} : ${(await res.text()).slice(0, 300)}`);
+    throw new Error(
+      `le moteur d'extraction a répondu HTTP ${res.status} — réessaie dans quelques minutes.`,
+    );
   }
   const data = await res.json() as { content?: { type: string; text?: string }[] };
   return (data.content ?? [])
@@ -264,10 +295,9 @@ Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
   } catch (e) {
     // Quoi qu'il arrive, repondre AVEC les en-tetes CORS : sans eux, le
     // navigateur masque tout derriere un "Failed to fetch" indebogable.
-    return erreur(
-      `Erreur interne : ${String(e instanceof Error ? e.message : e).slice(0, 200)}`,
-      500,
-    );
+    // Le detail part dans les logs, pas chez le client (fuite d'infos).
+    console.error('Erreur interne :', e);
+    return erreur('Erreur interne du serveur — réessaie.', 500);
   }
 });
 
@@ -275,8 +305,15 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
   if (req.method === 'OPTIONS') return new Response(null, { headers: cors() });
   const url = new URL(req.url);
   const p = url.pathname.replace(/\/+$/, '');
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-    (info.remoteAddr as Deno.NetAddr).hostname || 'inconnu';
+  // Sur Deno Deploy, remoteAddr est l'adresse REELLE du client (la
+  // plateforme termine la connexion). Surtout ne pas lire le premier
+  // element de x-forwarded-for : c'est une valeur que le client ecrit
+  // lui-meme, donc un contournement trivial de toutes les limites par IP.
+  // (En dernier recours on prend la DERNIERE entree de XFF : celle ajoutee
+  // par le proxy le plus proche, la seule non falsifiable.)
+  const xff = req.headers.get('x-forwarded-for')?.split(',') ?? [];
+  const ip = (info.remoteAddr as Deno.NetAddr).hostname ||
+    (xff.length ? xff[xff.length - 1].trim() : '') || 'inconnu';
 
   // Petite page de sante, pratique pour verifier que le deploiement marche.
   if (p === '' || p === '/') {
@@ -291,13 +328,21 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
     max: number,
   ): Promise<string | null> => {
     const jour = new Date().toISOString().slice(0, 10);
-    const k = ['rlx', quoi, ip, jour];
-    const n = ((await kv.get(k)).value as number | null) ?? 0;
-    if (n >= max) {
-      return 'Limite quotidienne atteinte pour cet appareil — réessaie demain.';
+    const ok = await incrementerCompteur(['rlx', quoi, ip, jour], max);
+    return ok
+      ? null
+      : 'Limite quotidienne atteinte pour cet appareil — réessaie demain.';
+  };
+
+  // Anti-enumeration : repondre "Code inconnu" est gratuit pour nous mais
+  // renseigne un attaquant qui balaie l'espace des codes. Au-dela de
+  // quelques essais rates par jour et par IP, on repond 429 au lieu de 404.
+  const codeInconnu = async (): Promise<Response> => {
+    const jour = new Date().toISOString().slice(0, 10);
+    if (!(await incrementerCompteur(['rlx', '404', ip, jour], 20))) {
+      return erreur('Trop d\'essais — réessaie demain.', 429);
     }
-    await kv.set(k, n + 1, { expireIn: 2 * 24 * 3600 * 1000 });
-    return null;
+    return erreur('Code inconnu.', 404);
   };
 
   // Creer une classe (vide) -> {code, gestion}. Le code se PARTAGE avec la
@@ -328,7 +373,7 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
   if (mDel && req.method === 'DELETE') {
     const code = mDel[1];
     const meta = await kv.get(['class', code]);
-    if (!meta.value) return erreur('Code inconnu.', 404);
+    if (!meta.value) return await codeInconnu();
     const mv = meta.value as { gestionHash?: string };
     const g = (req.headers.get('x-khompas-gestion') ?? '').trim().toUpperCase();
     if (!mv.gestionHash) {
@@ -356,21 +401,39 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
     return json({ ok: true });
   }
 
-  // Envoyer la photo n°i (corps = jpeg en base64, texte brut)
+  // Envoyer la photo n°i (corps = jpeg en base64, texte brut).
+  // Reserve au CREATEUR (code de gestion) : le code de classe circule sur
+  // les groupes WhatsApp — sans cette verification, n'importe quel eleve
+  // pouvait ecraser le colloscope de toute la classe.
   const mUp = p.match(/^\/api\/classes\/([A-Z2-9]{6})\/photos\/([0-9])$/);
   if (mUp && req.method === 'PUT') {
     const code = mUp[1];
     const i = Number(mUp[2]);
     if (i >= MAX_PHOTOS) return erreur(`Maximum ${MAX_PHOTOS} photos.`, 400);
     const meta = await kv.get(['class', code]);
-    if (!meta.value) return erreur('Code inconnu.', 404);
+    if (!meta.value) return await codeInconnu();
+    const mv = meta.value as { gestionHash?: string };
+    const g = (req.headers.get('x-khompas-gestion') ?? '').trim().toUpperCase();
+    if (
+      mv.gestionHash && (!g || (await sha256Hex(g)) !== mv.gestionHash)
+    ) {
+      return erreur(
+        'Seul le créateur de la classe (code de gestion) peut envoyer les photos.',
+        403,
+      );
+    }
     const refus = await compterAbus('photos', 15);
     if (refus) return erreur(refus, 429);
+    // Rejeter les corps enormes AVANT de les materialiser en memoire.
+    const annonce = Number(req.headers.get('content-length') ?? '0');
+    if (annonce > MAX_B64_PAR_PHOTO + 10_000) {
+      return erreur('Fichier trop lourd (2,8 Mo max).', 413);
+    }
     const brut = await req.text();
     const b64 = brut.replace(/\s+/g, '');
     if (!b64) return erreur('Fichier vide.', 400);
     if (b64.length > MAX_B64_PAR_PHOTO) {
-      return erreur('Fichier trop lourd (3 Mo max).', 413);
+      return erreur('Fichier trop lourd (2,8 Mo max).', 413);
     }
     const mime = url.searchParams.get('mime') === 'pdf'
       ? 'application/pdf'
@@ -403,7 +466,7 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
   if (mProg && req.method === 'PUT') {
     const code = mProg[1];
     if (!(await kv.get(['class', code])).value) {
-      return erreur('Code inconnu.', 404);
+      return await codeInconnu();
     }
     const refus = await compterAbus('progs', 40);
     if (refus) return erreur(refus, 429);
@@ -428,7 +491,7 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
   if (mProg && req.method === 'GET') {
     const code = mProg[1];
     if (!(await kv.get(['class', code])).value) {
-      return erreur('Code inconnu.', 404);
+      return await codeInconnu();
     }
     const semaine = (url.searchParams.get('semaine') ?? '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(semaine)) {
@@ -466,12 +529,25 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
     if (pend.value) return json({ statut: 'en_cours' }, 202);
 
     const photos = await lirePhotos(code);
-    if (photos === null) return erreur('Code inconnu.', 404);
+    if (photos === null) return await codeInconnu();
     if (photos.length === 0) {
       return erreur("Ce code n'a pas encore de photos de colloscope.", 409);
     }
+
+    // Prise de verrou ATOMIQUE : deux camarades qui cliquent en meme temps
+    // ne doivent declencher qu'UNE extraction payante. (Avant : get puis
+    // set, donc les deux passaient.)
+    const verrou = await kv.atomic()
+      .check({ key: pendKey, versionstamp: null })
+      .set(pendKey, 1, { expireIn: 4 * 60 * 1000 })
+      .commit();
+    if (!verrou.ok) return json({ statut: 'en_cours' }, 202);
+
     const refus = await limiterDebit(ip);
-    if (refus) return erreur(refus, 429);
+    if (refus) {
+      await kv.delete(pendKey);
+      return erreur(refus, 429);
+    }
 
     // Une extraction dure 1 a 3 minutes : trop long pour une seule requete
     // HTTP (les passerelles coupent -> "Failed to fetch" cote navigateur).
@@ -482,7 +558,6 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
       // l'ancienne version pendant que la nouvelle se calcule.
       await kv.delete(['res', code, groupe]);
     }
-    await kv.set(pendKey, 1, { expireIn: 4 * 60 * 1000 });
     (async () => {
       try {
         const text = await extraire(photos, groupe);
@@ -556,12 +631,9 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
   if (p === '/api/comptes' && req.method === 'POST') {
     // Garde-fou : 10 creations de compte max par appareil et par jour.
     const jour = new Date().toISOString().slice(0, 10);
-    const kC = ['rlc', ip, jour];
-    const nb = ((await kv.get(kC)).value as number | null) ?? 0;
-    if (nb >= 10) {
+    if (!(await incrementerCompteur(['rlc', ip, jour], 10))) {
       return erreur('Trop de comptes créés depuis cet appareil aujourd\'hui.', 429);
     }
-    await kv.set(kC, nb + 1, { expireIn: 2 * 24 * 3600 * 1000 });
     let corps: { filiere?: string; cinqDemi?: boolean } = {};
     try {
       corps = await req.json();
@@ -590,6 +662,9 @@ async function gerer(req: Request, info: Deno.ServeHandlerInfo): Promise<Respons
   if (p === '/api/compte/data' && req.method === 'PUT') {
     const id = await compteAuth();
     if (!id) return erreur('Clé de compte invalide.', 401);
+    // Rejeter les corps enormes AVANT de les materialiser en memoire.
+    const annonce = Number(req.headers.get('content-length') ?? '0');
+    if (annonce > 300_000) return erreur('Données trop volumineuses.', 413);
     const corps = await req.text();
     if (!corps.trim()) return erreur('Données vides.', 400);
     if (corps.length > 256_000) return erreur('Données trop volumineuses.', 413);

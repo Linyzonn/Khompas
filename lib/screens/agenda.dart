@@ -161,10 +161,10 @@ class AgendaScreen extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       elevation: 0,
-      color: scheme.primary.withOpacity(0.07),
+      color: scheme.primary.withValues(alpha: 0.07),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: scheme.primary.withOpacity(0.4)),
+        side: BorderSide(color: scheme.primary.withValues(alpha: 0.4)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -214,7 +214,7 @@ class AgendaScreen extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -389,7 +389,7 @@ class AgendaScreen extends StatelessWidget {
       final c = e.colle!;
       return ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.18),
+          backgroundColor: color.withValues(alpha: 0.18),
           child: Icon(Icons.record_voice_over, color: color, size: 20),
         ),
         title: Text('Khôlle ${c.matiere}'),
@@ -428,7 +428,7 @@ class AgendaScreen extends StatelessWidget {
       final ev = e.evenement!;
       return ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.18),
+          backgroundColor: color.withValues(alpha: 0.18),
           child: Icon(Icons.star_outline, color: color, size: 20),
         ),
         title: Text(ev.titre),
@@ -456,7 +456,7 @@ class AgendaScreen extends StatelessWidget {
       final o = e.oral!;
       return ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.18),
+          backgroundColor: color.withValues(alpha: 0.18),
           child: Icon(Icons.school, color: color, size: 20),
         ),
         title: Text('Oral ${o.concours} — ${o.epreuve}'),
@@ -476,7 +476,7 @@ class AgendaScreen extends StatelessWidget {
           d.dateRendu.isBefore(DateTime.now().subtract(const Duration(days: 1)));
       return ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.18),
+          backgroundColor: color.withValues(alpha: 0.18),
           child: Icon(Icons.assignment_turned_in, color: color, size: 20),
         ),
         title: Text(
@@ -521,7 +521,7 @@ class AgendaScreen extends StatelessWidget {
     final d = e.ds!;
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: color.withOpacity(0.18),
+        backgroundColor: color.withValues(alpha: 0.18),
         child: Icon(Icons.edit_document, color: color, size: 20),
       ),
       title: Text('${d.titre} ${d.matiere}'

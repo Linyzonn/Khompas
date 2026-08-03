@@ -144,14 +144,14 @@ class VueSemaineColonnes extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         color: estAujourdhui
-            ? scheme.primary.withOpacity(0.07)
+            ? scheme.primary.withValues(alpha: 0.07)
             : plage != null
-                ? Colors.grey.withOpacity(0.10)
-                : Colors.grey.withOpacity(0.04),
+                ? Colors.grey.withValues(alpha: 0.10)
+                : Colors.grey.withValues(alpha: 0.04),
         border: Border.all(
           color: estAujourdhui
-              ? scheme.primary.withOpacity(0.55)
-              : Colors.grey.withOpacity(0.18),
+              ? scheme.primary.withValues(alpha: 0.55)
+              : Colors.grey.withValues(alpha: 0.18),
         ),
       ),
       child: Column(
@@ -209,7 +209,7 @@ class VueSemaineColonnes extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               width: double.infinity,
               decoration: BoxDecoration(
-                color: it.$3.withOpacity(it.$4 ? 0.16 : 0.09),
+                color: it.$3.withValues(alpha: it.$4 ? 0.16 : 0.09),
                 borderRadius: BorderRadius.circular(6),
                 border: Border(
                     left: BorderSide(color: it.$3, width: 3)),

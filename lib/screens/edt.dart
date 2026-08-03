@@ -91,7 +91,7 @@ class _EdtScreenState extends State<EdtScreen> {
           final colW =
               ((contraintes.maxWidth - 34) / 6).clamp(70.0, 200.0);
           final gridW = 34 + colW * 6;
-          final gridH = (_hFin - _hDebut) * _cellH;
+          const gridH = (_hFin - _hDebut) * _cellH;
           return SingleChildScrollView(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -199,7 +199,7 @@ class _EdtScreenState extends State<EdtScreen> {
         child: Container(
           padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
-            color: couleur.withOpacity(0.85),
+            color: couleur.withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(4),
           ),
           child: Text(

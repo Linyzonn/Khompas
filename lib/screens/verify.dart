@@ -103,7 +103,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
     final color = Color(subjectColor(c.matiere));
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: color.withOpacity(0.18),
+        backgroundColor: color.withValues(alpha: 0.18),
         child: Text(
           c.matiere.isEmpty ? '?' : c.matiere.characters.first.toUpperCase(),
           style: TextStyle(color: color, fontWeight: FontWeight.bold),

@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -85,8 +83,11 @@ class _ImportScreenState extends State<ImportScreen> {
         type: FileType.custom, allowedExtensions: ['pdf'], withData: true);
     final bytes = res?.files.single.bytes;
     if (bytes == null) return;
-    if (bytes.length > 3 * 1024 * 1024) {
-      if (mounted) _snack('PDF trop lourd (3 Mo max) — exporte-le en qualité réduite ou fais des captures d\'écran.');
+    // Aligne sur la limite REELLE du serveur : 4 000 000 caracteres base64
+    // = 3 000 000 octets decodes. Avant, le client acceptait jusqu'a
+    // 3 145 728 octets -> 413 au milieu de l'envoi, classe orpheline.
+    if (bytes.length > 2900000) {
+      if (mounted) _snack('PDF trop lourd (2,8 Mo max) — exporte-le en qualité réduite ou fais des captures d\'écran.');
       return;
     }
     setState(() => pieces.add(PieceColloscope(bytes, pdf: true)));
@@ -153,7 +154,8 @@ class _ImportScreenState extends State<ImportScreen> {
       final (code, gestion) = await api.creerClasse();
       for (var i = 0; i < pieces.length; i++) {
         _setBusy('Envoi du fichier ${i + 1}/${pieces.length}…');
-        await api.envoyerPhoto(code, i, pieces[i].bytes, pdf: pieces[i].pdf);
+        await api.envoyerPhoto(code, i, pieces[i].bytes,
+            pdf: pieces[i].pdf, gestion: gestion);
       }
       m.setCodeClasse(code);
       // Le code de GESTION reste chez le createur : il permet de supprimer

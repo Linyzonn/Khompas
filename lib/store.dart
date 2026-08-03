@@ -86,6 +86,7 @@ class AppModel extends ChangeNotifier {
       apiKey = prefs.getString('apiKey') ?? '';
       serverUrl = prefs.getString('serverUrl') ?? kServeurDefaut;
       compteCle = prefs.getString('compteCle') ?? '';
+      gestionClasse = prefs.getString('gestionClasse') ?? '';
       onboarded = prefs.getBool('onboarded') ?? false;
       notifsActives = prefs.getBool('notifsActives') ?? false;
       notifVeilleKholle = prefs.getBool('notifVeilleKholle') ?? true;
@@ -102,61 +103,96 @@ class AppModel extends ChangeNotifier {
       }
       if (raw != null) {
         try {
-        final j = jsonDecode(raw) as Map<String, dynamic>;
-        colles = ((j['colles'] ?? []) as List)
-            .map((e) => Colle.fromJson(e as Map<String, dynamic>))
-            .toList();
-        ds = ((j['ds'] ?? []) as List)
-            .map((e) => Ds.fromJson(e as Map<String, dynamic>))
-            .toList();
-        chapitres = ((j['chapitres'] ?? []) as List)
-            .map((e) => Chapitre.fromJson(e as Map<String, dynamic>))
-            .toList();
-        routines = ((j['routines'] ?? []) as List)
-            .map((e) => Routine.fromJson(e as Map<String, dynamic>))
-            .toList();
-        devoirs = ((j['devoirs'] ?? []) as List)
-            .map((e) => Devoir.fromJson(e as Map<String, dynamic>))
-            .toList();
-        seances = ((j['seances'] ?? []) as List)
-            .map((e) => Seance.fromJson(e as Map<String, dynamic>))
-            .toList();
-        objectifs = ((j['objectifs'] ?? {}) as Map)
-            .map((k, v) => MapEntry(k.toString(), (v as num).toDouble()));
-        dateConcours = j['dateConcours'] == null
-            ? null
-            : DateTime.tryParse(j['dateConcours'] as String);
-        bilans = ((j['bilans'] ?? []) as List)
-            .map((e) => Bilan.fromJson(e as Map<String, dynamic>))
-            .toList();
-        evenements = ((j['evenements'] ?? []) as List)
-            .map((e) => Evenement.fromJson(e as Map<String, dynamic>))
-            .toList();
-        sansCours = ((j['sansCours'] ?? []) as List)
-            .map((e) => PlageSansCours.fromJson(e as Map<String, dynamic>))
-            .toList();
-        erreurs = ((j['erreurs'] ?? []) as List)
-            .map((e) => Erreur.fromJson(e as Map<String, dynamic>))
-            .toList();
-        annales = ((j['annales'] ?? []) as List)
-            .map((e) => Annale.fromJson(e as Map<String, dynamic>))
-            .toList();
-        oraux = ((j['oraux'] ?? []) as List)
-            .map((e) => EpreuveOrale.fromJson(e as Map<String, dynamic>))
-            .toList();
-        modeOraux = (j['modeOraux'] ?? false) as bool;
-        refSemaineA = j['refSemaineA'] == null
-            ? null
-            : DateTime.tryParse(j['refSemaineA'] as String);
-        methodeTravail = (j['methodeTravail'] ?? 'checklist') as String;
-        heureLimiteMin = j['heureLimiteMin'] as int?;
-        filiere = (j['filiere'] ?? 'PCSI') as String;
-        groupe = (j['groupe'] ?? 1) as int;
-        codeClasse = (j['codeClasse'] ?? '') as String;
-        gestionClasse = (j['gestionClasse'] ?? '') as String;
-        cinqDemi = (j['cinqDemi'] ?? false) as bool;
-        prios = ((j['prios'] ?? {}) as Map)
-            .map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+          final j = jsonDecode(raw) as Map<String, dynamic>;
+          // TOUT est parse dans des variables locales avant d'affecter quoi
+          // que ce soit : avant, un JSON casse a mi-parcours laissait un
+          // etat partiel (colles chargees, chapitres vides) qui pouvait
+          // ensuite etre re-sauvegarde tel quel.
+          final newColles = ((j['colles'] ?? []) as List)
+              .map((e) => Colle.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newDs = ((j['ds'] ?? []) as List)
+              .map((e) => Ds.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newChapitres = ((j['chapitres'] ?? []) as List)
+              .map((e) => Chapitre.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newRoutines = ((j['routines'] ?? []) as List)
+              .map((e) => Routine.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newDevoirs = ((j['devoirs'] ?? []) as List)
+              .map((e) => Devoir.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newSeances = ((j['seances'] ?? []) as List)
+              .map((e) => Seance.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newObjectifs = ((j['objectifs'] ?? {}) as Map)
+              .map((k, v) => MapEntry(k.toString(), (v as num).toDouble()));
+          final newDateConcours = j['dateConcours'] == null
+              ? null
+              : DateTime.tryParse(j['dateConcours'] as String);
+          final newBilans = ((j['bilans'] ?? []) as List)
+              .map((e) => Bilan.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newEvenements = ((j['evenements'] ?? []) as List)
+              .map((e) => Evenement.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newSansCours = ((j['sansCours'] ?? []) as List)
+              .map((e) => PlageSansCours.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newErreurs = ((j['erreurs'] ?? []) as List)
+              .map((e) => Erreur.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newAnnales = ((j['annales'] ?? []) as List)
+              .map((e) => Annale.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newOraux = ((j['oraux'] ?? []) as List)
+              .map((e) => EpreuveOrale.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newModeOraux = (j['modeOraux'] ?? false) as bool;
+          final newRefSemaineA = j['refSemaineA'] == null
+              ? null
+              : DateTime.tryParse(j['refSemaineA'] as String);
+          final newMethode = (j['methodeTravail'] ?? 'checklist') as String;
+          final newHeureLimite = j['heureLimiteMin'] as int?;
+          final newFiliere = (j['filiere'] ?? 'PCSI') as String;
+          final newGroupe = ((j['groupe'] ?? 1) as num).toInt();
+          final newCodeClasse = (j['codeClasse'] ?? '') as String;
+          final newCinqDemi = (j['cinqDemi'] ?? false) as bool;
+          final newPrios = ((j['prios'] ?? {}) as Map)
+              .map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+          colles = newColles;
+          ds = newDs;
+          chapitres = newChapitres;
+          routines = newRoutines;
+          devoirs = newDevoirs;
+          seances = newSeances;
+          objectifs = newObjectifs;
+          dateConcours = newDateConcours;
+          bilans = newBilans;
+          evenements = newEvenements;
+          sansCours = newSansCours;
+          erreurs = newErreurs;
+          annales = newAnnales;
+          oraux = newOraux;
+          modeOraux = newModeOraux;
+          refSemaineA = newRefSemaineA;
+          methodeTravail = newMethode;
+          heureLimiteMin = newHeureLimite;
+          filiere = newFiliere;
+          groupe = newGroupe;
+          codeClasse = newCodeClasse;
+          cinqDemi = newCinqDemi;
+          prios = newPrios;
+          // Migration : le code de gestion vivait dans le JSON (donc dans
+          // les sauvegardes PARTAGEES — quiconque recevait le fichier
+          // pouvait supprimer la classe du serveur). Il vit desormais dans
+          // SharedPreferences, comme la cle API.
+          final ancienGestion = (j['gestionClasse'] ?? '') as String;
+          if (gestionClasse.isEmpty && ancienGestion.isNotEmpty) {
+            gestionClasse = ancienGestion;
+            await prefs.setString('gestionClasse', gestionClasse);
+          }
         } catch (_) {
           // Donnees illisibles : COPIE DE SECOURS AVANT TOUTE ECRITURE —
           // sans elle, le premier save() ecraserait le fichier corrompu
@@ -180,7 +216,9 @@ class AppModel extends ChangeNotifier {
     }
     // Migration : canonise les noms de matieres partout ("Mathématiques" et
     // "Maths" etaient deux matieres differentes -> doublons dans toute l'UI).
-    if (_migrerMatieres()) save();
+    // JAMAIS de re-sauvegarde si le chargement a echoue : on ecraserait le
+    // fichier principal avec un etat vide (la copie .corrompu ne suffit pas).
+    if (_migrerMatieres() && !chargementEchoue) save();
     loaded = true;
     notifyListeners();
     // Taches d'arriere-plan non bloquantes (silencieuses hors ligne).
@@ -315,7 +353,9 @@ class AppModel extends ChangeNotifier {
         'filiere': filiere,
         'groupe': groupe,
         'codeClasse': codeClasse,
-        'gestionClasse': gestionClasse,
+        // PAS de gestionClasse ici : le snapshot part dans les sauvegardes
+        // partagees et sur le compte — le code de gestion (droit de
+        // suppression de la classe) reste local, dans SharedPreferences.
         'cinqDemi': cinqDemi,
         'prios': prios,
       };
@@ -575,7 +615,14 @@ class AppModel extends ChangeNotifier {
     } catch (_) {
       throw Exception('sauvegarde illisible ou incomplète — rien n\'a été modifié.');
     }
-    gestionClasse = (decoded['gestionClasse'] ?? gestionClasse) as String;
+    // Vieilles sauvegardes : le code de gestion y figurait. On le recupere
+    // s'il nous manque (cast defensif : un champ inattendu ne doit pas
+    // laisser l'etat a moitie mute).
+    final ancienGestion = decoded['gestionClasse'];
+    if (gestionClasse.isEmpty && ancienGestion is String &&
+        ancienGestion.isNotEmpty) {
+      setGestionClasse(ancienGestion);
+    }
     // Une sauvegarde d'avant-0.12 peut reintroduire des doublons de
     // matieres : on re-normalise tout de suite, pas au prochain redemarrage.
     _migrerMatieres();
@@ -602,9 +649,12 @@ class AppModel extends ChangeNotifier {
     _touch();
   }
 
-  void setGestionClasse(String gestion) {
+  Future<void> setGestionClasse(String gestion) async {
     gestionClasse = gestion.trim().toUpperCase();
-    _touch();
+    // Hors snapshot (voir _snapshot) : persiste dans SharedPreferences.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('gestionClasse', gestionClasse);
+    notifyListeners();
   }
 
   /// Menage de rentree (passage en 2e annee) : supprime les kholles
@@ -686,6 +736,7 @@ class AppModel extends ChangeNotifier {
     if (c.etape < 1) c.etape = 1;
     c.entame = false;
     c.intervalleJours = 1;
+    c.dernierRevu = DateTime.now();
     final demain = DateTime.now().add(const Duration(days: 1));
     c.prochaineRevision = DateTime(demain.year, demain.month, demain.day);
     _touch();
@@ -1060,7 +1111,13 @@ class AppModel extends ChangeNotifier {
   /// Auto-evaluation en 1 tap apres une revision espacee ('difficile',
   /// 'cava' ou 'facile') : ajuste l'intervalle (et la maitrise aux bords),
   /// programme la prochaine revision. Regles simples et explicables —
-  /// pas de SM-2 opaque.
+  /// pas de SM-2 opaque — mais calibrees sur la litterature :
+  ///  - "ca va" = "j'ai eu du mal mais ca passe" -> x1.7 (l'ancien x2
+  ///    allongeait aussi vite qu'une reussite franche) ;
+  ///  - "facile" -> x2.5 (expansion classique type SM-2) ;
+  ///  - un chapitre chroniquement dur (2 "difficile" recents ou plus)
+  ///    ralentit a x1.5 : sans cette memoire des echecs, il oscillait
+  ///    eternellement entre 2 et 4 jours.
   void evaluerRevision(String chapitreId, String verdict) {
     final i = chapitres.indexWhere((c) => c.id == chapitreId);
     if (i < 0) return;
@@ -1068,19 +1125,38 @@ class AppModel extends ChangeNotifier {
     switch (verdict) {
       case 'difficile':
         c.intervalleJours = 2;
+        c.echecs++;
         if (c.maitrise > 0) c.maitrise--;
         break;
       case 'facile':
         c.intervalleJours = (c.intervalleJours * 2.5).round().clamp(1, 45);
+        c.echecs = 0;
         if (c.maitrise < 4) c.maitrise++;
         break;
       default: // cava
-        c.intervalleJours = (c.intervalleJours * 2).clamp(1, 45);
+        final mult = c.echecs >= 2 ? 1.5 : 1.7;
+        c.intervalleJours = (c.intervalleJours * mult).round().clamp(1, 45);
     }
-    final prochaine = DateTime.now().add(Duration(days: c.intervalleJours));
-    c.prochaineRevision =
-        DateTime(prochaine.year, prochaine.month, prochaine.day);
-    c.dernierRevu = DateTime.now();
+    // L'espacement s'ancre sur la date OU LA REVISION ETAIT DUE (si le
+    // retard reste raisonnable, < 7 j) plutot que sur aujourd'hui :
+    // reviser avec 3 jours de retard ne doit pas decaler toute la suite.
+    final now = DateTime.now();
+    var base = now;
+    final due = c.prochaineRevision;
+    if (due != null) {
+      final retard = DateTime(now.year, now.month, now.day)
+          .difference(DateTime(due.year, due.month, due.day))
+          .inDays;
+      if (retard > 0 && retard < 7) base = due;
+    }
+    var prochaine = DateTime(base.year, base.month, base.day)
+        .add(Duration(days: c.intervalleJours));
+    // Jamais dans le passe : au pire, demain.
+    final demain = DateTime(now.year, now.month, now.day)
+        .add(const Duration(days: 1));
+    if (prochaine.isBefore(demain)) prochaine = demain;
+    c.prochaineRevision = prochaine;
+    c.dernierRevu = now;
     _touch();
   }
 

@@ -5,6 +5,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../models.dart';
 import '../store.dart';
+import 'dialogs.dart';
 
 /// Un bloc de la session Pomodoro : travail (matiere + contenu) ou pause.
 class BlocPomodoro {
@@ -39,6 +40,11 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
   bool running = true;
   bool termine = false;
   Timer? _tick;
+  // Chapitres suivis en repetition espacee travailles pendant la session
+  // (id -> matiere) : leur auto-evaluation est demandee EN FIN de session,
+  // une seule fois par chapitre — jamais decidee a la place de l'eleve.
+  final Map<String, String> _aEvaluer = {};
+  bool _evalDemandee = false;
 
   BlocPomodoro get bloc => widget.blocs[index];
 
@@ -93,13 +99,16 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
         if (b.chapitreId != null) {
           final i = m.chapitres.indexWhere((c) => c.id == b.chapitreId);
           if (i >= 0) {
+            // Le temps passe ne dit RIEN du rappel reel : l'intervalle de
+            // repetition espacee ne bouge que sur l'auto-evaluation de
+            // l'eleve, demandee en fin de session. (Avant : un "ca va"
+            // etait injecte automatiquement a CHAQUE bloc — deux tomates
+            // sur le meme chapitre quadruplaient l'intervalle sans que
+            // l'eleve se soit teste.)
+            m.chapitres[i].dernierRevu = DateTime.now();
+            m.updateChapitre(m.chapitres[i]);
             if (m.chapitres[i].prochaineRevision != null) {
-              // Chapitre suivi en revision espacee : "Ca va" par defaut
-              // (l'intervalle double), faute d'auto-evaluation ici.
-              m.evaluerRevision(b.chapitreId!, 'cava');
-            } else {
-              m.chapitres[i].dernierRevu = DateTime.now();
-              m.updateChapitre(m.chapitres[i]);
+              _aEvaluer[b.chapitreId!] = b.matiere;
             }
           }
         }
@@ -109,11 +118,34 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
       termine = true;
       finBloc = null;
       WakelockPlus.disable();
+      if (_aEvaluer.isNotEmpty && !_evalDemandee) {
+        _evalDemandee = true;
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _demanderEvaluations());
+      }
     } else {
       index++;
       running = true;
       finBloc = DateTime.now().add(Duration(minutes: bloc.minutes));
     }
+  }
+
+  /// Auto-evaluation en 1 tap, chapitre par chapitre, en fin de session.
+  /// Sans reponse (feuille fermee), seul dernierRevu a ete mis a jour :
+  /// l'intervalle n'avance pas sur du temps passe.
+  Future<void> _demanderEvaluations() async {
+    final m = AppModel.instance;
+    for (final e in _aEvaluer.entries) {
+      if (!mounted) return;
+      final nom = m.chapitres
+          .firstWhere((c) => c.id == e.key,
+              orElse: () => Chapitre(matiere: e.value, nom: e.value))
+          .nom;
+      final verdict = await demanderAutoEvaluation(
+          context, '$nom — comment ça s\'est passé ?');
+      if (verdict != null) m.evaluerRevision(e.key, verdict);
+    }
+    _aEvaluer.clear();
   }
 
   @override

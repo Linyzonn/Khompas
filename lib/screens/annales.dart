@@ -78,7 +78,7 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
     return ExpansionTile(
       initiallyExpanded: true,
       leading: CircleAvatar(
-        backgroundColor: color.withOpacity(0.18),
+        backgroundColor: color.withValues(alpha: 0.18),
         child: Text(mat.characters.first.toUpperCase(),
             style: TextStyle(color: color, fontWeight: FontWeight.bold)),
       ),

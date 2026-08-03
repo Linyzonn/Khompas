@@ -117,7 +117,7 @@ class GradesScreen extends StatelessWidget {
 
     return ExpansionTile(
       leading: CircleAvatar(
-        backgroundColor: color.withOpacity(0.18),
+        backgroundColor: color.withValues(alpha: 0.18),
         child: Text(mat.characters.first.toUpperCase(),
             style: TextStyle(color: color, fontWeight: FontWeight.bold)),
       ),
@@ -305,8 +305,8 @@ class GradesScreen extends StatelessWidget {
   Widget _noteChip(BuildContext context, double? note, Color color, VoidCallback onTap) {
     return ActionChip(
       onPressed: onTap,
-      backgroundColor: note == null ? null : color.withOpacity(0.15),
-      side: BorderSide(color: color.withOpacity(0.4)),
+      backgroundColor: note == null ? null : color.withValues(alpha: 0.15),
+      side: BorderSide(color: color.withValues(alpha: 0.4)),
       label: Text(
         note == null
             ? '+ note'

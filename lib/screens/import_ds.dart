@@ -144,7 +144,7 @@ class _ImportDsScreenState extends State<ImportDsScreen> {
                 dense: true,
                 leading: CircleAvatar(
                   backgroundColor:
-                      Color(subjectColor(t[i].matiere)).withOpacity(0.18),
+                      Color(subjectColor(t[i].matiere)).withValues(alpha: 0.18),
                   child: Icon(Icons.edit_document,
                       color: Color(subjectColor(t[i].matiere)), size: 18),
                 ),

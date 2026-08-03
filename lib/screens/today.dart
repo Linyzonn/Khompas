@@ -498,10 +498,10 @@ class _TodayScreenState extends State<TodayScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
-      color: couleur.withOpacity(0.08),
+      color: couleur.withValues(alpha: 0.08),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: couleur.withOpacity(0.5)),
+        side: BorderSide(color: couleur.withValues(alpha: 0.5)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -529,10 +529,10 @@ class _TodayScreenState extends State<TodayScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
-      color: couleur.withOpacity(0.08),
+      color: couleur.withValues(alpha: 0.08),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: couleur.withOpacity(0.5)),
+        side: BorderSide(color: couleur.withValues(alpha: 0.5)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -565,7 +565,7 @@ class _TodayScreenState extends State<TodayScreen> {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
       ),
       child: IntrinsicHeight(
         child: Row(
@@ -902,7 +902,7 @@ class _TodayScreenState extends State<TodayScreen> {
                       value: e.value / maxV,
                       minHeight: 6,
                       color: Color(subjectColor(e.key)),
-                      backgroundColor: Colors.grey.withOpacity(0.15),
+                      backgroundColor: Colors.grey.withValues(alpha: 0.15),
                     ),
                   ),
                 ),
@@ -980,7 +980,7 @@ class _TodayScreenState extends State<TodayScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: scheme.primary.withOpacity(0.35), width: 1.5),
+        side: BorderSide(color: scheme.primary.withValues(alpha: 0.35), width: 1.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1412,6 +1412,10 @@ class _TodayScreenState extends State<TodayScreen> {
   List<BlocPomodoro> _blocsPomodoro(List<Suggestion> suggestions) {
     final m = AppModel.instance;
     final blocs = <BlocPomodoro>[];
+    // Pause LONGUE (20 min) apres 4 tomates de 25 ou 2 de 50, comme le
+    // protocole Pomodoro canonique : 3 h en 50/10 enchainees sans vraie
+    // coupure, c'est la fatigue attentionnelle assuree.
+    var tomates = 0;
     for (final s in suggestions) {
       int travail, pause;
       if (m.methodeTravail == 'pomoAuto') {
@@ -1422,15 +1426,27 @@ class _TodayScreenState extends State<TodayScreen> {
         travail = m.methodeTravail == 'pomo50' ? 50 : 25;
         pause = m.methodeTravail == 'pomo50' ? 10 : 5;
       }
+      final seuilLongue = travail >= 50 ? 2 : 4;
       var reste = s.minutes;
+      final blocsAvant = blocs.length;
       while (reste >= 15) {
         final w = reste >= travail ? travail : reste;
         if (blocs.isNotEmpty) {
-          blocs.add(BlocPomodoro('Pause', '', pause, pause: true));
+          final longue = tomates > 0 && tomates % seuilLongue == 0;
+          blocs.add(BlocPomodoro('Pause', '', longue ? 20 : pause, pause: true));
         }
         blocs.add(
             BlocPomodoro(s.titre, s.matiere, w, chapitreId: s.chapitreId));
+        tomates++;
         reste -= w;
+      }
+      // Le reliquat < 15 min rejoint le dernier bloc de travail au lieu de
+      // disparaitre silencieusement du plan (60 min en 25/5 = 25+25+10).
+      if (reste > 0 && blocs.length > blocsAvant && !blocs.last.pause) {
+        final dernier = blocs.removeLast();
+        blocs.add(BlocPomodoro(
+            dernier.label, dernier.matiere, dernier.minutes + reste,
+            chapitreId: dernier.chapitreId));
       }
     }
     return blocs;
@@ -1466,14 +1482,14 @@ class _TodayScreenState extends State<TodayScreen> {
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
-                  side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+                  side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
                 ),
                 child: ListTile(
                   dense: true,
                   leading: CircleAvatar(
                     radius: 14,
                     backgroundColor:
-                        Color(subjectColor(b.matiere)).withOpacity(0.18),
+                        Color(subjectColor(b.matiere)).withValues(alpha: 0.18),
                     child: Text('${++num}',
                         style: TextStyle(
                             fontSize: 12,
@@ -1499,11 +1515,11 @@ class _TodayScreenState extends State<TodayScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: Colors.grey.withOpacity(0.25)),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
       ),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.18),
+          backgroundColor: color.withValues(alpha: 0.18),
           child: Text(
             '${s.minutes >= 60 ? '${s.minutes ~/ 60}h' : ''}${s.minutes % 60 == 0 ? '' : (s.minutes % 60).toString().padLeft(2, '0')}',
             style: TextStyle(
@@ -1544,8 +1560,16 @@ class _TodayScreenState extends State<TodayScreen> {
             if (s.chapitreId != null) {
               final i = m.chapitres.indexWhere((c) => c.id == s.chapitreId);
               if (i >= 0) {
-                m.chapitres[i].dernierRevu = DateTime.now();
-                m.updateChapitre(m.chapitres[i]);
+                final c = m.chapitres[i];
+                if (c.prochaineRevision == null) {
+                  // Reviser un chapitre l'INSCRIT dans la repetition
+                  // espacee : avant, un chapitre revu hors "rappel"
+                  // n'entrait jamais dans le systeme (cul-de-sac).
+                  m.demarrerEspacement(c.id);
+                } else {
+                  c.dernierRevu = DateTime.now();
+                  m.updateChapitre(c);
+                }
               }
             }
             // Bloc DM : le ✓ propose de marquer le devoir rendu.
@@ -1575,56 +1599,8 @@ class _TodayScreenState extends State<TodayScreen> {
   /// l'ecart avant la prochaine revision (difficile -> vite, facile -> loin).
   Future<void> _evaluerRappel(Suggestion s) async {
     final m = AppModel.instance;
-    final verdict = await feuilleAdaptative<String>(
-      context,
-      (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${s.matiere} — comment ça s\'est passé ?',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
-              Text(
-                'Ta réponse règle la date de la prochaine révision. Sois honnête, personne ne regarde 😉',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  for (final v in const [
-                    ('difficile', '😮‍💨', 'Difficile'),
-                    ('cava', '🙂', 'Ça va'),
-                    ('facile', '😎', 'Facile'),
-                  ]) ...[
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context, v.$1),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Column(
-                            children: [
-                              Text(v.$2,
-                                  style: const TextStyle(fontSize: 24)),
-                              const SizedBox(height: 2),
-                              Text(v.$3,
-                                  style: const TextStyle(fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (v.$1 != 'facile') const SizedBox(width: 8),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    final verdict = await demanderAutoEvaluation(
+        context, '${s.matiere} — comment ça s\'est passé ?');
     if (verdict == null) return;
     m.evaluerRevision(s.chapitreId!, verdict);
     m.addSeance(s.matiere, s.minutes);

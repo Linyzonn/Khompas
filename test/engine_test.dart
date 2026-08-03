@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:khompas/ai_extractor.dart';
 import 'package:khompas/engine.dart';
+import 'package:khompas/ics.dart';
 import 'package:khompas/methodes.dart';
 import 'package:khompas/models.dart';
 import 'package:khompas/store.dart';
@@ -556,5 +557,195 @@ Voici le résultat demandé :
     expect(r.ds.first.coeff, 2.0);
     expect(r.ds[1].titre, 'DS'); // titre par defaut
     expect(r.ds[1].coeff, 1.0); // coeff par defaut
+  });
+
+  // ---------- DS du jour ----------
+
+  test('un DS AUJOURD\'HUI (daté à minuit) reste visible dans le scoring', () {
+    final now = DateTime.now();
+    // Les DS sont dates a minuit : a 18 h, l'ancien code (isBefore(now))
+    // ecartait le DS du jour et la branche AUJOURD'HUI etait morte.
+    m.ds.add(Ds(
+        matiere: 'Physique',
+        titre: 'DS 4',
+        date: DateTime(now.year, now.month, now.day),
+        note: null));
+    final s = suggere(m, 120);
+    expect(s.any((x) => x.matiere == 'Physique'), isTrue);
+    expect(
+        s.firstWhere((x) => x.matiere == 'Physique').raison,
+        contains('AUJOURD\'HUI'));
+  });
+
+  // ---------- Repetition espacee : verdicts et memoire des echecs ----------
+
+  test('"ça va" multiplie par 1,7 (et non 2) — progression douce', () {
+    final c = Chapitre(
+        matiere: 'Maths',
+        nom: 'Suites',
+        etape: 1,
+        intervalleJours: 10,
+        prochaineRevision: DateTime.now());
+    m.chapitres.add(c);
+    m.evaluerRevision(c.id, 'cava');
+    expect(c.intervalleJours, 17);
+  });
+
+  test('chapitre chroniquement difficile : la progression ralentit à x1,5',
+      () {
+    final c = Chapitre(
+        matiere: 'Maths',
+        nom: 'Intégrales',
+        etape: 1,
+        intervalleJours: 8,
+        prochaineRevision: DateTime.now());
+    m.chapitres.add(c);
+    m.evaluerRevision(c.id, 'difficile'); // echecs = 1, intervalle = 2
+    m.evaluerRevision(c.id, 'difficile'); // echecs = 2, intervalle = 2
+    m.evaluerRevision(c.id, 'cava'); // x1,5 au lieu de x1,7
+    expect(c.intervalleJours, 3);
+    // Un "facile" efface la memoire des echecs.
+    m.evaluerRevision(c.id, 'facile');
+    expect(c.echecs, 0);
+  });
+
+  test('révision en retard (< 7 j) : la suivante s\'ancre sur la date DUE',
+      () {
+    final now = DateTime.now();
+    final due = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 3));
+    final c = Chapitre(
+        matiere: 'Maths',
+        nom: 'Espaces vectoriels',
+        etape: 1,
+        intervalleJours: 10,
+        prochaineRevision: due);
+    m.chapitres.add(c);
+    m.evaluerRevision(c.id, 'cava'); // 10 -> 17 j, ancre sur la date due
+    expect(c.prochaineRevision, due.add(Duration(days: c.intervalleJours)));
+  });
+
+  test('recalibrerChapitres : maîtrise plafonnée à 2, révision demain', () {
+    final c = Chapitre(
+        matiere: 'Physique',
+        nom: 'Ondes',
+        etape: 3,
+        maitrise: 4,
+        intervalleJours: 30);
+    m.chapitres.add(c);
+    m.recalibrerChapitres([c.id]);
+    expect(c.maitrise, 2);
+    expect(c.intervalleJours, 1);
+    final now = DateTime.now();
+    expect(
+        c.prochaineRevision,
+        DateTime(now.year, now.month, now.day)
+            .add(const Duration(days: 1)));
+  });
+
+  test('demarrerEspacement : étape ≥ 1, révision demain, dernierRevu posé',
+      () {
+    final c = Chapitre(matiere: 'Chimie', nom: 'Cinétique', etape: 0);
+    m.chapitres.add(c);
+    m.demarrerEspacement(c.id);
+    expect(c.etape, 1);
+    expect(c.intervalleJours, 1);
+    expect(c.prochaineRevision, isNotNull);
+    expect(c.dernierRevu, isNotNull);
+  });
+
+  // ---------- Seuil J-90 du mode revisions ----------
+
+  test('date de concours lointaine (> 90 j) : le mode normal continue', () {
+    m.dateConcours = DateTime.now().add(const Duration(days: 200));
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    // Une khôlle demain doit toujours apparaitre : en mode revisions
+    // premature, elle disparaissait pendant des mois.
+    m.colles.add(Colle(
+        matiere: 'Physique',
+        start: DateTime.now().add(const Duration(hours: 26))));
+    final s = suggere(m, 120);
+    expect(s.any((x) => x.matiere == 'Physique'), isTrue,
+        reason: 'la khôlle de demain doit rester dans le plan');
+    expect(s.any((x) => x.titre.startsWith('Réviser :')), isFalse,
+        reason: 'pas de rotation concours a J-200');
+  });
+
+  test('mode révisions : une khôlle imminente garde sa place dans le plan',
+      () {
+    m.dateConcours = DateTime.now().add(const Duration(days: 30));
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
+    m.colles.add(Colle(
+        matiere: 'Anglais',
+        programme: 'Press review',
+        start: DateTime.now().add(const Duration(hours: 26))));
+    final s = suggere(m, 120);
+    expect(s.any((x) => x.titre.contains('khôlle')), isTrue);
+  });
+
+  // ---------- Rotation des DM de vacances ----------
+
+  test('vacances + 2 DM : les créneaux tournent entre les DM', () {
+    final now = DateTime.now();
+    m.sansCours.add(PlageSansCours(
+      titre: 'Vacances',
+      debut: DateTime(now.year, now.month, now.day)
+          .subtract(const Duration(days: 2)),
+      fin: DateTime(now.year, now.month, now.day).add(const Duration(days: 12)),
+    ));
+    m.devoirs.add(Devoir(
+        matiere: 'Maths',
+        titre: 'DM 5',
+        dateRendu: now.add(const Duration(days: 10)),
+        dateDonne: now.subtract(const Duration(days: 1))));
+    m.devoirs.add(Devoir(
+        matiere: 'Physique',
+        titre: 'DM 3',
+        dateRendu: now.add(const Duration(days: 12)),
+        dateDonne: now.subtract(const Duration(days: 1))));
+    // Cadence 1 (10 jours / 4 creneaux vises) : un creneau par jour, servi
+    // alternativement a chaque DM selon le jour. On verifie simplement
+    // qu'un creneau existe et cible l'un des deux DM (la rotation depend
+    // du jour du test).
+    final s = suggere(m, 240);
+    final creneau = s.where((x) => x.titre.contains('Créneau DM')).toList();
+    expect(creneau, isNotEmpty);
+    expect(
+        creneau.first.titre.contains('DM 5') ||
+            creneau.first.titre.contains('DM 3'),
+        isTrue);
+  });
+
+  // ---------- Pliage .ics (RFC 5545) ----------
+
+  test('plieIcs : aucune ligne ne dépasse 75 octets, contenu preservé', () {
+    final longue = 'DESCRIPTION:${'Programme de colle très détaillé — ' * 8}';
+    final pliee = plieIcs(longue);
+    for (final ligne in pliee.split('\r\n')) {
+      // Longueur en OCTETS UTF-8 (les accents comptent double).
+      final octets = ligne.runes.fold<int>(0, (t, r) => t + utf8Len(r));
+      expect(octets, lessThanOrEqualTo(75));
+    }
+    // Depliage : retirer les "\r\n " redonne exactement la ligne d'origine.
+    expect(pliee.replaceAll('\r\n ', ''), longue);
+  });
+
+  test('buildIcs : un long programme de colle produit un fichier plié', () {
+    final ics = buildIcs([
+      Colle(
+        matiere: 'Maths',
+        start: DateTime(2026, 3, 12, 16),
+        programme: 'Chapitre 12 : espaces euclidiens, projecteurs '
+            'orthogonaux, adjoint, réduction des endomorphismes symétriques, '
+            'formes quadratiques, et toutes les démonstrations exigibles '
+            'du programme officiel de la semaine.',
+      ),
+    ]);
+    for (final ligne in ics.split('\r\n')) {
+      final octets = ligne.runes.fold<int>(0, (t, r) => t + utf8Len(r));
+      expect(octets, lessThanOrEqualTo(75));
+    }
   });
 }

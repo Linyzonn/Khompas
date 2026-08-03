@@ -103,7 +103,7 @@ class _OrauxScreenState extends State<OrauxScreen> {
       dense: true,
       isThreeLine: o.lieu.isNotEmpty,
       leading: CircleAvatar(
-        backgroundColor: color.withOpacity(0.18),
+        backgroundColor: color.withValues(alpha: 0.18),
         child: Icon(Icons.record_voice_over, color: color, size: 18),
       ),
       title: Text(o.epreuve),

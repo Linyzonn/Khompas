@@ -6,7 +6,8 @@
 library;
 
 /// Types : 'rappel' (revision espacee), 'consolider' (chapitre fragile),
-/// 'kholle', 'ds', 'fond', 'revision' (mode concours), 'oral' (mode oraux).
+/// 'kholle', 'ds', 'dm' (bloc de travail impose), 'fond', 'revision'
+/// (mode concours), 'oral' (mode oraux).
 String consigneDe(String matiere, String type) {
   final cat = _categorie(matiere);
   return _table[cat]?[type] ?? _table['defaut']![type] ?? '';
@@ -33,8 +34,13 @@ String consigneOral(String epreuve) {
 String _categorie(String matiere) {
   final m = matiere.trim().toLowerCase();
   if (m.contains('math')) return 'maths';
-  if (m.contains('physique') || m == 'pc') return 'physique';
+  // "Physique-Chimie" (PCSI/PC) -> consignes physique (volume dominant).
+  // Mais une matiere "Chimie" seule recoit bien SES consignes (mecanismes,
+  // diagrammes E-pH) : tant que 'physique' etait teste en premier, elles
+  // etaient inaccessibles des que l'intitule contenait les deux mots.
+  if (m.contains('physique') && m.contains('chimie')) return 'physique';
   if (m.contains('chimie')) return 'chimie';
+  if (m.contains('physique')) return 'physique';
   if (m.contains('sii') || m == 'si' || m.contains('ingenieur')) return 'sii';
   if (m.contains('info')) return 'info';
   if (m.contains('angl') ||
@@ -61,6 +67,8 @@ const Map<String, Map<String, String>> _table = {
         'Mini-DS chrono : 1-2 exos d\'annales de DS, puis relecture ciblée de tes erreurs. Pas de relecture passive du cours.',
     'fond':
         'Refais les exos RATÉS de la semaine (pas les réussis) — cherche avant d\'ouvrir le corrigé.',
+    'dm':
+        'Cherche chaque question ≥ 10 min avant d\'ouvrir le cours — l\'effort de recherche est là où tu progresses. Bloqué ? Note où et pourquoi, puis passe à la suivante.',
     'revision':
         'Feuille blanche sur le chapitre (plan + théorèmes de mémoire), puis 1 exo type sans le cours.',
     'oral':
@@ -148,6 +156,8 @@ const Map<String, Map<String, String>> _table = {
     'kholle': 'Questions de cours à voix haute + un exercice type chrono.',
     'ds': 'Un sujet type en conditions, puis relecture ciblée des erreurs.',
     'fond': 'Teste-toi sur le dernier cours (feuille blanche) plutôt que de relire.',
+    'dm':
+        'Avance question par question SANS le corrigé : cherche ≥ 10 min avant d\'ouvrir le cours, note les points de blocage — ils feront ta prochaine séance.',
     'revision': 'L\'essentiel du chapitre de mémoire, puis un exercice d\'annale.',
     'oral':
         'Travaille À VOIX HAUTE en conditions d\'oral : questions de cours récitées, puis un exercice expliqué comme à un examinateur, chrono.',

@@ -76,6 +76,9 @@ jobs:
           print('Manifest + gradle patch OK')
           EOF
       - run: flutter pub get
+      # Analyse statique + tests : un binaire casse ne part pas en release.
+      - run: flutter analyze
+      - run: flutter test
       # Icône de l'app générée depuis assets/icone.png (toutes les densités).
       - run: dart run flutter_launcher_icons -f icones-android.yaml
       - run: flutter build apk --release

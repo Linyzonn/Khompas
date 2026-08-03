@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models.dart';
 import '../store.dart';
@@ -24,6 +25,134 @@ Future<T?> feuilleAdaptative<T>(
   }
   return showModalBottomSheet<T>(
       context: context, isScrollControlled: true, builder: builder);
+}
+
+/// Dialogue "Ta clé de compte 🔑" apres creation d'un compte anonyme :
+/// affiche la cle en grand + bouton Copier. [rappel] adapte la phrase de
+/// contexte (onboarding vs Reglages). Partage entre les deux ecrans —
+/// avant, le dialogue etait recopie mot pour mot.
+Future<void> montrerCleCompte(BuildContext context, String cle,
+    {required String rappel}) {
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      title: const Text('Ta clé de compte 🔑'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: SelectableText(
+              cle,
+              style: const TextStyle(
+                  fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'NOTE-LA précieusement : c\'est elle — et elle seule — qui permet '
+            'de retrouver tes données sur un autre appareil ou après une '
+            'réinstallation. $rappel',
+            style: const TextStyle(fontSize: 13),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: cle));
+          },
+          child: const Text('Copier'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('C\'est noté'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Dialogue de saisie d'une cle de compte existante (18 caracteres).
+/// Retourne la cle saisie, ou null si annule.
+Future<String?> demanderCleCompte(BuildContext context) {
+  final ctl = TextEditingController();
+  return showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Ma clé de compte'),
+      content: TextField(
+        controller: ctl,
+        autofocus: true,
+        textCapitalization: TextCapitalization.characters,
+        decoration: const InputDecoration(
+            border: OutlineInputBorder(), hintText: '18 caractères'),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler')),
+        FilledButton(
+            onPressed: () => Navigator.pop(context, ctl.text),
+            child: const Text('Se connecter')),
+      ],
+    ),
+  );
+}
+
+/// Feuille d'auto-evaluation en 1 tap apres une revision espacee.
+/// Retourne 'difficile' | 'cava' | 'facile', ou null si fermee sans choix.
+/// C'est la reponse de l'ELEVE qui regle l'intervalle — jamais le simple
+/// fait d'avoir passe du temps sur le chapitre (illusion de maitrise).
+Future<String?> demanderAutoEvaluation(BuildContext context, String titre) {
+  return feuilleAdaptative<String>(
+    context,
+    (context) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(titre, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Ta réponse règle la date de la prochaine révision. Sois honnête, personne ne regarde 😉',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                for (final v in const [
+                  ('difficile', '😮‍💨', 'Difficile'),
+                  ('cava', '🙂', 'Ça va'),
+                  ('facile', '😎', 'Facile'),
+                ]) ...[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, v.$1),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          children: [
+                            Text(v.$2, style: const TextStyle(fontSize: 24)),
+                            const SizedBox(height: 2),
+                            Text(v.$3, style: const TextStyle(fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (v.$1 != 'facile') const SizedBox(width: 8),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// "45 min", "1 h", "1 h 30"...

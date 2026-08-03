@@ -18,8 +18,12 @@ String buildIcs(List<Colle> colles) {
       .replaceAll(',', '\\,');
 
   final b = StringBuffer();
-  // Le standard exige des fins de ligne CRLF (\r\n).
-  void line(String s) => b.write('$s\r\n');
+  // Le standard exige des fins de ligne CRLF (\r\n) ET le PLIAGE des
+  // lignes de plus de 75 octets (RFC 5545 §3.1) : une ligne continue sur
+  // la suivante precedee d'un espace. Sans pliage, un DESCRIPTION portant
+  // un long programme de colle fait rejeter le fichier ENTIER par certains
+  // clients (Outlook/Exchange notamment).
+  void line(String s) => b.write('${plieIcs(s)}\r\n');
 
   line('BEGIN:VCALENDAR');
   line('VERSION:2.0');
@@ -51,4 +55,41 @@ String buildIcs(List<Colle> colles) {
   }
   line('END:VCALENDAR');
   return b.toString();
+}
+
+/// Plie une ligne iCalendar a 75 OCTETS maximum (RFC 5545 §3.1) : les
+/// continuations commencent par un espace. La coupe se fait sur une
+/// frontiere de caractere UTF-8 (jamais au milieu d'un accent) et evite de
+/// separer une sequence echappee ("\\n", "\\,") en deux.
+String plieIcs(String s) {
+  const max = 75;
+  final runes = s.runes.toList();
+  final out = StringBuffer();
+  var octets = 0;
+  for (var i = 0; i < runes.length; i++) {
+    var chunk = String.fromCharCode(runes[i]);
+    var taille = utf8Len(runes[i]);
+    // Une sequence echappee ("\\n", "\\,"...) s'ecrit d'un bloc : la
+    // couper en deux la rendrait illisible pour le client calendrier.
+    if (chunk == '\\' && i + 1 < runes.length) {
+      chunk += String.fromCharCode(runes[i + 1]);
+      taille += utf8Len(runes[i + 1]);
+      i++;
+    }
+    if (octets + taille > max) {
+      out.write('\r\n ');
+      octets = 1; // l'espace de continuation compte dans les 75 octets
+    }
+    out.write(chunk);
+    octets += taille;
+  }
+  return out.toString();
+}
+
+/// Nombre d'octets UTF-8 d'un point de code.
+int utf8Len(int rune) {
+  if (rune <= 0x7f) return 1;
+  if (rune <= 0x7ff) return 2;
+  if (rune <= 0xffff) return 3;
+  return 4;
 }

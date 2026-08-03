@@ -240,6 +240,11 @@ class Chapitre {
   // Le prof est EN PLEIN DEDANS : une partie a ete vue en classe mais le
   // chapitre n'est pas fini — on ne declenche ni etape ni espacement.
   bool entame;
+  // Nombre d'auto-evaluations "difficile" recentes d'affilee : un chapitre
+  // chroniquement dur voit ses intervalles s'allonger moins vite (memoire
+  // des echecs, dans l'esprit de l'ease factor de SM-2). Remis a zero par
+  // une evaluation "facile".
+  int echecs;
 
   Chapitre({
     String? id,
@@ -251,6 +256,7 @@ class Chapitre {
     this.prochaineRevision,
     this.intervalleJours = 1,
     this.entame = false,
+    this.echecs = 0,
   }) : id = id ?? _newId();
 
   Map<String, dynamic> toJson() => {
@@ -263,6 +269,7 @@ class Chapitre {
         'prochaineRevision': prochaineRevision?.toIso8601String(),
         'intervalleJours': intervalleJours,
         'entame': entame,
+        'echecs': echecs,
       };
 
   static Chapitre fromJson(Map<String, dynamic> j) => Chapitre(
@@ -279,6 +286,7 @@ class Chapitre {
             : DateTime.tryParse(j['prochaineRevision'] as String),
         intervalleJours: (j['intervalleJours'] ?? 1) as int,
         entame: (j['entame'] ?? false) as bool,
+        echecs: ((j['echecs'] ?? 0) as num).toInt(),
       );
 }
 

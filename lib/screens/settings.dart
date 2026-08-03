@@ -14,6 +14,7 @@ import '../notifs.dart';
 import '../store.dart';
 import 'annales.dart';
 import 'calendrier.dart';
+import 'dialogs.dart';
 import 'edt.dart';
 import 'oraux.dart';
 
@@ -190,7 +191,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               DropdownButtonFormField<String>(
-                value: nouvelleFiliere,
+                initialValue: nouvelleFiliere,
                 decoration: const InputDecoration(
                     labelText: 'Nouvelle filière',
                     border: OutlineInputBorder()),
@@ -431,46 +432,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       if (!mounted) return;
       setState(() {});
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('Ta clé de compte 🔑'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: SelectableText(
-                  cle,
-                  style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2),
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'NOTE-LA précieusement : c\'est elle — et elle seule — qui '
-                'permet de retrouver tes données ailleurs. Elle reste visible '
-                'ici (icône copier).',
-                style: TextStyle(fontSize: 13),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: cle));
-              },
-              child: const Text('Copier'),
-            ),
-            FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('C\'est noté')),
-          ],
-        ),
-      );
+      await montrerCleCompte(context, cle,
+          rappel: 'Elle reste visible ici (icône copier).');
     } catch (e) {
       if (mounted) _snack('Création impossible : ${_msg(e)}', secondes: 6);
     }
@@ -478,28 +441,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _connecterCompte() async {
     final m = AppModel.instance;
-    final ctl = TextEditingController();
-    final cle = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Ma clé de compte'),
-        content: TextField(
-          controller: ctl,
-          autofocus: true,
-          textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(
-              border: OutlineInputBorder(), hintText: '18 caractères'),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuler')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, ctl.text),
-              child: const Text('Se connecter')),
-        ],
-      ),
-    );
+    final cle = await demanderCleCompte(context);
     if (cle == null || cle.trim().isEmpty || !mounted) return;
     try {
       final resume = await m.connecterCompte(cle);
@@ -589,7 +531,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text('Mon profil', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: kFilieres.contains(m.filiere) ? m.filiere : 'Autre',
+            initialValue: kFilieres.contains(m.filiere) ? m.filiere : 'Autre',
             decoration: const InputDecoration(
                 labelText: 'Filière', border: OutlineInputBorder()),
             items: [
@@ -735,7 +677,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Padding(
                       padding: const EdgeInsets.only(left: 6),
                       child: ChoiceChip(
-                        label: Text('${'★' * p}'),
+                        label: Text('★' * p),
                         selected: (m.prios[mat] ?? 2) == p,
                         onSelected: (_) {
                           m.setPrio(mat, p);
