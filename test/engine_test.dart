@@ -694,34 +694,43 @@ Voici le résultat demandé :
   // ---------- Rotation des DM de vacances ----------
 
   test('vacances + 2 DM : les créneaux tournent entre les DM', () {
-    final now = DateTime.now();
+    // Date FIXE injectee : cale sur DateTime.now(), ce test echouait un
+    // jour sur deux — avec une cadence de 2, jourIdx % cadence != 0 les
+    // jours impairs depuis kAncreRotation (et la parite dependait en plus
+    // du fuseau horaire du runner). Echeances PROCHES (6 j devant, 2 DM)
+    // -> cadence 1 : un creneau CHAQUE jour, servi en alternance.
+    final now = DateTime(2026, 10, 20, 10);
     m.sansCours.add(PlageSansCours(
       titre: 'Vacances',
-      debut: DateTime(now.year, now.month, now.day)
-          .subtract(const Duration(days: 2)),
-      fin: DateTime(now.year, now.month, now.day).add(const Duration(days: 12)),
+      debut: DateTime(2026, 10, 18),
+      fin: DateTime(2026, 11, 1),
     ));
     m.devoirs.add(Devoir(
         matiere: 'Maths',
         titre: 'DM 5',
-        dateRendu: now.add(const Duration(days: 10)),
+        dateRendu: now.add(const Duration(days: 5)),
         dateDonne: now.subtract(const Duration(days: 1))));
     m.devoirs.add(Devoir(
         matiere: 'Physique',
         titre: 'DM 3',
-        dateRendu: now.add(const Duration(days: 12)),
+        dateRendu: now.add(const Duration(days: 7)),
         dateDonne: now.subtract(const Duration(days: 1))));
-    // Cadence 1 (10 jours / 4 creneaux vises) : un creneau par jour, servi
-    // alternativement a chaque DM selon le jour. On verifie simplement
-    // qu'un creneau existe et cible l'un des deux DM (la rotation depend
-    // du jour du test).
-    final s = suggere(m, 240);
-    final creneau = s.where((x) => x.titre.contains('Créneau DM')).toList();
-    expect(creneau, isNotEmpty);
-    expect(
-        creneau.first.titre.contains('DM 5') ||
-            creneau.first.titre.contains('DM 3'),
-        isTrue);
+    // Quel DM le creneau du jour vise-t-il ?
+    String? cible(DateTime quand) {
+      final s = suggere(m, 240, maintenant: quand);
+      final c = s.where((x) => x.titre.contains('Créneau DM')).toList();
+      if (c.isEmpty) return null;
+      return c.first.titre.contains('DM 5') ? 'DM 5' : 'DM 3';
+    }
+
+    final jour1 = cible(now);
+    final jour2 = cible(now.add(const Duration(days: 1)));
+    expect(jour1, isNotNull);
+    expect(jour2, isNotNull);
+    // Deux jours consecutifs visent deux DM differents : LA rotation,
+    // testee pour de vrai (l'ancien test ne verifiait que l'existence).
+    expect(jour1 != jour2, isTrue,
+        reason: 'les créneaux doivent alterner entre les 2 DM');
   });
 
   // ---------- Pliage .ics (RFC 5545) ----------
