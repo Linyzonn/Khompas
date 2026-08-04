@@ -466,6 +466,103 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Remise a zero COMPLETE — la porte de sortie « je repars propre »,
+  /// indispensable en mode invite (aucun compte pour restaurer) et en cas
+  /// de donnees corrompues. Ordre CRITIQUE :
+  ///  1. annuler le push debounce et oublier la cle de compte AVANT de
+  ///     vider quoi que ce soit — sinon un save() pousserait un etat VIDE
+  ///     sur le compte serveur (qui est la derniere copie recuperable) ;
+  ///  2. remettre tout l'etat memoire aux valeurs d'usine ;
+  ///  3. purger le stockage (khompas.json + .tmp en natif, cle 'db' sur
+  ///     web, prefs). Les copies .corrompu / 'db_corrompu' sont CONSERVEES :
+  ///     si la remise a zero suit un chargement echoue, c'est la seule
+  ///     trace restante des donnees.
+  ///  4. onboarded=false + notifyListeners() : le Gate raffiche l'ecran de
+  ///     bienvenue tout seul. L'APPELANT doit encore popUntil(isFirst) pour
+  ///     vider la pile de navigation (le Gate ne remplace que la home).
+  /// Les donnees deja envoyees au compte RESTENT sur le serveur (aucun
+  /// endpoint de suppression) : recuperables plus tard avec la cle.
+  Future<void> reinitialiser() async {
+    // 1. Compte : plus AUCUN push ne doit partir.
+    _pushTimer?.cancel();
+    _pushTimer = null;
+    compteCle = '';
+    gestionClasse = '';
+    apiKey = '';
+    _majConnue = 0;
+    syncConflit = false;
+    compteEnAvance = false;
+    chargementEchoue = false;
+    // 2. Valeurs d'usine (miroir des declarations de champs).
+    colles = [];
+    ds = [];
+    chapitres = [];
+    routines = [];
+    devoirs = [];
+    seances = [];
+    bilans = [];
+    evenements = [];
+    sansCours = [];
+    erreurs = [];
+    annales = [];
+    oraux = [];
+    resultatsConcours = [];
+    oeuvres = [];
+    joursOff = [];
+    zoneVacances = '';
+    modeOraux = false;
+    refSemaineA = null;
+    methodeTravail = 'checklist';
+    heureLimiteMin = null;
+    objectifs = {};
+    dateConcours = null;
+    prios = {};
+    filiere = 'PCSI';
+    groupe = 1;
+    codeClasse = '';
+    cinqDemi = false;
+    notifsActives = false;
+    notifVeilleKholle = true;
+    notifVeilleDm = true;
+    // PAS '' : serverUrl vide masquerait les boutons compte de l'onboarding.
+    serverUrl = kServeurDefaut;
+    onboarded = false; // loaded reste true : le Gate bascule directement
+    // 3. Stockage (meme tolerance aux pannes que save()).
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final k in [
+        'compteCle',
+        'gestionClasse',
+        'apiKey',
+        'majConnue',
+        'serverUrl',
+        'notifsActives',
+        'notifVeilleKholle',
+        'notifVeilleDm',
+      ]) {
+        await prefs.remove(k);
+      }
+      await prefs.setBool('onboarded', false);
+      if (kIsWeb) await prefs.remove('db'); // 'db_corrompu' conservee
+    } catch (_) {
+      // stockage inaccessible : l'etat memoire est deja vide, tant pis
+    }
+    if (!kIsWeb) {
+      try {
+        final f = await _dbFile();
+        if (await f.exists()) await f.delete();
+        final tmp = File('${f.path}.tmp');
+        if (await tmp.exists()) await tmp.delete();
+        // khompas.json.corrompu CONSERVE volontairement.
+      } catch (_) {
+        // idem : jamais bloquant
+      }
+    }
+    // 4. Gate -> OnboardingScreen ; les notifs seront annulees par le
+    // listener de main.dart (replanifier avec des donnees vides).
+    notifyListeners();
+  }
+
   /// Connecte l'appareil a un compte existant : enregistre la cle et
   /// RESTAURE les donnees du compte (remplace les donnees locales).
   /// Retourne un resume, ou une explication si le compte est encore vide.
@@ -1008,6 +1105,16 @@ class AppModel extends ChangeNotifier {
       if (p.contient(d)) return p;
     }
     return null;
+  }
+
+  /// Grandes vacances ? Signal principal : juillet/aout (un tout nouvel
+  /// utilisateur n'a encore AUCUNE plage) ; sinon une plage 'ete' en cours
+  /// (etes decales, rentrees tardives). [maintenant] injectable pour tests.
+  bool estEte({DateTime? maintenant}) {
+    final now = maintenant ?? DateTime.now();
+    if (now.month == 7 || now.month == 8) return true;
+    final p = plageSansCours(now);
+    return p != null && p.type == 'ete';
   }
 
   /// Semaine A ou B ? true = A. Sans reference definie, tout est "A".

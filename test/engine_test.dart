@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:khompas/ai_extractor.dart';
 import 'package:khompas/engine.dart';
 import 'package:khompas/ics.dart';
@@ -1066,5 +1067,68 @@ Voici le résultat demandé :
       expect(m.estJourOff(c.prochaineRevision!), isFalse,
           reason: '${c.nom} planifié un jour off (${c.prochaineRevision})');
     }
+  });
+
+  // ---------- Remise a zero & detection d'ete ----------
+
+  test('estEte : juillet/août toujours, sinon une plage « ete » en cours',
+      () {
+    expect(m.estEte(maintenant: DateTime(2026, 7, 15)), isTrue);
+    expect(m.estEte(maintenant: DateTime(2026, 8, 31)), isTrue);
+    expect(m.estEte(maintenant: DateTime(2026, 10, 1)), isFalse);
+    // Une plage « ete » decalee (rentree tardive) compte aussi.
+    m.sansCours.add(PlageSansCours(
+        titre: 'Été décalé',
+        debut: DateTime(2026, 9, 20),
+        fin: DateTime(2026, 10, 5),
+        type: 'ete'));
+    expect(m.estEte(maintenant: DateTime(2026, 10, 1)), isTrue);
+    // Une plage d'un autre type (revisions) ne compte pas.
+    m.sansCours.clear();
+    m.sansCours.add(PlageSansCours(
+        titre: 'Révisions',
+        debut: DateTime(2026, 9, 20),
+        fin: DateTime(2026, 10, 5),
+        type: 'revisions'));
+    expect(m.estEte(maintenant: DateTime(2026, 10, 1)), isFalse);
+  });
+
+  test('reinitialiser : tout est vidé, compte oublié, onboarding réaffiché',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    m.colles.add(Colle(matiere: 'Maths', start: DateTime(2026, 9, 10)));
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 2, maitrise: 3));
+    m.prios['Maths'] = 3;
+    m.compteCle = 'ABCDEFGHIJKLMNOPQR';
+    m.apiKey = 'sk-test';
+    m.gestionClasse = 'GESTION';
+    m.codeClasse = 'CODE42';
+    m.filiere = 'MP';
+    m.groupe = 7;
+    m.cinqDemi = true;
+    m.onboarded = true;
+    m.loaded = true; // l'app tourne : la remise a zero ne doit pas le casser
+    m.serverUrl = 'https://exemple.test';
+    m.dateConcours = DateTime(2027, 4, 20);
+    await m.reinitialiser();
+    expect(m.colles, isEmpty);
+    expect(m.chapitres, isEmpty);
+    expect(m.prios, isEmpty);
+    // Plus AUCUN secret : la cle de compte est oubliee (les donnees du
+    // serveur, elles, restent recuperables avec la cle).
+    expect(m.compteCle, isEmpty);
+    expect(m.apiKey, isEmpty);
+    expect(m.gestionClasse, isEmpty);
+    expect(m.codeClasse, isEmpty);
+    // Profil aux valeurs d'usine, onboarding a refaire, app utilisable.
+    expect(m.filiere, 'PCSI');
+    expect(m.groupe, 1);
+    expect(m.cinqDemi, isFalse);
+    expect(m.onboarded, isFalse);
+    expect(m.loaded, isTrue);
+    expect(m.dateConcours, isNull);
+    // Le serveur revient au defaut (sinon l'onboarding masque les comptes).
+    expect(m.serverUrl, kServeurDefaut);
   });
 }

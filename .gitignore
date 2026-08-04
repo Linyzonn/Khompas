@@ -2,6 +2,9 @@
 .dart_tool/
 .packages
 build/
+# Squelette web local : la CI le regenere a chaque deploiement
+# (flutter create . --platforms=web), inutile de le versionner.
+web/
 .flutter-plugins
 .flutter-plugins-dependencies
 .metadata
