@@ -8,10 +8,12 @@ import '../store.dart';
 import '../theme.dart';
 import 'dialogs.dart';
 import 'erreurs.dart';
+import 'import_chapitres.dart';
+import 'lectures.dart';
 import 'minuteur.dart';
 import 'oraux.dart';
 import 'semaine.dart';
-import 'settings.dart';
+import 'settings/compte_page.dart';
 
 /// Onglet "Aujourd'hui" — le COCKPIT :
 /// - grand ecran : blocs a gauche (kholle, a rendre, semaine), LA SESSION DU
@@ -361,13 +363,13 @@ class _TodayScreenState extends State<TodayScreen> {
         _banniere(
           Colors.red,
           Icons.error_outline,
-          'Tes données n\'ont pas pu être lues au démarrage — rien n\'est écrasé, une copie de secours a été conservée. Restaure une sauvegarde (Réglages → Données) ou récupère ton compte.',
+          'Tes données n\'ont pas pu être lues au démarrage — rien n\'est écrasé, une copie de secours a été conservée. Restaure une sauvegarde (Réglages → Données & avancé) ou récupère ton compte.',
         ),
       if (m.syncConflit)
         _banniere(
           Colors.orange,
           Icons.sync_problem,
-          'Ton autre appareil a des données plus récentes. Fais « Récupérer » dans Réglages → Compte avant de continuer ici, sinon rien ne sera synchronisé.',
+          'Ton autre appareil a des données plus récentes. Fais « Récupérer » dans Réglages → Compte & synchronisation avant de continuer ici, sinon rien ne sera synchronisé.',
         ),
       if (m.compteEnAvance && !m.syncConflit)
         _banniereAction(
@@ -401,7 +403,7 @@ class _TodayScreenState extends State<TodayScreen> {
           'Sur navigateur, un simple « effacer les données de navigation » supprime tout. Un compte gratuit (2 taps, sans email) met ton semestre à l\'abri et synchronise avec ton téléphone.',
           'Créer',
           () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const SettingsScreen())),
+              MaterialPageRoute(builder: (_) => const ComptePage())),
         ),
       if (m.dateConcours != null &&
           !m.dateConcours!.isAfter(now) &&
@@ -421,6 +423,39 @@ class _TodayScreenState extends State<TodayScreen> {
           'Ta khôlle de ${sansProgramme.matiere} est ${frJour(sansProgramme.start)} et n\'a pas de programme — colle-le ici (5 s), il servira aussi à ton plan du soir${m.codeClasse.isEmpty ? '' : ' et à toute ta classe'}.',
           'Coller',
           () => _collerProgramme(sansProgramme!),
+        ),
+      // Rappels d'ETE (une seule banniere a la fois, priorite a la 5/2) :
+      // le parcours d'onboarding d'ete peut avoir ete saute — on rattrape
+      // ici, y compris pour les utilisateurs existants.
+      if (m.estEte() &&
+          m.cinqDemi &&
+          m.chapitres.any((c) => c.etape > 0 && c.prochaineRevision == null))
+        _banniereAction(
+          Colors.amber,
+          Icons.wb_sunny_outlined,
+          'Ta réactivation d\'été n\'est pas planifiée — répartis la révision de tes chapitres sur les jours de vacances restants.',
+          'Planifier',
+          () => planifierReactivationEte(context),
+        )
+      else if (m.estEte() && m.chapitres.isEmpty)
+        _banniereAction(
+          Colors.amber,
+          Icons.wb_sunny_outlined,
+          'Profite des vacances : importe le programme officiel de ta filière — le plan d\'été étalera tes révisions.',
+          'Importer',
+          () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const ImportChapitresScreen())),
+        )
+      else if (m.estEte() && !m.cinqDemi && m.oeuvres.isEmpty)
+        _banniereAction(
+          Colors.amber,
+          Icons.menu_book_outlined,
+          'L\'été est LE moment de lire les œuvres de français — ajoute les 3 livres de l\'année, le plan programmera les séances.',
+          'Ajouter',
+          () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const LecturesScreen())),
         ),
     ];
 

@@ -769,3 +769,52 @@ Future<double?> noteAvecRecalibrage(BuildContext context,
   );
   return note;
 }
+
+/// Reactivation d'ete (5/2) : si aucune plage « Ete » ne couvre aujourd'hui,
+/// propose d'en creer une (aujourd'hui -> 31 aout) puis etale la revision
+/// des chapitres commences sur les jours restants (etalerReactivation).
+/// Affiche le snackbar de resultat. Retourne le nombre de chapitres
+/// planifies, ou null si l'utilisateur a annule. Partagee entre Reglages
+/// (Profil & scolarite), l'onboarding d'ete et le tableau de bord.
+Future<int?> planifierReactivationEte(BuildContext context) async {
+  final m = AppModel.instance;
+  final now = DateTime.now();
+  var plage = m.plageSansCours(now);
+  if (plage == null || plage.type != 'ete') {
+    final creer = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pas de plage « Été » en cours'),
+        content: Text(
+            'La réactivation s\'étale sur une plage de grandes vacances. '
+            'En créer une du ${now.day}/${now.month} au 31 août ?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Créer la plage')),
+        ],
+      ),
+    );
+    if (creer != true || !context.mounted) return null;
+    final fin = DateTime(now.month >= 9 ? now.year + 1 : now.year, 8, 31);
+    m.addPlageSansCours(PlageSansCours(
+      titre: 'Grandes vacances',
+      debut: DateTime(now.year, now.month, now.day),
+      fin: fin,
+      type: 'ete',
+    ));
+  }
+  final n = m.etalerReactivation();
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: const Duration(seconds: 5),
+      content: Text(n == 0
+          ? 'Aucun chapitre commencé à planifier — importe d\'abord le programme officiel.'
+          : 'Réactivation planifiée ✅ $n chapitres répartis jusqu\'à la fin des vacances — ils arriveront en « Rappel du jour ».'),
+    ));
+  }
+  return n;
+}

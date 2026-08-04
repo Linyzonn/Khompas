@@ -7,7 +7,7 @@ import '../ai_extractor.dart';
 import '../api_client.dart';
 import '../store.dart';
 import '../theme.dart';
-import 'settings.dart';
+import 'settings/donnees_page.dart';
 import 'verify.dart';
 
 /// Import du colloscope, trois chemins :
@@ -230,7 +230,7 @@ class _ImportScreenState extends State<ImportScreen> {
       _snack(
           "Pas de clé API ? Utilise le code de classe ou l'import copier-coller.");
       Navigator.push(
-          context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+          context, MaterialPageRoute(builder: (_) => const DonneesPage()));
       return;
     }
     final groupe = _groupeValide();
