@@ -18,9 +18,10 @@ import 'lectures.dart';
 ///    - hors ete, le FIL DE RENTREE : colloscope -> programme officiel ->
 ///      emploi du temps — les 10 premieres minutes qui font que l'app sert ;
 ///    - en ETE (juillet/aout), un parcours adapte : une 5/2 est guidee vers
-///      programme « deja vu » -> bilan de concours -> reactivation d'ete ;
-///      un sup vers programme + oeuvres de francais. Le fil de rentree
-///      reste accessible en un tap (« le preparer quand meme »).
+///      programme « deja vu » -> bilan de concours -> reactivation d'ete ->
+///      oeuvres (le theme change chaque annee) -> devoirs de rentree ;
+///      un sup vers programme + oeuvres + devoirs de vacances. Le fil de
+///      rentree reste accessible en un tap (« le preparer quand meme »).
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -145,6 +146,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _ouvrir(Widget Function() destination) => Navigator.push(
       context, MaterialPageRoute(builder: (_) => destination()));
 
+  /// En ete, l'etalement des DM (creneaux a cadence visible) et la
+  /// reactivation s'appuient sur une plage de vacances dans le calendrier —
+  /// qu'un tout nouvel utilisateur n'a pas encore. On la cree au moment ou
+  /// elle devient utile (premier devoir note), en l'annoncant.
+  void _assurerPlageEte() {
+    final m = AppModel.instance;
+    final now = DateTime.now();
+    if (!m.estEte() || m.plageSansCours(now) != null) return;
+    m.addPlageSansCours(PlageSansCours(
+      titre: 'Grandes vacances',
+      debut: DateTime(now.year, now.month, now.day),
+      fin: DateTime(now.month >= 9 ? now.year + 1 : now.year, 8, 31),
+      type: 'ete',
+    ));
+    _snack(
+        'Plage « Grandes vacances » créée jusqu\'au 31 août — le plan sait maintenant que tu es en vacances (modifiable dans Réglages → Planning).');
+  }
+
   /// En-tete commun de l'etape 1 (emoji + titre + phrase de contexte).
   List<Widget> _entete(BuildContext context, String emoji, String titre,
       String sousTitre) {
@@ -248,6 +267,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               final n = await planifierReactivationEte(context);
               if (n != null && n > 0) reactivationFaite = true;
             }),
+        _carte(
+            numero: 4,
+            emoji: '📚',
+            titre: 'Les œuvres de français',
+            sousTitre:
+                'Le NOUVEAU thème et ses 3 livres — le programme change chaque année, l\'été est LE moment pour les lire.',
+            fait: m.oeuvres.isNotEmpty,
+            action: () => _ouvrir(() => const LecturesScreen())),
+        _carte(
+            numero: 5,
+            emoji: '📥',
+            titre: 'Mes devoirs de rentrée',
+            sousTitre: m.devoirs.isEmpty
+                ? 'Les DM donnés pour septembre — le plan te les glissera dans tes journées à l\'approche de la rentrée.'
+                : '${m.devoirs.length} noté(s) — appuie pour en ajouter un autre.',
+            fait: m.devoirs.isNotEmpty,
+            action: () async {
+              final d = await editDevoirDialog(context);
+              if (d != null) {
+                AppModel.instance.addDevoir(d);
+                _assurerPlageEte();
+              }
+            }),
         const SizedBox(height: 16),
         FilledButton(
           onPressed: () => AppModel.instance.setOnboarded(),
@@ -289,6 +331,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 'Le thème et ses 3 livres — l\'été est LE moment pour les lire, le plan s\'en charge.',
             fait: m.oeuvres.isNotEmpty,
             action: () => _ouvrir(() => const LecturesScreen())),
+        _carte(
+            numero: 3,
+            emoji: '📥',
+            titre: 'Mes devoirs de rentrée',
+            sousTitre: m.devoirs.isEmpty
+                ? 'Ta prépa t\'a donné un devoir de vacances ? Note-le : le plan l\'étale sur l\'été.'
+                : '${m.devoirs.length} noté(s) — appuie pour en ajouter un autre.',
+            fait: m.devoirs.isNotEmpty,
+            action: () async {
+              final d = await editDevoirDialog(context);
+              if (d != null) {
+                AppModel.instance.addDevoir(d);
+                _assurerPlageEte();
+              }
+            }),
         const SizedBox(height: 8),
         Text(
           'Le fil de rentrée (colloscope, emploi du temps) t\'attendra en septembre — tu le retrouveras sur le tableau de bord.',

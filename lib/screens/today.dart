@@ -448,7 +448,9 @@ class _TodayScreenState extends State<TodayScreen> {
               MaterialPageRoute(
                   builder: (_) => const ImportChapitresScreen())),
         )
-      else if (m.estEte() && !m.cinqDemi && m.oeuvres.isEmpty)
+      // Les 5/2 aussi : le theme de francais CHANGE chaque annee, les 3
+      // livres sont a relire chaque ete.
+      else if (m.estEte() && m.oeuvres.isEmpty)
         _banniereAction(
           Colors.amber,
           Icons.menu_book_outlined,
