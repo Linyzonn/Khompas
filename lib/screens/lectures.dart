@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'cartes.dart';
 
 /// ŒUVRES DE FRANÇAIS de l'année (3 livres + le thème) : suivi de lecture
-/// page par page. Le plan d'été programme des séances de lecture un jour
-/// sur deux ; en début d'année, ce qui n'est pas fini revient un jour sur
-/// trois — chaque khôlle de français de l'année s'appuie sur ces livres.
+/// page par page, dans l'ORDRE choisi (glisser-déposer — le plan sert
+/// toujours le premier livre pas fini). Le plan d'été programme des séances
+/// de lecture un jour sur deux ; en début d'année, ce qui n'est pas fini
+/// revient un jour sur trois — chaque khôlle de français s'appuie dessus.
 class LecturesScreen extends StatefulWidget {
   const LecturesScreen({super.key});
 
@@ -20,7 +22,18 @@ class _LecturesScreenState extends State<LecturesScreen> {
   Widget build(BuildContext context) {
     final m = AppModel.instance;
     return Scaffold(
-      appBar: AppBar(title: const Text('Œuvres de français')),
+      appBar: AppBar(
+        title: const Text('Œuvres de français'),
+        actions: [
+          IconButton(
+            tooltip: 'Mes citations',
+            icon: const Icon(Icons.format_quote),
+            onPressed: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const CitationsScreen()))
+                .then((_) => setState(() {})),
+          ),
+        ],
+      ),
       body: m.oeuvres.isEmpty
           ? Center(
               child: Padding(
@@ -44,8 +57,22 @@ class _LecturesScreenState extends State<LecturesScreen> {
                 ),
               ),
             )
-          : ListView(
+          : ReorderableListView(
               padding: const EdgeInsets.only(bottom: 90),
+              header: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                child: Text(
+                  'L\'ordre de la liste = ton ordre de lecture (maintiens une '
+                  'œuvre pour la déplacer). Le plan programme toujours le '
+                  'PREMIER livre pas fini.',
+                  style: TextStyle(
+                      fontSize: 12, color: couleurSecondaire(context)),
+                ),
+              ),
+              onReorderItem: (oldIndex, newIndex) {
+                m.reorderOeuvres(oldIndex, newIndex);
+                setState(() {});
+              },
               children: [for (final o in m.oeuvres) _tuile(o)],
             ),
       floatingActionButton: FloatingActionButton(
@@ -61,6 +88,7 @@ class _LecturesScreenState extends State<LecturesScreen> {
     final avancement =
         avecPages ? (o.pageActuelle / o.pages!).clamp(0.0, 1.0) : null;
     return Card(
+      key: ValueKey(o.id),
       margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -137,6 +165,16 @@ class _LecturesScreenState extends State<LecturesScreen> {
                     label: const Text('Où j\'en suis…',
                         style: TextStyle(fontSize: 12)),
                     onPressed: () => _saisirPage(o),
+                  ),
+                  ActionChip(
+                    label: const Text('+ citation',
+                        style: TextStyle(fontSize: 12)),
+                    onPressed: () async {
+                      final c = await editCitationDialog(context,
+                          oeuvre: o.titre, auteur: o.auteur);
+                      if (c != null) m.addCitation(c);
+                      if (mounted) setState(() {});
+                    },
                   ),
                   ActionChip(
                     label:

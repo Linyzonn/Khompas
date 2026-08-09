@@ -24,6 +24,9 @@ void reset(AppModel m) {
   m.oraux = [];
   m.resultatsConcours = [];
   m.oeuvres = [];
+  m.citations = [];
+  m.vocab = [];
+  m.trajetMinutes = 0;
   m.joursOff = [];
   m.zoneVacances = '';
   m.modeOraux = false;
@@ -1108,6 +1111,9 @@ Voici le résultat demandé :
     m.colles.add(Colle(matiere: 'Maths', start: DateTime(2026, 9, 10)));
     m.chapitres
         .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 2, maitrise: 3));
+    m.citations.add(Citation(texte: 'Test'));
+    m.vocab.add(MotVocab(francais: 'mot', anglais: 'word'));
+    m.trajetMinutes = 30;
     m.prios['Maths'] = 3;
     m.compteCle = 'ABCDEFGHIJKLMNOPQR';
     m.apiKey = 'sk-test';
@@ -1123,6 +1129,9 @@ Voici le résultat demandé :
     await m.reinitialiser();
     expect(m.colles, isEmpty);
     expect(m.chapitres, isEmpty);
+    expect(m.citations, isEmpty);
+    expect(m.vocab, isEmpty);
+    expect(m.trajetMinutes, 0);
     expect(m.prios, isEmpty);
     // Plus AUCUN secret : la cle de compte est oubliee (les donnees du
     // serveur, elles, restent recuperables avec la cle).
@@ -1139,5 +1148,122 @@ Voici le résultat demandé :
     expect(m.dateConcours, isNull);
     // Le serveur revient au defaut (sinon l'onboarding masque les comptes).
     expect(m.serverUrl, kServeurDefaut);
+  });
+
+  // ---------- Ordre des oeuvres, interros, cartes (v0.17) ----------
+
+  test('ordre des œuvres : le plan d\'été sert le PREMIER livre pas fini',
+      () {
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
+    m.sansCours.add(PlageSansCours(
+        titre: 'Été',
+        debut: DateTime(2026, 7, 1),
+        fin: DateTime(2026, 8, 31),
+        type: 'ete'));
+    m.oeuvres.add(Oeuvre(titre: 'Premier'));
+    m.oeuvres.add(Oeuvre(titre: 'Deuxième'));
+    // Jour PAIR depuis l'ancre (cadence lecture 1 j/2), calcule au runtime
+    // pour rester juste quel que soit le fuseau de la machine de test ;
+    // pas un dimanche (jour de repos en ete, +2 garde la parite).
+    var jour = DateTime(2026, 7, 10, 10);
+    if (DateTime(jour.year, jour.month, jour.day)
+            .difference(kAncreRotation)
+            .inDays %
+        2 !=
+        0) {
+      jour = jour.add(const Duration(days: 1));
+    }
+    if (jour.weekday == DateTime.sunday) jour = jour.add(const Duration(days: 2));
+    final s = suggere(m, 240, maintenant: jour);
+    final lecture = s.where((x) => x.titre.contains('Lis «')).toList();
+    expect(lecture, isNotEmpty);
+    expect(lecture.first.titre, contains('Premier'));
+    // « Premier » fini -> c'est « Deuxième » qui prend la place.
+    m.oeuvres.first.finie = true;
+    final s2 = suggere(m, 240, maintenant: jour);
+    expect(s2.where((x) => x.titre.contains('Lis «')).first.titre,
+        contains('Deuxième'));
+  });
+
+  test('ordre des œuvres : le rattrapage de rentrée suit aussi l\'ordre', () {
+    m.oeuvres.add(Oeuvre(titre: 'Premier'));
+    m.oeuvres.add(Oeuvre(titre: 'Deuxième'));
+    // Un jour multiple de 3 depuis l'ancre (cadence 1 j/3), hors vacances.
+    var jour = DateTime(2026, 9, 15, 18);
+    while (DateTime(jour.year, jour.month, jour.day)
+            .difference(kAncreRotation)
+            .inDays %
+        3 !=
+        0) {
+      jour = jour.add(const Duration(days: 1));
+    }
+    final s = suggere(m, 180, maintenant: jour);
+    final rattrapage = s.where((x) => x.titre.contains('Rattrape')).toList();
+    expect(rattrapage, isNotEmpty);
+    expect(rattrapage.first.titre, contains('Premier'));
+  });
+
+  test('interro de cours : la consigne fait relire le COURS, pas les annales',
+      () {
+    final now = DateTime(2026, 10, 6, 18);
+    m.ds.add(Ds(
+        matiere: 'Physique',
+        titre: 'Interro',
+        date: DateTime(2026, 10, 7),
+        coeff: 0.5,
+        interro: true));
+    final s = suggere(m, 120, maintenant: now);
+    final sug = s.where((x) => x.matiere == 'Physique').toList();
+    expect(sug, isNotEmpty);
+    expect(sug.first.raison, contains('Interro'));
+    expect(sug.first.consigne, contains('COURS'));
+  });
+
+  test('cartes : dues dès l\'ajout, espacement selon le verdict', () {
+    m.addCitation(Citation(texte: 'Vivre sans temps mort', auteur: 'V.'));
+    m.addMotVocab(MotVocab(francais: 'pallier', anglais: 'to make up for'));
+    // Une carte neuve est due AUJOURD'HUI (elle entre dans la prochaine
+    // session sans attendre demain).
+    expect(m.citationsDues(), hasLength(1));
+    expect(m.vocabDus(), hasLength(1));
+    // Dates FIXES pour la suite (independant du jour reel du test).
+    final now = DateTime(2026, 10, 6, 18);
+    m.vocab.first.prochaineRevision = DateTime(2026, 10, 6);
+    m.citations.first.prochaineRevision = DateTime(2026, 10, 6);
+    m.evaluerMotVocab(m.vocab.first.id, 'facile', maintenant: now);
+    // facile : x2.5 -> intervalle 3, revu dans 3 jours.
+    expect(m.vocab.first.intervalleJours, 3);
+    expect(m.vocab.first.prochaineRevision, DateTime(2026, 10, 9));
+    expect(m.vocabDus(maintenant: now), isEmpty);
+    m.evaluerCitation(m.citations.first.id, 'difficile', maintenant: now);
+    // difficile : la carte revient DEMAIN, echec memorise.
+    expect(m.citations.first.intervalleJours, 1);
+    expect(m.citations.first.echecs, 1);
+    expect(m.citations.first.prochaineRevision, DateTime(2026, 10, 7));
+  });
+
+  test('sauvegarde : citations, voc, trajet et interro survivent au round-trip',
+      () {
+    m.addCitation(Citation(
+        texte: 'Vivre sans temps mort',
+        auteur: 'Vaneigem',
+        axe: 'la liberté',
+        usage: 'pour montrer que la contrainte tue l\'élan'));
+    m.addMotVocab(MotVocab(
+        francais: 'pallier', anglais: 'to make up for', pourColle: true));
+    m.trajetMinutes = 45;
+    m.ds.add(Ds(matiere: 'Maths', date: DateTime(2026, 10, 10), interro: true));
+    final raw = m.exportJson();
+    reset(m);
+    expect(m.citations, isEmpty);
+    m.importJson(raw);
+    expect(m.citations, hasLength(1));
+    expect(m.citations.first.auteur, 'Vaneigem');
+    expect(m.citations.first.usage, contains('contrainte'));
+    expect(m.vocab, hasLength(1));
+    expect(m.vocab.first.pourColle, isTrue);
+    expect(m.trajetMinutes, 45);
+    expect(m.ds.first.interro, isTrue);
   });
 }

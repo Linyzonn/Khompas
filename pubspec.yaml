@@ -1,7 +1,7 @@
 name: khompas
 description: "Le compagnon de ta prepa : colloscope, kholles, notes et plan de travail."
 publish_to: "none"
-version: 0.16.0+16
+version: 0.17.0+17
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

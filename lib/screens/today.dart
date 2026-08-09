@@ -6,6 +6,7 @@ import '../engine.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'cartes.dart';
 import 'dialogs.dart';
 import 'erreurs.dart';
 import 'import_chapitres.dart';
@@ -358,6 +359,17 @@ class _TodayScreenState extends State<TodayScreen> {
       }
     }
 
+    // Veille de kholle d'ANGLAIS : les mots « de colle » (⭐) doivent etre
+    // surs — un passage de cartes s'impose.
+    Colle? kholleAnglais;
+    for (final c in m.collesAvenir()) {
+      if (c.matiere == 'Anglais' && c.start.difference(now).inHours <= 36) {
+        kholleAnglais = c;
+        break;
+      }
+    }
+    final vocColle = m.vocab.where((v) => v.pourColle).toList();
+
     final alertes = <Widget>[
       if (m.chargementEchoue)
         _banniere(
@@ -424,6 +436,19 @@ class _TodayScreenState extends State<TodayScreen> {
           'Coller',
           () => _collerProgramme(sansProgramme!),
         ),
+      if (kholleAnglais != null && vocColle.isNotEmpty)
+        _banniereAction(
+          Colors.indigo,
+          Icons.translate,
+          'Khôlle d\'anglais ${frJour(kholleAnglais.start)} — tes ${vocColle.length} mots « de colle » ⭐ doivent être sûrs. Un passage de cartes ?',
+          'Réviser',
+          () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => RevisionCartesScreen(
+                      cartes: List<Object>.from(vocColle),
+                      titre: 'Voc de colle'))),
+        ),
       // Rappels d'ETE (une seule banniere a la fois, priorite a la 5/2) :
       // le parcours d'onboarding d'ete peut avoir ete saute — on rattrape
       // ici, y compris pour les utilisateurs existants.
@@ -472,6 +497,8 @@ class _TodayScreenState extends State<TodayScreen> {
       else if (m.dateConcours != null && m.dateConcours!.isAfter(now))
         _blocConcours(m),
       _blocJournee(edtJour, evtsJour, plage),
+      if (m.citationsDues().isNotEmpty || m.vocabDus().isNotEmpty)
+        _blocCartes(m),
       _blocHeures(minSem),
     ];
     final centre = _heroSoir(context, suggestions, minSem, budget);
@@ -700,6 +727,58 @@ class _TodayScreenState extends State<TodayScreen> {
                 onPressed: () => _collerProgramme(c),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// Cartes dues (citations, voc) : le travail « sans table ni papier »,
+  /// pense pour le TRAJET (metro, bus) quand l'eleve en a un.
+  Widget _blocCartes(AppModel m) {
+    final citations = m.citationsDues();
+    final voc = m.vocabDus();
+    final total = citations.length + voc.length;
+    final trajet = m.trajetMinutes > 0;
+    return _carte(
+      accent: Colors.indigo,
+      icone: trajet ? Icons.directions_bus_filled_outlined : Icons.style,
+      titre: trajet ? 'Pendant ton trajet' : 'Cartes à revoir',
+      enfant: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            [
+              if (voc.isNotEmpty) '${voc.length} mot(s) de voc',
+              if (citations.isNotEmpty) '${citations.length} citation(s)',
+            ].join(' · '),
+            style: const TextStyle(fontSize: 13),
+          ),
+          if (trajet)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                '~${m.trajetMinutes} min de trajet : pile le format cartes — une main, zéro papier.',
+                style: TextStyle(
+                    fontSize: 11.5, color: couleurSecondaire(context)),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: OutlinedButton.icon(
+              style:
+                  OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+              icon: const Icon(Icons.play_arrow, size: 16),
+              label: Text('Réviser ($total)',
+                  style: const TextStyle(fontSize: 12)),
+              onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => RevisionCartesScreen(
+                          cartes: <Object>[...voc, ...citations],
+                          titre: trajet ? 'Trajet' : 'Cartes'))).then(
+                  (_) => setState(() {})),
+            ),
+          ),
         ],
       ),
     );

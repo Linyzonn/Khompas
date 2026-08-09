@@ -332,3 +332,112 @@ DsExtraction parseDsExtraction(String text) {
   ds.sort((a, b) => a.date.compareTo(b.date));
   return DsExtraction(ds, warnings);
 }
+
+class VocabExtraction {
+  final List<MotVocab> mots;
+  final List<String> avertissements;
+  VocabExtraction(this.mots, this.avertissements);
+}
+
+/// Prompt d'extraction du VOC D'ANGLAIS en masse : l'eleve le colle dans son
+/// appli d'IA avec la photo/le PDF de sa feuille de voc (ou le texte copie),
+/// puis colle la reponse dans l'app. Meme circuit gratuit que le programme.
+String buildPromptVocab() {
+  return '''
+Tu analyses une liste de VOCABULAIRE D'ANGLAIS d'un élève de classe préparatoire française (photo, PDF ou texte d'une feuille de voc, souvent donnée par le professeur d'anglais pour les khôlles).
+
+Ta mission : en extraire des paires français ↔ anglais.
+
+Règles :
+1. Une entrée = un mot ou une expression. Garde les expressions idiomatiques entières ("to make up for" en une entrée).
+2. "fr" = le français, "en" = l'anglais. Si la feuille donne une remarque utile (prononciation, faux-ami, contexte), mets-la dans "remarque", sinon omets le champ.
+3. Ne traduis pas toi-même ce qui n'est pas sur la feuille : extrais ce qui y figure.
+4. Vise la liste complète, sans doublons.
+
+Réponds UNIQUEMENT avec ce JSON, sans aucun texte autour :
+{
+  "vocab": [
+    {"fr": "pallier", "en": "to make up for", "remarque": "faux-ami : ≠ palliate"}
+  ],
+  "avertissements": ["..."]
+}
+''';
+}
+
+/// Transforme la reponse TEXTE de l'IA en mots de voc. Meme tolerance que
+/// les autres extractions (fences, texte autour, JSON tronque).
+VocabExtraction parseVocabExtraction(String text) {
+  final (bruts, warnings) = _objetsJson(text, 'vocab');
+  final mots = <MotVocab>[];
+  for (final e in bruts) {
+    try {
+      final m = e as Map<String, dynamic>;
+      final fr = (m['fr'] ?? m['francais'] ?? '').toString().trim();
+      final en = (m['en'] ?? m['anglais'] ?? '').toString().trim();
+      if (fr.isEmpty || en.isEmpty) continue;
+      mots.add(MotVocab(
+        francais: fr,
+        anglais: en,
+        remarque: (m['remarque'] ?? '').toString().trim(),
+      ));
+    } catch (_) {
+      // ligne malformee : ignore
+    }
+  }
+  return VocabExtraction(mots, warnings);
+}
+
+class CitationsExtraction {
+  final List<Citation> citations;
+  final List<String> avertissements;
+  CitationsExtraction(this.citations, this.avertissements);
+}
+
+/// Prompt d'extraction de CITATIONS de francais-philo en masse (notes de
+/// cours, fiches, polycopie du prof) : chaque citation arrive avec son
+/// auteur, son oeuvre, l'axe du theme et COMMENT s'en servir en dissert.
+String buildPromptCitations() {
+  return '''
+Tu analyses des notes de FRANÇAIS-PHILO d'un élève de classe préparatoire scientifique française (fiches, polycopié, notes de cours sur le thème de l'année et ses 3 œuvres).
+
+Ta mission : en extraire les CITATIONS utilisables en dissertation et en khôlle.
+
+Règles :
+1. "texte" = la citation exacte telle qu'elle figure dans les notes (guillemets non inclus).
+2. "auteur" = l'auteur de la citation ; "oeuvre" = l'œuvre d'origine si elle est indiquée.
+3. "axe" = l'axe ou sous-thème du thème de l'année auquel elle répond (court, ex. "la violence légitime").
+4. "usage" = comment l'utiliser : « pour montrer que… », en une phrase — reprends la formulation des notes si elle existe.
+5. N'invente RIEN : n'extrais que ce qui figure dans les notes. Si l'axe ou l'usage manquent, laisse le champ vide et signale-le dans "avertissements".
+
+Réponds UNIQUEMENT avec ce JSON, sans aucun texte autour :
+{
+  "citations": [
+    {"texte": "…", "auteur": "…", "oeuvre": "…", "axe": "…", "usage": "pour montrer que …"}
+  ],
+  "avertissements": ["..."]
+}
+''';
+}
+
+/// Transforme la reponse TEXTE de l'IA en citations.
+CitationsExtraction parseCitationsExtraction(String text) {
+  final (bruts, warnings) = _objetsJson(text, 'citations');
+  final citations = <Citation>[];
+  for (final e in bruts) {
+    try {
+      final m = e as Map<String, dynamic>;
+      final texte = (m['texte'] ?? '').toString().trim();
+      if (texte.isEmpty) continue;
+      citations.add(Citation(
+        texte: texte,
+        auteur: (m['auteur'] ?? '').toString().trim(),
+        oeuvre: (m['oeuvre'] ?? '').toString().trim(),
+        axe: (m['axe'] ?? '').toString().trim(),
+        usage: (m['usage'] ?? '').toString().trim(),
+      ));
+    } catch (_) {
+      // ligne malformee : ignore
+    }
+  }
+  return CitationsExtraction(citations, warnings);
+}

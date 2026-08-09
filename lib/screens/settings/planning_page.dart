@@ -118,6 +118,37 @@ class _PlanningPageState extends State<PlanningPage> {
                 MaterialPageRoute(builder: (_) => const CalendrierScreen())),
           ),
           const SizedBox(height: 24),
+          Text('Temps de trajet',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            'Métro, bus, RER ? Le tableau de bord te proposera tes cartes '
+            '(voc d\'anglais, citations de français) à réviser pendant le '
+            'trajet — le travail utile qui ne demande ni table ni papier.',
+            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final (minutes, label) in const [
+                (0, 'Pas de trajet'),
+                (15, '15 min'),
+                (30, '30 min'),
+                (45, '45 min'),
+                (60, '1 h'),
+              ])
+                ChoiceChip(
+                  label: Text(label, style: const TextStyle(fontSize: 12)),
+                  selected: m.trajetMinutes == minutes,
+                  onSelected: (_) {
+                    m.setTrajetMinutes(minutes);
+                    setState(() {});
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
           Text('Priorité des matières',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),

@@ -249,7 +249,10 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     final jourIdx =
         DateTime(now.year, now.month, now.day).difference(kAncreRotation).inDays;
     if (jourIdx % 3 == 0) {
-      final o = aLire[(jourIdx ~/ 3) % aLire.length];
+      // UN livre a la fois, dans l'ORDRE choisi par l'eleve (la liste des
+      // oeuvres se reordonne par glisser-deposer) — on ne papillonne pas
+      // entre 3 livres.
+      final o = aLire.first;
       final progression = (o.pages != null && o.pages! > 0)
           ? ' (page ${o.pageActuelle}/${o.pages})'
           : '';
@@ -288,7 +291,10 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     if (d.date.isBefore(minuit) || d.date.isAfter(horizon)) continue;
     final e = echeances[d.matiere];
     if (e == null || d.date.isBefore(e.date)) {
-      echeances[d.matiere] = _Echeance(d.date, '${d.titre} ', '', 'ds');
+      // Une interro de cours a sa propre consigne (relire le COURS, pas
+      // enchainer les exos durs) — le genre la vehicule jusqu'a consigneDe.
+      echeances[d.matiere] =
+          _Echeance(d.date, '${d.titre} ', '', d.interro ? 'interro' : 'ds');
     }
   }
   for (final d in m.devoirsARendre()) {
@@ -566,10 +572,13 @@ List<Suggestion> _suggereRevisions(
     final mins = reste >= 90 ? 60 : 30;
     out.add(Suggestion(
       prochainDs.matiere,
-      'Prépa ${prochainDs.titre} : annales et points faibles',
+      prochainDs.interro
+          ? 'Prépa ${prochainDs.titre} : relis le cours'
+          : 'Prépa ${prochainDs.titre} : annales et points faibles',
       '${prochainDs.titre} ${frJour(prochainDs.date)} — priorité',
       mins,
-      consigne: consigneDe(prochainDs.matiere, 'ds'),
+      consigne:
+          consigneDe(prochainDs.matiere, prochainDs.interro ? 'interro' : 'ds'),
     ));
     reste -= mins;
   }
@@ -907,7 +916,9 @@ List<Suggestion> _suggereEte(
   final aLire = m.oeuvresNonFinies();
   final jourIdx = aujourdHui.difference(kAncreRotation).inDays;
   if (aLire.isNotEmpty && reste >= 45 && jourIdx % 2 == 0) {
-    final o = aLire[(jourIdx ~/ 2) % aLire.length];
+    // UN livre a la fois, dans l'ORDRE choisi (liste reordonnable) : on
+    // finit le premier avant d'ouvrir le deuxieme.
+    final o = aLire.first;
     var progression = '';
     if (o.pages != null && o.pages! > 0) {
       final restantes = (o.pages! - o.pageActuelle).clamp(0, o.pages!);
@@ -1026,7 +1037,7 @@ class _Echeance {
   final DateTime date;
   final String type;
   final String programme;
-  final String genre; // 'kholle' | 'ds' | 'dm'
+  final String genre; // 'kholle' | 'ds' | 'interro' | 'dm'
   // Pour les DM : la tache concrete ("DM 3 (exos 1 à 4)") et l'id du devoir
   // — la soiree d'un preparationnaire est une liste de taches, pas des
   // blocs de matiere.

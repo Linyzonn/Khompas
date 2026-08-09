@@ -4,6 +4,7 @@ import '../../models.dart';
 import '../../store.dart';
 import '../../theme.dart';
 import '../annales.dart';
+import '../cartes.dart';
 import '../lectures.dart';
 import '../oraux.dart';
 
@@ -222,6 +223,34 @@ class _ConcoursPageState extends State<ConcoursPage> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const LecturesScreen())),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Text('📜', style: TextStyle(fontSize: 20)),
+            title: const Text('Citations de français'),
+            subtitle: Text(
+                m.citations.isEmpty
+                    ? 'Par axe du thème, avec « comment s\'en servir » — révisées façon Anki.'
+                    : '${m.citations.length} citation(s) · ${m.citationsDues().length} à revoir',
+                style: const TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const CitationsScreen()))
+                .then((_) => setState(() {})),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Text('🇬🇧', style: TextStyle(fontSize: 20)),
+            title: const Text('Voc d\'anglais'),
+            subtitle: Text(
+                m.vocab.isEmpty
+                    ? 'Le voc exigé en khôlle — révisé façon Anki (français → anglais).'
+                    : '${m.vocab.length} mot(s) · ${m.vocabDus().length} à revoir',
+                style: const TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const VocabScreen()))
+                .then((_) => setState(() {})),
           ),
           if (kFilieresDeuxiemeAnnee.contains(m.filiere))
             ListTile(

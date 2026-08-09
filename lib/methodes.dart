@@ -158,6 +158,8 @@ const Map<String, Map<String, String>> _table = {
     'fond': 'Teste-toi sur le dernier cours (feuille blanche) plutôt que de relire.',
     'dm':
         'Avance question par question SANS le corrigé : cherche ≥ 10 min avant d\'ouvrir le cours, note les points de blocage — ils feront ta prochaine séance.',
+    'interro':
+        'Interro de cours = le COURS est testé, pas les exos durs : recopie de MÉMOIRE définitions, théorèmes et formules, compare au poly, puis refais les exemples du cours.',
     'revision': 'L\'essentiel du chapitre de mémoire, puis un exercice d\'annale.',
     'oral':
         'Travaille À VOIX HAUTE en conditions d\'oral : questions de cours récitées, puis un exercice expliqué comme à un examinateur, chrono.',

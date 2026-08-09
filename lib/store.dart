@@ -39,7 +39,15 @@ class AppModel extends ChangeNotifier {
   // Zone de vacances scolaires (A/B/C) pour l'import officiel.
   String zoneVacances = '';
   // Oeuvres de francais de l'annee (lecture d'ete + rattrapage de rentree).
+  // L'ORDRE de la liste est l'ordre de lecture choisi par l'eleve.
   List<Oeuvre> oeuvres = [];
+  // Citations de francais et voc d'anglais : les CARTES (revision type Anki,
+  // servies pendant le trajet et avant les kholles d'anglais).
+  List<Citation> citations = [];
+  List<MotVocab> vocab = [];
+  // Temps de trajet quotidien (minutes, 0 = pas de trajet) : le tableau de
+  // bord y propose le travail « sans table » (citations, voc).
+  int trajetMinutes = 0;
   // Jours OFF (trajet, famille...) : le plan du soir se tait, l'etalement
   // d'ete les evite. Dates a minuit.
   List<DateTime> joursOff = [];
@@ -165,6 +173,13 @@ class AppModel extends ChangeNotifier {
           final newOeuvres = ((j['oeuvres'] ?? []) as List)
               .map((e) => Oeuvre.fromJson(e as Map<String, dynamic>))
               .toList();
+          final newCitations = ((j['citations'] ?? []) as List)
+              .map((e) => Citation.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newVocab = ((j['vocab'] ?? []) as List)
+              .map((e) => MotVocab.fromJson(e as Map<String, dynamic>))
+              .toList();
+          final newTrajet = ((j['trajetMinutes'] ?? 0) as num).toInt();
           final newJoursOff = ((j['joursOff'] ?? []) as List)
               .map((e) => DateTime.tryParse(e.toString()))
               .whereType<DateTime>()
@@ -198,6 +213,9 @@ class AppModel extends ChangeNotifier {
           resultatsConcours = newResultats;
           zoneVacances = newZone;
           oeuvres = newOeuvres;
+          citations = newCitations;
+          vocab = newVocab;
+          trajetMinutes = newTrajet;
           joursOff = newJoursOff;
           modeOraux = newModeOraux;
           refSemaineA = newRefSemaineA;
@@ -380,6 +398,9 @@ class AppModel extends ChangeNotifier {
             resultatsConcours.map((r) => r.toJson()).toList(),
         'zoneVacances': zoneVacances,
         'oeuvres': oeuvres.map((o) => o.toJson()).toList(),
+        'citations': citations.map((c) => c.toJson()).toList(),
+        'vocab': vocab.map((v) => v.toJson()).toList(),
+        'trajetMinutes': trajetMinutes,
         'joursOff': joursOff.map((d) => d.toIso8601String()).toList(),
         'modeOraux': modeOraux,
         'refSemaineA': refSemaineA?.toIso8601String(),
@@ -508,6 +529,9 @@ class AppModel extends ChangeNotifier {
     oraux = [];
     resultatsConcours = [];
     oeuvres = [];
+    citations = [];
+    vocab = [];
+    trajetMinutes = 0;
     joursOff = [];
     zoneVacances = '';
     modeOraux = false;
@@ -716,6 +740,13 @@ class AppModel extends ChangeNotifier {
       final newOeuvres = ((decoded['oeuvres'] ?? []) as List)
           .map((e) => Oeuvre.fromJson(e as Map<String, dynamic>))
           .toList();
+      final newCitations = ((decoded['citations'] ?? []) as List)
+          .map((e) => Citation.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final newVocab = ((decoded['vocab'] ?? []) as List)
+          .map((e) => MotVocab.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final newTrajet = ((decoded['trajetMinutes'] ?? trajetMinutes) as num).toInt();
       final newJoursOff = ((decoded['joursOff'] ?? []) as List)
           .map((e) => DateTime.tryParse(e.toString()))
           .whereType<DateTime>()
@@ -749,6 +780,9 @@ class AppModel extends ChangeNotifier {
       resultatsConcours = newResultats;
       zoneVacances = newZone;
       oeuvres = newOeuvres;
+      citations = newCitations;
+      vocab = newVocab;
+      trajetMinutes = newTrajet;
       joursOff = newJoursOff;
       modeOraux = newModeOraux;
       refSemaineA = newRefSemaineA;
@@ -1164,6 +1198,174 @@ class AppModel extends ChangeNotifier {
 
   List<Oeuvre> oeuvresNonFinies() =>
       oeuvres.where((o) => !o.finie).toList();
+
+  /// Reordonne les oeuvres (drag & drop) : l'ordre de la liste EST l'ordre
+  /// de lecture choisi — le plan sert toujours la premiere non finie.
+  /// [newIndex] est deja ajuste (semantique onReorderItem).
+  void reorderOeuvres(int oldIndex, int newIndex) {
+    final o = oeuvres.removeAt(oldIndex);
+    oeuvres.insert(newIndex, o);
+    _touch();
+  }
+
+  // ---------- Cartes (citations de francais, voc d'anglais) ----------
+
+  static DateTime _minuitDe(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  /// Espacement commun aux cartes : memes multiplicateurs que les chapitres
+  /// (evaluerRevision : x1.7 / x2.5 / x1.5 si echecs repetes), sans la
+  /// notion de maitrise ; « difficile » ramene a DEMAIN (une carte ratee se
+  /// rejoue vite, contrairement a un chapitre entier). Retourne
+  /// (intervalle, echecs, prochaineRevision).
+  static (int, int, DateTime) _espacementSuivant(
+      int intervalle, int echecs, DateTime? due, String verdict, DateTime now) {
+    switch (verdict) {
+      case 'difficile':
+        intervalle = 1;
+        echecs++;
+        break;
+      case 'facile':
+        intervalle = (intervalle * 2.5).round().clamp(1, 45);
+        echecs = 0;
+        break;
+      default: // cava
+        intervalle = (intervalle * (echecs >= 2 ? 1.5 : 1.7)).round().clamp(1, 45);
+    }
+    // Ancre sur la date DUE si le retard est raisonnable (< 7 j), comme les
+    // chapitres : reviser en retard ne decale pas toute la suite.
+    var base = now;
+    if (due != null) {
+      final retard = _minuitDe(now).difference(_minuitDe(due)).inDays;
+      if (retard > 0 && retard < 7) base = due;
+    }
+    var prochaine = _minuitDe(base).add(Duration(days: intervalle));
+    final demain = _minuitDe(now).add(const Duration(days: 1));
+    if (prochaine.isBefore(demain)) prochaine = demain;
+    return (intervalle, echecs, prochaine);
+  }
+
+  void addCitation(Citation c) {
+    // Nouvelle carte : due AUJOURD'HUI (elle entre tout de suite dans la
+    // prochaine session de revision).
+    c.prochaineRevision ??= _minuitDe(DateTime.now());
+    citations.insert(0, c);
+    _touch();
+  }
+
+  /// Ajout en lot (import IA) en evitant les doublons (meme texte).
+  int addCitationsList(List<Citation> nouvelles) {
+    var added = 0;
+    for (final c in nouvelles) {
+      final doublon = citations
+          .any((x) => x.texte.trim().toLowerCase() == c.texte.trim().toLowerCase());
+      if (!doublon) {
+        c.prochaineRevision ??= _minuitDe(DateTime.now());
+        citations.add(c);
+        added++;
+      }
+    }
+    _touch();
+    return added;
+  }
+
+  void updateCitation(Citation c) {
+    final i = citations.indexWhere((x) => x.id == c.id);
+    if (i >= 0) citations[i] = c;
+    _touch();
+  }
+
+  void deleteCitation(String id) {
+    citations.removeWhere((c) => c.id == id);
+    _touch();
+  }
+
+  void addMotVocab(MotVocab v) {
+    v.prochaineRevision ??= _minuitDe(DateTime.now());
+    vocab.insert(0, v);
+    _touch();
+  }
+
+  /// Ajout en lot (import IA) en evitant les doublons (meme mot anglais).
+  int addVocabList(List<MotVocab> nouveaux) {
+    var added = 0;
+    for (final v in nouveaux) {
+      final doublon = vocab.any(
+          (x) => x.anglais.trim().toLowerCase() == v.anglais.trim().toLowerCase());
+      if (!doublon) {
+        v.prochaineRevision ??= _minuitDe(DateTime.now());
+        vocab.add(v);
+        added++;
+      }
+    }
+    _touch();
+    return added;
+  }
+
+  void updateMotVocab(MotVocab v) {
+    final i = vocab.indexWhere((x) => x.id == v.id);
+    if (i >= 0) vocab[i] = v;
+    _touch();
+  }
+
+  void deleteMotVocab(String id) {
+    vocab.removeWhere((v) => v.id == id);
+    _touch();
+  }
+
+  /// Citations dues aujourd'hui (les plus en retard d'abord).
+  List<Citation> citationsDues({DateTime? maintenant}) {
+    final jour = _minuitDe(maintenant ?? DateTime.now());
+    return citations
+        .where((c) =>
+            c.prochaineRevision == null || !c.prochaineRevision!.isAfter(jour))
+        .toList()
+      ..sort((a, b) => (a.prochaineRevision ?? jour)
+          .compareTo(b.prochaineRevision ?? jour));
+  }
+
+  /// Mots de voc dus aujourd'hui (les plus en retard d'abord).
+  List<MotVocab> vocabDus({DateTime? maintenant}) {
+    final jour = _minuitDe(maintenant ?? DateTime.now());
+    return vocab
+        .where((v) =>
+            v.prochaineRevision == null || !v.prochaineRevision!.isAfter(jour))
+        .toList()
+      ..sort((a, b) => (a.prochaineRevision ?? jour)
+          .compareTo(b.prochaineRevision ?? jour));
+  }
+
+  void evaluerCitation(String id, String verdict, {DateTime? maintenant}) {
+    final i = citations.indexWhere((c) => c.id == id);
+    if (i < 0) return;
+    final c = citations[i];
+    final now = maintenant ?? DateTime.now();
+    final (intervalle, echecs, prochaine) = _espacementSuivant(
+        c.intervalleJours, c.echecs, c.prochaineRevision, verdict, now);
+    c.intervalleJours = intervalle;
+    c.echecs = echecs;
+    c.prochaineRevision = prochaine;
+    c.dernierRevu = now;
+    _touch();
+  }
+
+  void evaluerMotVocab(String id, String verdict, {DateTime? maintenant}) {
+    final i = vocab.indexWhere((v) => v.id == id);
+    if (i < 0) return;
+    final v = vocab[i];
+    final now = maintenant ?? DateTime.now();
+    final (intervalle, echecs, prochaine) = _espacementSuivant(
+        v.intervalleJours, v.echecs, v.prochaineRevision, verdict, now);
+    v.intervalleJours = intervalle;
+    v.echecs = echecs;
+    v.prochaineRevision = prochaine;
+    v.dernierRevu = now;
+    _touch();
+  }
+
+  void setTrajetMinutes(int minutes) {
+    trajetMinutes = minutes.clamp(0, 180);
+    _touch();
+  }
 
   // ---------- Jours off ----------
 

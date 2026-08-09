@@ -300,6 +300,7 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
   final titreCtl = TextEditingController(text: initial?.titre ?? 'DS');
   var date = initial?.date ?? DateTime.now().add(const Duration(days: 3));
   var coeff = initial?.coeff ?? 1.0;
+  var interro = initial?.interro ?? false;
   final moyClasseCtl = TextEditingController(
       text: initial?.moyenneClasse?.toString() ?? '');
 
@@ -334,7 +335,25 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
               controller: titreCtl,
               decoration: const InputDecoration(labelText: 'Titre (DS, concours blanc…)'),
             ),
-            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Petite interro de cours',
+                  style: TextStyle(fontSize: 14)),
+              subtitle: const Text(
+                  'Le plan te fait relire le COURS les jours d\'avant (coeff faible par défaut).',
+                  style: TextStyle(fontSize: 11.5)),
+              value: interro,
+              onChanged: (v) => setState(() {
+                interro = v;
+                if (v) {
+                  final t = titreCtl.text.trim();
+                  if (t.isEmpty || t == 'DS') titreCtl.text = 'Interro';
+                  coeff = 0.5;
+                }
+              }),
+            ),
+            const SizedBox(height: 4),
             OutlinedButton.icon(
               icon: const Icon(Icons.event, size: 18),
               label: Text(frDate(date)),
@@ -394,6 +413,7 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
                 ..titre = titreCtl.text.trim().isEmpty ? 'DS' : titreCtl.text.trim()
                 ..date = DateTime(date.year, date.month, date.day)
                 ..coeff = coeff
+                ..interro = interro
                 ..moyenneClasse =
                     (moyClasse != null && moyClasse > 0 && moyClasse <= 20)
                         ? moyClasse

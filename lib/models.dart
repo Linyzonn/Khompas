@@ -115,6 +115,9 @@ class Ds {
   // Moyenne de la classe (facultative) : c'est ELLE qui dit si une note est
   // bonne — en prepa un 9 peut etre au-dessus de la barre. Jamais de rang.
   double? moyenneClasse;
+  // Petite interro de cours (pas un vrai DS) : le plan fait RELIRE LE COURS
+  // les jours d'avant (consigne dediee), coeff faible par defaut.
+  bool interro;
 
   Ds({
     String? id,
@@ -124,6 +127,7 @@ class Ds {
     this.note,
     this.coeff = 1,
     this.moyenneClasse,
+    this.interro = false,
   }) : id = id ?? _newId();
 
   Map<String, dynamic> toJson() => {
@@ -134,6 +138,7 @@ class Ds {
         'note': note,
         'coeff': coeff,
         'moyenneClasse': moyenneClasse,
+        'interro': interro,
       };
 
   static Ds fromJson(Map<String, dynamic> j) => Ds(
@@ -144,6 +149,7 @@ class Ds {
         note: (j['note'] as num?)?.toDouble(),
         coeff: ((j['coeff'] ?? 1) as num).toDouble(),
         moyenneClasse: (j['moyenneClasse'] as num?)?.toDouble(),
+        interro: (j['interro'] ?? false) as bool,
       );
 }
 
@@ -691,6 +697,130 @@ class Oeuvre {
         pages: (j['pages'] as num?)?.toInt(),
         pageActuelle: ((j['pageActuelle'] ?? 0) as num).toInt(),
         finie: (j['finie'] ?? false) as bool,
+      );
+}
+
+/// Une CITATION de francais-philo, revisee facon Anki. Le sens de revision
+/// est celui de la dissertation : on voit l'AXE du theme et l'USAGE (« pour
+/// montrer que... »), on doit restituer la citation ET son auteur — un meme
+/// argument peut s'appuyer sur deux auteurs, l'auteur fait partie de la
+/// reponse.
+class Citation {
+  String id;
+  String texte;
+  String auteur;
+  // Titre de l'oeuvre d'origine (texte libre : une citation peut venir
+  // d'ailleurs que des 3 oeuvres au programme).
+  String oeuvre;
+  // Axe / sous-theme du theme de l'annee auquel elle repond.
+  String axe;
+  // Comment s'en servir : « pour montrer que... », la phrase d'attaque.
+  String usage;
+  // Repetition espacee (memes regles que les chapitres).
+  int intervalleJours;
+  DateTime? prochaineRevision;
+  DateTime? dernierRevu;
+  int echecs;
+
+  Citation({
+    String? id,
+    required this.texte,
+    this.auteur = '',
+    this.oeuvre = '',
+    this.axe = '',
+    this.usage = '',
+    this.intervalleJours = 1,
+    this.prochaineRevision,
+    this.dernierRevu,
+    this.echecs = 0,
+  }) : id = id ?? _newId();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'texte': texte,
+        'auteur': auteur,
+        'oeuvre': oeuvre,
+        'axe': axe,
+        'usage': usage,
+        'intervalleJours': intervalleJours,
+        'prochaineRevision': prochaineRevision?.toIso8601String(),
+        'dernierRevu': dernierRevu?.toIso8601String(),
+        'echecs': echecs,
+      };
+
+  static Citation fromJson(Map<String, dynamic> j) => Citation(
+        id: j['id'] as String?,
+        texte: (j['texte'] ?? '') as String,
+        auteur: (j['auteur'] ?? '') as String,
+        oeuvre: (j['oeuvre'] ?? '') as String,
+        axe: (j['axe'] ?? '') as String,
+        usage: (j['usage'] ?? '') as String,
+        intervalleJours: ((j['intervalleJours'] ?? 1) as num).toInt(),
+        prochaineRevision: j['prochaineRevision'] == null
+            ? null
+            : DateTime.tryParse(j['prochaineRevision'] as String),
+        dernierRevu: j['dernierRevu'] == null
+            ? null
+            : DateTime.tryParse(j['dernierRevu'] as String),
+        echecs: ((j['echecs'] ?? 0) as num).toInt(),
+      );
+}
+
+/// Un mot de VOCABULAIRE d'anglais (kholles), revise facon Anki dans le
+/// sens PRODUCTION : on voit le francais, on doit sortir l'anglais — c'est
+/// ce qui compte en colle. [pourColle] : a savoir absolument pour la
+/// prochaine kholle (la veille, le tableau de bord le rappelle).
+class MotVocab {
+  String id;
+  String francais;
+  String anglais;
+  // Prononciation, contexte, faux-ami...
+  String remarque;
+  bool pourColle;
+  // Repetition espacee (memes regles que les chapitres).
+  int intervalleJours;
+  DateTime? prochaineRevision;
+  DateTime? dernierRevu;
+  int echecs;
+
+  MotVocab({
+    String? id,
+    required this.francais,
+    required this.anglais,
+    this.remarque = '',
+    this.pourColle = false,
+    this.intervalleJours = 1,
+    this.prochaineRevision,
+    this.dernierRevu,
+    this.echecs = 0,
+  }) : id = id ?? _newId();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'francais': francais,
+        'anglais': anglais,
+        'remarque': remarque,
+        'pourColle': pourColle,
+        'intervalleJours': intervalleJours,
+        'prochaineRevision': prochaineRevision?.toIso8601String(),
+        'dernierRevu': dernierRevu?.toIso8601String(),
+        'echecs': echecs,
+      };
+
+  static MotVocab fromJson(Map<String, dynamic> j) => MotVocab(
+        id: j['id'] as String?,
+        francais: (j['francais'] ?? '') as String,
+        anglais: (j['anglais'] ?? '') as String,
+        remarque: (j['remarque'] ?? '') as String,
+        pourColle: (j['pourColle'] ?? false) as bool,
+        intervalleJours: ((j['intervalleJours'] ?? 1) as num).toInt(),
+        prochaineRevision: j['prochaineRevision'] == null
+            ? null
+            : DateTime.tryParse(j['prochaineRevision'] as String),
+        dernierRevu: j['dernierRevu'] == null
+            ? null
+            : DateTime.tryParse(j['dernierRevu'] as String),
+        echecs: ((j['echecs'] ?? 0) as num).toInt(),
       );
 }
 
