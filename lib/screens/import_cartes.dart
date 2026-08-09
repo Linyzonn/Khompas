@@ -22,6 +22,14 @@ class _ImportCartesScreenState extends State<ImportCartesScreen> {
   List<MotVocab>? motsTrouves;
   List<Citation>? citationsTrouvees;
   List<String> avertissements = [];
+  // Nom de la LISTE dans laquelle ranger le voc importe (feuille du prof).
+  final listeCtl = TextEditingController();
+
+  @override
+  void dispose() {
+    listeCtl.dispose();
+    super.dispose();
+  }
 
   void _snack(String msg, {int secondes = 4}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -141,6 +149,19 @@ class _ImportCartesScreenState extends State<ImportCartesScreen> {
               ),
             ),
           ),
+          if (voc) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: listeCtl,
+              decoration: const InputDecoration(
+                labelText: 'Nom de la liste',
+                helperText:
+                    'Ex. « Liste 5 » ou « Voc du 12/09 » — c\'est par liste qu\'une khôlle exige son voc.',
+                helperMaxLines: 2,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           OutlinedButton.icon(
             icon: const Icon(Icons.copy_all),
@@ -219,6 +240,12 @@ class _ImportCartesScreenState extends State<ImportCartesScreen> {
                   ? null
                   : () {
                       final m = AppModel.instance;
+                      if (voc) {
+                        final liste = listeCtl.text.trim();
+                        for (final v in mots!) {
+                          v.liste = liste;
+                        }
+                      }
                       final added = voc
                           ? m.addVocabList(mots!)
                           : m.addCitationsList(cits!);

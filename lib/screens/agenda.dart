@@ -17,9 +17,23 @@ import 'import_ds.dart';
 import 'oraux.dart';
 import 'semaine.dart';
 
-/// Onglet "Agenda" : toutes les khôlles et DS, groupes par semaine.
-class AgendaScreen extends StatelessWidget {
+/// Onglet "Agenda" : fenetre glissante de 7 jours (AUJOURD'HUI a gauche,
+/// navigable vers les semaines suivantes) + toutes les kholles et DS
+/// groupes par semaine.
+class AgendaScreen extends StatefulWidget {
   const AgendaScreen({super.key});
+
+  @override
+  State<AgendaScreen> createState() => _AgendaScreenState();
+
+  // Conserve l'API utilisee par main.dart (export .ics).
+  static Future<void> exportIcs(BuildContext context) =>
+      _AgendaScreenState.exportIcs(context);
+}
+
+class _AgendaScreenState extends State<AgendaScreen> {
+  // Decalage de la fenetre de 7 jours (0 = a partir d'aujourd'hui).
+  int decalageJours = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -82,13 +96,53 @@ class AgendaScreen extends StatelessWidget {
         ],
     ];
 
+    // Debut de la fenetre de 7 jours affichee (aujourd'hui + decalage).
+    final debutFenetre = aujourdHui.add(Duration(days: decalageJours));
+
+    // Titre + navigation ‹ › : aujourd'hui reste a gauche par defaut, et on
+    // peut AVANCER pour voir les semaines suivantes (un samedi soir, la
+    // vue calee sur le lundi ne montrait plus rien d'utile).
     Widget titre7Jours() => Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-          child: Text('Les 7 prochains jours',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(color: couleurSecondaire(context))),
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  decalageJours == 0
+                      ? 'Les 7 prochains jours'
+                      : 'Du ${frDateCourte(debutFenetre)} au ${frDateCourte(debutFenetre.add(const Duration(days: 6)))}',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(color: couleurSecondaire(context)),
+                ),
+              ),
+              if (decalageJours > 0)
+                TextButton(
+                  style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact),
+                  onPressed: () => setState(() => decalageJours = 0),
+                  child:
+                      const Text('Auj.', style: TextStyle(fontSize: 12)),
+                ),
+              IconButton(
+                tooltip: '7 jours en arrière',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.chevron_left, size: 20),
+                onPressed: decalageJours == 0
+                    ? null
+                    : () => setState(
+                        () => decalageJours = (decalageJours - 7).clamp(0, 365)),
+              ),
+              IconButton(
+                tooltip: '7 jours en avant',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.chevron_right, size: 20),
+                onPressed: () => setState(
+                    () => decalageJours = (decalageJours + 7).clamp(0, 365)),
+              ),
+            ],
+          ),
         );
 
     return Scaffold(
@@ -109,7 +163,7 @@ class AgendaScreen extends StatelessWidget {
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(10, 0, 6, 12),
-                          child: GrilleSemaine(debut: aujourdHui),
+                          child: GrilleSemaine(debut: debutFenetre),
                         ),
                       ),
                     ],
@@ -137,7 +191,7 @@ class AgendaScreen extends StatelessWidget {
               titre7Jours(),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: VueSemaineColonnes(debut: aujourdHui),
+                child: VueSemaineColonnes(debut: debutFenetre),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),

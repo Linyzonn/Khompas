@@ -60,6 +60,9 @@ class Colle {
   double? note; // /20
   String remarque;
   bool custom; // ajoutee manuellement
+  // Kholle de LANGUE : noms des listes de voc a savoir pour cette colle
+  // (la veille, le tableau de bord fait reviser ces listes-la).
+  List<String> listesVoc;
 
   Colle({
     String? id,
@@ -72,7 +75,9 @@ class Colle {
     this.note,
     this.remarque = '',
     this.custom = false,
-  }) : id = id ?? _newId();
+    List<String>? listesVoc,
+  })  : id = id ?? _newId(),
+        listesVoc = listesVoc ?? [];
 
   DateTime get end => start.add(Duration(minutes: dureeMin));
 
@@ -87,6 +92,7 @@ class Colle {
         'note': note,
         'remarque': remarque,
         'custom': custom,
+        'listesVoc': listesVoc,
       };
 
   static Colle fromJson(Map<String, dynamic> j) => Colle(
@@ -100,6 +106,9 @@ class Colle {
         note: (j['note'] as num?)?.toDouble(),
         remarque: (j['remarque'] ?? '') as String,
         custom: (j['custom'] ?? false) as bool,
+        listesVoc: ((j['listesVoc'] ?? []) as List)
+            .map((e) => e.toString())
+            .toList(),
       );
 }
 
@@ -221,6 +230,23 @@ String _sansAccents(String s) {
     b.write(map[r] ?? r);
   }
   return b.toString();
+}
+
+/// Matieres « litteraires » (francais + langues) : PAS de chapitres a
+/// reviser en repetition espacee — le travail y est le travail impose
+/// (kholle, DM), puis les CARTES (voc d'anglais, citations) et la
+/// preparation de la prochaine colle. Le moteur les traite a part.
+bool matiereLitteraire(String matiere) {
+  final m = _sansAccents(matiere.trim().toLowerCase());
+  return m.contains('francais') ||
+      m.contains('philo') ||
+      m.contains('anglais') ||
+      m.contains('espagnol') ||
+      m.contains('allemand') ||
+      m.contains('italien') ||
+      m.contains('arabe') ||
+      m.contains('lv1') ||
+      m.contains('lv2');
 }
 
 /// Etapes de progression d'un chapitre (le workflow prepa).
@@ -776,6 +802,9 @@ class MotVocab {
   String anglais;
   // Prononciation, contexte, faux-ami...
   String remarque;
+  // Nom de la LISTE (feuille de voc du prof, theme...) : le voc s'organise
+  // par listes, et une kholle d'anglais peut exiger telle(s) liste(s).
+  String liste;
   bool pourColle;
   // Repetition espacee (memes regles que les chapitres).
   int intervalleJours;
@@ -788,6 +817,7 @@ class MotVocab {
     required this.francais,
     required this.anglais,
     this.remarque = '',
+    this.liste = '',
     this.pourColle = false,
     this.intervalleJours = 1,
     this.prochaineRevision,
@@ -800,6 +830,7 @@ class MotVocab {
         'francais': francais,
         'anglais': anglais,
         'remarque': remarque,
+        'liste': liste,
         'pourColle': pourColle,
         'intervalleJours': intervalleJours,
         'prochaineRevision': prochaineRevision?.toIso8601String(),
@@ -812,6 +843,7 @@ class MotVocab {
         francais: (j['francais'] ?? '') as String,
         anglais: (j['anglais'] ?? '') as String,
         remarque: (j['remarque'] ?? '') as String,
+        liste: (j['liste'] ?? '') as String,
         pourColle: (j['pourColle'] ?? false) as bool,
         intervalleJours: ((j['intervalleJours'] ?? 1) as num).toInt(),
         prochaineRevision: j['prochaineRevision'] == null

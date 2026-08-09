@@ -20,7 +20,7 @@ class EdtScreen extends StatefulWidget {
 class _EdtScreenState extends State<EdtScreen> {
   static const _jours = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
   static const _hDebut = 7; // 7h
-  static const _hFin = 22; // 22h
+  static const _hFin = 24; // minuit (les journees de prepa finissent tard)
   static const _cellH = 34.0;
 
   static const _vie = ['Repas', 'Douche', 'Sport', 'Trajet', 'Pause'];

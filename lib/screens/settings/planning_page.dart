@@ -22,6 +22,38 @@ class _PlanningPageState extends State<PlanningPage> {
     ));
   }
 
+  Future<void> _trajetPersonnalise() async {
+    final m = AppModel.instance;
+    final ctl = TextEditingController(
+        text: m.trajetMinutes == 0 ? '' : m.trajetMinutes.toString());
+    final minutes = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Temps de trajet quotidien'),
+        content: TextField(
+          controller: ctl,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+              labelText: 'Minutes (aller simple)',
+              helperText: 'Entre 5 et 180 minutes.'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, int.tryParse(ctl.text.trim())),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+    if (minutes == null || minutes < 5) return;
+    m.setTrajetMinutes(minutes);
+    if (mounted) setState(() {});
+  }
+
   // ---------- Fusion de matieres ----------
 
   Future<void> _fusionnerDialog() async {
@@ -146,6 +178,18 @@ class _PlanningPageState extends State<PlanningPage> {
                     setState(() {});
                   },
                 ),
+              // Duree personnalisee (« Autre… ») : tout le monde n'a pas
+              // un trajet rond.
+              ChoiceChip(
+                label: Text(
+                    const [0, 15, 30, 45, 60].contains(m.trajetMinutes)
+                        ? 'Autre…'
+                        : '${m.trajetMinutes} min',
+                    style: const TextStyle(fontSize: 12)),
+                selected:
+                    !const [0, 15, 30, 45, 60].contains(m.trajetMinutes),
+                onSelected: (_) => _trajetPersonnalise(),
+              ),
             ],
           ),
           const SizedBox(height: 24),

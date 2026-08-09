@@ -1367,6 +1367,21 @@ class AppModel extends ChangeNotifier {
     _touch();
   }
 
+  /// Noms des listes de voc existantes, triees ('' exclue).
+  List<String> get listesVocNoms {
+    final s = <String>{};
+    for (final v in vocab) {
+      if (v.liste.trim().isNotEmpty) s.add(v.liste.trim());
+    }
+    final l = s.toList()..sort();
+    return l;
+  }
+
+  /// Mots appartenant a l'une des [listes] (pour la revision de veille de
+  /// kholle : « ces listes doivent etre sues »).
+  List<MotVocab> vocabDeListes(List<String> listes) =>
+      vocab.where((v) => listes.contains(v.liste)).toList();
+
   // ---------- Jours off ----------
 
   bool estJourOff(DateTime d) {
@@ -1670,12 +1685,15 @@ class AppModel extends ChangeNotifier {
     _touch();
   }
 
-  /// « Où tu perds des points » : deficit PONDERE par matiere, calcule sur
-  /// les resultats de concours saisis.
-  ///  - avec barre :   coeff x max(0, barre - note) ;
-  ///  - sans barre :   coeff x max(0, mediane de TES notes - note) — la
-  ///    comparaison se fait alors a ton propre niveau, pas a une barre
-  ///    inventee.
+  /// « Où tu perds des points » : deficit par matiere, calcule sur les
+  /// resultats de concours saisis, NORMALISE PAR CONCOURS — chaque coeff
+  /// est rapporte au total de coeffs saisi pour SON concours (echelle
+  /// « points sur 100 »). Sans cette normalisation, Centrale (total ~100 de
+  /// coeffs) ecrasait Mines (~30) : un point sous la barre y pesait 3x plus
+  /// alors que l'ecart reel etait peut-etre plus grand a Mines.
+  ///  - avec barre :   max(0, barre - note) x coeff/totalConcours x 100 ;
+  ///  - sans barre :   idem avec la mediane de TES notes — la comparaison
+  ///    se fait alors a ton propre niveau, pas a une barre inventee.
   /// Retourne {matiere -> deficit}, trie n'est PAS garanti (trier a
   /// l'affichage). Matieres sans deficit incluses a 0 pour la transparence.
   Map<String, double> deficitsConcours() {
@@ -1686,11 +1704,19 @@ class AppModel extends ChangeNotifier {
       ..sort();
     if (notes.isEmpty) return {};
     final mediane = notes[notes.length ~/ 2];
+    // Total de coeffs saisi, par concours (epreuves notees uniquement).
+    final totalCoeff = <String, double>{};
+    for (final r in resultatsConcours) {
+      if (r.note == null) continue;
+      totalCoeff[r.concours] = (totalCoeff[r.concours] ?? 0) + r.coeff;
+    }
     final out = <String, double>{};
     for (final r in resultatsConcours) {
       if (r.note == null || r.matiere.trim().isEmpty) continue;
+      final total = totalCoeff[r.concours] ?? 0;
+      if (total <= 0) continue;
       final ref = r.barre ?? mediane;
-      final deficit = (ref - r.note!) * r.coeff;
+      final deficit = (ref - r.note!) * (r.coeff / total) * 100;
       out[r.matiere] = (out[r.matiere] ?? 0) + (deficit > 0 ? deficit : 0);
     }
     return out;
@@ -1725,7 +1751,11 @@ class AppModel extends ChangeNotifier {
     final finPlage = DateTime(plage.fin.year, plage.fin.month, plage.fin.day);
     var joursRestants = finPlage.difference(aujourdHui).inDays;
     if (joursRestants < 1) joursRestants = 1;
-    final aPlanifier = chapitres.where((c) => c.etape > 0).toList()
+    // Les matieres litteraires (francais, langues) n'ont RIEN a reviser en
+    // chapitres : leur ete, ce sont les oeuvres, les citations et le voc.
+    final aPlanifier = chapitres
+        .where((c) => c.etape > 0 && !matiereLitteraire(c.matiere))
+        .toList()
       ..sort((a, b) {
         final pa = prios[a.matiere] ?? 2;
         final pb = prios[b.matiere] ?? 2;

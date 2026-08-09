@@ -359,16 +359,23 @@ class _TodayScreenState extends State<TodayScreen> {
       }
     }
 
-    // Veille de kholle d'ANGLAIS : les mots « de colle » (⭐) doivent etre
-    // surs — un passage de cartes s'impose.
+    // Veille de kholle de LANGUE : les listes associees a la colle (ou, a
+    // defaut, les mots ⭐) doivent etre sues — un passage de cartes s'impose.
     Colle? kholleAnglais;
     for (final c in m.collesAvenir()) {
-      if (c.matiere == 'Anglais' && c.start.difference(now).inHours <= 36) {
+      if (matiereLitteraire(c.matiere) &&
+          !c.matiere.toLowerCase().contains('fran') &&
+          !c.matiere.toLowerCase().contains('philo') &&
+          c.start.difference(now).inHours <= 36) {
         kholleAnglais = c;
         break;
       }
     }
-    final vocColle = m.vocab.where((v) => v.pourColle).toList();
+    final vocColle = kholleAnglais == null
+        ? <MotVocab>[]
+        : kholleAnglais.listesVoc.isNotEmpty
+            ? m.vocabDeListes(kholleAnglais.listesVoc)
+            : m.vocab.where((v) => v.pourColle).toList();
 
     final alertes = <Widget>[
       if (m.chargementEchoue)
@@ -440,7 +447,9 @@ class _TodayScreenState extends State<TodayScreen> {
         _banniereAction(
           Colors.indigo,
           Icons.translate,
-          'Khôlle d\'anglais ${frJour(kholleAnglais.start)} — tes ${vocColle.length} mots « de colle » ⭐ doivent être sûrs. Un passage de cartes ?',
+          'Khôlle de ${kholleAnglais.matiere} ${frJour(kholleAnglais.start)} — '
+          '${kholleAnglais.listesVoc.isNotEmpty ? 'les ${vocColle.length} mots de « ${kholleAnglais.listesVoc.join(' », « ')} »' : 'tes ${vocColle.length} mots « de colle » ⭐'}'
+          ' doivent être sûrs. Un passage de cartes ?',
           'Réviser',
           () => Navigator.push(
               context,
@@ -499,6 +508,7 @@ class _TodayScreenState extends State<TodayScreen> {
       _blocJournee(edtJour, evtsJour, plage),
       if (m.citationsDues().isNotEmpty || m.vocabDus().isNotEmpty)
         _blocCartes(m),
+      _blocDemain(m, now),
       _blocHeures(minSem),
     ];
     final centre = _heroSoir(context, suggestions, minSem, budget);
@@ -784,6 +794,47 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
+  /// Apercu de DEMAIN : si la soiree est finie en avance (ou vide), on voit
+  /// ce qui attend — et on peut s'avancer au lieu de fermer l'app.
+  Widget _blocDemain(AppModel m, DateTime now) {
+    final demain = DateTime(now.year, now.month, now.day + 1, 19);
+    final s = suggere(m, minutes, maintenant: demain).take(3).toList();
+    return _carte(
+      accent: Colors.deepPurple,
+      icone: Icons.skip_next_outlined,
+      titre: 'Et demain ?',
+      enfant: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (s.isEmpty)
+            Text('Rien de prévu pour l\'instant.',
+                style: TextStyle(
+                    fontSize: 13, color: couleurSecondaire(context)))
+          else ...[
+            for (final x in s)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  '• ${x.matiere} — ${x.titre}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Fini en avance ce soir ? Avance là-dessus — le plan de demain s\'allégera tout seul.',
+                style: TextStyle(
+                    fontSize: 11.5, color: couleurSecondaire(context)),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _blocARendre(List<Devoir> aRendre, DateTime now) {
     return _carte(
       accent: Colors.orange,
@@ -973,11 +1024,15 @@ class _TodayScreenState extends State<TodayScreen> {
       BuildContext context, AppModel m, DateTime now, bool etire) {
     // [etire] vient du LayoutBuilder de l'ecran : PAS de LayoutBuilder dans
     // la carte (IntrinsicHeight ne le supporte pas -> carte coupee).
+    // AUJOURD'HUI toujours a gauche (fenetre glissante) : cale sur le lundi,
+    // un samedi soir ne montrait plus que le week-end — on veut voir la
+    // SUITE, pas la semaine ecoulee.
     return _carte(
       accent: Colors.blueGrey,
       icone: Icons.view_week_outlined,
-      titre: 'Ma semaine',
-      enfant: VueSemaineColonnes(debut: mondayOf(now), etire: etire),
+      titre: 'Mes 7 prochains jours',
+      enfant: VueSemaineColonnes(
+          debut: DateTime(now.year, now.month, now.day), etire: etire),
     );
   }
 

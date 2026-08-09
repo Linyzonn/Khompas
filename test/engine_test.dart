@@ -868,19 +868,47 @@ Voici le résultat demandé :
 
   // ---------- Bilan de concours (5/2) ----------
 
-  test('deficitsConcours : coeff × points sous la barre, par matière', () {
+  test('deficitsConcours : normalisé par concours — un gros total de coeffs '
+      'n\'écrase plus les autres', () {
+    // CCINP : total de coeffs saisi = 5.
     m.resultatsConcours.add(ResultatConcours(
         concours: 'CCINP', epreuve: 'Maths', matiere: 'Maths',
-        annee: 2026, note: 6, barre: 10, coeff: 2)); // deficit 8
+        annee: 2026, note: 6, barre: 10, coeff: 2)); // 4 pts x 2/5 x 100 = 160
     m.resultatsConcours.add(ResultatConcours(
         concours: 'CCINP', epreuve: 'SII', matiere: 'SII',
         annee: 2026, note: 12, barre: 10, coeff: 3)); // au-dessus : 0
+    // Centrale : total de coeffs saisi = 10 — la meme part relative qu'a
+    // CCINP pese pareil, meme si les coeffs absolus sont plus gros.
     m.resultatsConcours.add(ResultatConcours(
         concours: 'Centrale-Supélec', epreuve: 'Maths 1', matiere: 'Maths',
-        annee: 2026, note: 8, barre: 11, coeff: 1)); // deficit 3
+        annee: 2026, note: 8, barre: 11, coeff: 6)); // 3 pts x 6/10 x 100 = 180
+    m.resultatsConcours.add(ResultatConcours(
+        concours: 'Centrale-Supélec', epreuve: 'Physique', matiere: 'Physique',
+        annee: 2026, note: 11, barre: 11, coeff: 4)); // pile la barre : 0
     final d = m.deficitsConcours();
-    expect(d['Maths'], closeTo(11, 0.001)); // 8 + 3
+    expect(d['Maths'], closeTo(340, 0.001)); // 160 + 180
     expect(d['SII'], 0);
+    expect(d['Physique'], 0);
+  });
+
+  test('deficitsConcours : même écart relatif = même poids, quel que soit le '
+      'total de coeffs du concours (Centrale 100 vs Mines 30)', () {
+    // 2 pts sous la barre, épreuve pesant 20 % de son concours — dans les
+    // deux cas, malgré des coeffs absolus très différents (20 vs 6).
+    m.resultatsConcours.add(ResultatConcours(
+        concours: 'Centrale', epreuve: 'Maths 1', matiere: 'Maths',
+        annee: 2026, note: 8, barre: 10, coeff: 20));
+    m.resultatsConcours.add(ResultatConcours(
+        concours: 'Centrale', epreuve: 'Reste', matiere: 'SII',
+        annee: 2026, note: 12, barre: 10, coeff: 80));
+    m.resultatsConcours.add(ResultatConcours(
+        concours: 'Mines', epreuve: 'Physique', matiere: 'Physique',
+        annee: 2026, note: 8, barre: 10, coeff: 6));
+    m.resultatsConcours.add(ResultatConcours(
+        concours: 'Mines', epreuve: 'Reste', matiere: 'SII',
+        annee: 2026, note: 12, barre: 10, coeff: 24));
+    final d = m.deficitsConcours();
+    expect(d['Maths'], closeTo(d['Physique']!, 0.001));
   });
 
   test('appliquerPrioritesDepuisDeficits : le plus gros déficit passe à 3',
@@ -985,7 +1013,8 @@ Voici le résultat demandé :
 
   // ---------- Oeuvres de francais ----------
 
-  test('été : bloc lecture un jour sur deux, avec rythme de pages', () {
+  test('été : la lecture revient TOUS les jours (sauf dimanche), avec rythme '
+      'de pages', () {
     m.sansCours.add(PlageSansCours(
         titre: 'Été',
         debut: DateTime(2026, 7, 1),
@@ -995,17 +1024,15 @@ Voici le résultat demandé :
         Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
     m.oeuvres.add(
         Oeuvre(titre: 'Le Rouge et le Noir', auteur: 'Stendhal', pages: 500));
-    // On cherche deux jours de semaine consecutifs (hors dimanche) : la
-    // lecture doit apparaitre sur exactement UN des deux (un jour sur 2).
+    // Deux jours de semaine consecutifs : lecture les DEUX jours — les
+    // oeuvres se lisent chaque jour de l'ete, pas un jour sur deux.
     final j1 = DateTime(2026, 8, 4, 10); // mardi
     final j2 = DateTime(2026, 8, 5, 10); // mercredi
     bool aLecture(DateTime d) => suggere(m, 180, maintenant: d)
         .any((s) => s.oeuvreId != null);
-    expect(aLecture(j1) != aLecture(j2), isTrue,
-        reason: 'la lecture doit tomber un jour sur deux');
-    // Le jour avec lecture affiche le rythme de pages.
-    final jour = aLecture(j1) ? j1 : j2;
-    final bloc = suggere(m, 180, maintenant: jour)
+    expect(aLecture(j1), isTrue);
+    expect(aLecture(j2), isTrue);
+    final bloc = suggere(m, 180, maintenant: j1)
         .firstWhere((s) => s.oeuvreId != null);
     expect(bloc.matiere, 'Français');
     expect(bloc.raison, contains('p./séance'));
@@ -1241,6 +1268,66 @@ Voici le résultat demandé :
     expect(m.citations.first.intervalleJours, 1);
     expect(m.citations.first.echecs, 1);
     expect(m.citations.first.prochaineRevision, DateTime(2026, 10, 7));
+  });
+
+  test('matières littéraires : pas de rappels de chapitres, cap sur les cartes',
+      () {
+    final now = DateTime(2026, 10, 6, 18);
+    // Un chapitre d'anglais planifie (vieille reactivation) ne doit PAS
+    // revenir en rappel espace : il n'y a rien a « revoir » en anglais.
+    m.chapitres.add(
+        Chapitre(matiere: 'Anglais', nom: 'Unit 3', etape: 1, maitrise: 2)
+          ..prochaineRevision = DateTime(2026, 10, 6)
+          ..intervalleJours = 1);
+    expect(rappelsDus(m, maintenant: now), isEmpty);
+    // Du voc est du -> la suggestion d'anglais pointe les CARTES, pas le
+    // chapitre.
+    m.addMotVocab(MotVocab(francais: 'pallier', anglais: 'to make up for'));
+    m.vocab.first.prochaineRevision = DateTime(2026, 10, 6);
+    final s = suggere(m, 120, maintenant: now);
+    final ang = s.where((x) => x.matiere == 'Anglais').toList();
+    expect(ang, isNotEmpty);
+    expect(ang.first.titre, contains('Cartes'));
+  });
+
+  test('etalerReactivation : les chapitres de langues/français sont exclus',
+      () {
+    final now = DateTime(2026, 8, 4, 10);
+    m.sansCours.add(PlageSansCours(
+        titre: 'Été',
+        debut: DateTime(2026, 7, 1),
+        fin: DateTime(2026, 8, 31),
+        type: 'ete'));
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
+    m.chapitres
+        .add(Chapitre(matiere: 'Anglais', nom: 'Unit 1', etape: 1, maitrise: 2));
+    m.chapitres.add(
+        Chapitre(matiere: 'Français', nom: 'Le thème', etape: 1, maitrise: 2));
+    final n = m.etalerReactivation(maintenant: now);
+    expect(n, 1); // seul le chapitre de Maths est planifie
+    expect(
+        m.chapitres
+            .firstWhere((c) => c.matiere == 'Anglais')
+            .prochaineRevision,
+        isNull);
+  });
+
+  test('listes de voc : noms, mots par liste, round-trip avec la khôlle', () {
+    m.addMotVocab(MotVocab(francais: 'a', anglais: 'b', liste: 'Liste 5'));
+    m.addMotVocab(MotVocab(francais: 'c', anglais: 'd', liste: 'Liste 6'));
+    m.addMotVocab(MotVocab(francais: 'e', anglais: 'f'));
+    expect(m.listesVocNoms, ['Liste 5', 'Liste 6']);
+    expect(m.vocabDeListes(['Liste 5']), hasLength(1));
+    m.colles.add(Colle(
+        matiere: 'Anglais',
+        start: DateTime(2026, 10, 8, 16),
+        listesVoc: ['Liste 5', 'Liste 6']));
+    final raw = m.exportJson();
+    reset(m);
+    m.importJson(raw);
+    expect(m.colles.first.listesVoc, ['Liste 5', 'Liste 6']);
+    expect(m.vocab.where((v) => v.liste == 'Liste 5'), hasLength(1));
   });
 
   test('sauvegarde : citations, voc, trajet et interro survivent au round-trip',

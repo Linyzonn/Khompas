@@ -100,12 +100,17 @@ List<Suggestion> suggere(AppModel m, int minutesDispo, {DateTime? maintenant}) {
 }
 
 /// Chapitres dont la revision espacee est due (aujourd'hui ou en retard).
+/// Les matieres LITTERAIRES (francais, langues) sont exclues : il n'y a
+/// rien a « revoir » dans leurs chapitres — leur revision, ce sont les
+/// cartes (voc, citations) et la preparation de la prochaine kholle.
 List<Chapitre> rappelsDus(AppModel m, {DateTime? maintenant}) {
   final now = maintenant ?? DateTime.now();
   final finJour = DateTime(now.year, now.month, now.day, 23, 59);
   return m.chapitres
       .where((c) =>
-          c.prochaineRevision != null && c.prochaineRevision!.isBefore(finJour))
+          c.prochaineRevision != null &&
+          c.prochaineRevision!.isBefore(finJour) &&
+          !matiereLitteraire(c.matiere))
       .toList()
     ..sort((a, b) => a.prochaineRevision!.compareTo(b.prochaineRevision!));
 }
@@ -458,6 +463,7 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     // Contenu conseille + consigne d'action (rappel actif).
     var quoi = '';
     var typeConsigne = 'fond';
+    String? consigneCustom;
     String? chapitreId;
     // Second demi-bloc (interleaving) : sur un long bloc SANS echeance
     // imminente, alterner deux chapitres distincts consolide mieux que
@@ -481,6 +487,41 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     } else if (e != null && e.programme.trim().isNotEmpty) {
       quoi = 'Programme : ${e.programme.trim()}';
       typeConsigne = e.genre;
+    } else if (matiereLitteraire(mat)) {
+      // Langues & francais : pas de chapitres a « revoir ». Le travail
+      // impose (DM, programme de colle) est deja servi par les branches du
+      // dessus — le temps restant va aux CARTES (voc, citations), puis a la
+      // preparation de la prochaine kholle si c'est bientot son tour.
+      final estFrancais =
+          mat.toLowerCase().contains('fran') || mat.toLowerCase().contains('philo');
+      final vocDus = m.vocabDus(maintenant: now).length;
+      final citDues = m.citationsDues(maintenant: now).length;
+      Colle? prochaine;
+      for (final c in m.collesAvenir()) {
+        if (c.matiere == mat) {
+          prochaine = c;
+          break;
+        }
+      }
+      if (!estFrancais && vocDus > 0) {
+        quoi = '🃏 Cartes : $vocDus mot(s) de voc à revoir';
+        consigneCustom =
+            'Lance la session de cartes (bloc « Cartes » du tableau de bord ou Voc d\'anglais → Réviser) : le français s\'affiche, tu sors le mot à voix haute.';
+      } else if (estFrancais && citDues > 0) {
+        quoi = '🃏 Cartes : $citDues citation(s) à revoir';
+        consigneCustom =
+            'Lance la session de cartes : l\'axe s\'affiche, tu restitues la citation ET son auteur à voix haute — l\'exercice exact de la dissert.';
+      } else if (prochaine != null) {
+        quoi =
+            'Prépare ta khôlle ${frJour(prochaine.start)}${prochaine.kholleur.isEmpty ? '' : ' (${prochaine.kholleur})'}';
+        typeConsigne = 'kholle';
+      } else if (estFrancais) {
+        quoi = 'Avance tes lectures et tes fiches de citations';
+        typeConsigne = 'fond';
+      } else {
+        quoi = 'Entretien : un article + quelques mots de voc';
+        typeConsigne = 'fond';
+      }
     } else if (aRevoir.isNotEmpty) {
       final ancien = fragiles.where((c) => c.id != aRevoir.first.id).toList();
       if (interleave && (ancien.isNotEmpty || aRevoir.length >= 2)) {
@@ -540,7 +581,7 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
       out.add(Suggestion(mat, quoi, raisons[mat] ?? '', mins,
           chapitreId: chapitreId,
           devoirId: e?.genre == 'dm' ? e?.devoirId : null,
-          consigne: consigneDe(mat, typeConsigne)));
+          consigne: consigneCustom ?? consigneDe(mat, typeConsigne)));
     }
   }
   return out;
@@ -719,7 +760,11 @@ List<Suggestion> _suggereRevisions(
 /// pour que le bilan de concours d'un 5/2 pilote l'ordre de reactivation.
 List<Chapitre> _chapitresAlternes(AppModel m, DateTime finJour,
     {bool parPriorite = false}) {
-  final aReviser = m.chapitres.where((c) => c.etape > 0).toList()
+  // Matieres litteraires exclues : pas de rotation de chapitres en langues
+  // ni en francais (leur travail passe par les cartes et les oeuvres).
+  final aReviser = m.chapitres
+      .where((c) => c.etape > 0 && !matiereLitteraire(c.matiere))
+      .toList()
     ..sort((a, b) {
       // 1. Revisions espacees dues d'abord.
       final aDue = a.prochaineRevision != null &&
@@ -910,19 +955,19 @@ List<Suggestion> _suggereEte(
     }
   }
 
-  // ---- 3 bis. Lecture des oeuvres de francais : un jour sur deux.
-  // L'ete est LE moment pour les 3 livres (l'annee ne laisse plus le temps
-  // de lire), et chaque kholle de francais de l'annee s'appuiera dessus.
+  // ---- 3 bis. Lecture des oeuvres de francais : TOUS LES JOURS l'ete
+  // (sauf le dimanche, jour de repos). L'ete est LE moment pour les 3
+  // livres — l'annee ne laisse plus le temps de lire, et chaque kholle de
+  // francais de l'annee s'appuiera dessus.
   final aLire = m.oeuvresNonFinies();
-  final jourIdx = aujourdHui.difference(kAncreRotation).inDays;
-  if (aLire.isNotEmpty && reste >= 45 && jourIdx % 2 == 0) {
+  if (aLire.isNotEmpty && reste >= 45) {
     // UN livre a la fois, dans l'ORDRE choisi (liste reordonnable) : on
     // finit le premier avant d'ouvrir le deuxieme.
     final o = aLire.first;
     var progression = '';
     if (o.pages != null && o.pages! > 0) {
       final restantes = (o.pages! - o.pageActuelle).clamp(0, o.pages!);
-      final seances = (joursAvantRentree ~/ 2).clamp(1, 99);
+      final seances = joursAvantRentree.clamp(1, 99);
       final parSeance = (restantes / seances).ceil();
       progression =
           ' · page ${o.pageActuelle}/${o.pages} — ~$parSeance p./séance pour finir avant la rentrée';

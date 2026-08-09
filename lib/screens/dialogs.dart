@@ -173,6 +173,7 @@ Future<Colle?> editColleDialog(BuildContext context, {Colle? initial}) async {
   var date = initial?.start ?? DateTime.now().add(const Duration(days: 1));
   var time = TimeOfDay(hour: initial?.start.hour ?? 16, minute: initial?.start.minute ?? 0);
   var duree = initial?.dureeMin ?? 60;
+  final listesVoc = List<String>.from(initial?.listesVoc ?? []);
 
   return showDialog<Colle>(
     context: context,
@@ -188,6 +189,9 @@ Future<Colle?> editColleDialog(BuildContext context, {Colle? initial}) async {
                 controller: matiereCtl,
                 decoration: const InputDecoration(labelText: 'Matière'),
                 textCapitalization: TextCapitalization.sentences,
+                // La section « listes de voc » apparait des que la matiere
+                // saisie est une langue.
+                onChanged: (_) => setState(() {}),
               ),
               if (m.matieres.isNotEmpty)
                 Padding(
@@ -266,6 +270,38 @@ Future<Colle?> editColleDialog(BuildContext context, {Colle? initial}) async {
                 maxLines: 3,
                 minLines: 1,
               ),
+              // Kholle de LANGUE : associer les listes de voc a savoir —
+              // la veille, le tableau de bord fait reviser CES listes.
+              if (matiereLitteraire(matiereCtl.text) &&
+                  !matiereCtl.text.toLowerCase().contains('fran') &&
+                  !matiereCtl.text.toLowerCase().contains('philo')) ...[
+                const SizedBox(height: 12),
+                const Text('Voc à savoir pour cette colle',
+                    style:
+                        TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                if (m.listesVocNoms.isEmpty)
+                  Text(
+                    'Aucune liste de voc pour l\'instant — crée ou importe ta feuille dans Chapitres → Voc d\'anglais, puis associe-la ici.',
+                    style: TextStyle(
+                        fontSize: 12, color: couleurSecondaire(context)),
+                  )
+                else
+                  Wrap(
+                    spacing: 6,
+                    children: [
+                      for (final nom in m.listesVocNoms)
+                        FilterChip(
+                          label:
+                              Text(nom, style: const TextStyle(fontSize: 12)),
+                          selected: listesVoc.contains(nom),
+                          onSelected: (v) => setState(() {
+                            v ? listesVoc.add(nom) : listesVoc.remove(nom);
+                          }),
+                        ),
+                    ],
+                  ),
+              ],
             ],
           ),
         ),
@@ -282,7 +318,8 @@ Future<Colle?> editColleDialog(BuildContext context, {Colle? initial}) async {
                 ..salle = salleCtl.text.trim()
                 ..start = start
                 ..dureeMin = duree
-                ..programme = progCtl.text.trim();
+                ..programme = progCtl.text.trim()
+                ..listesVoc = List<String>.from(listesVoc);
               Navigator.pop(context, c);
             },
             child: const Text('Enregistrer'),

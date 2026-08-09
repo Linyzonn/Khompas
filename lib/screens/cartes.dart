@@ -256,11 +256,29 @@ Future<Citation?> editCitationDialog(BuildContext context,
           FilledButton(
             onPressed: () {
               if (texteCtl.text.trim().isEmpty) return;
+              // Auteur et oeuvre sont LIES : si l'un manque, on le deduit
+              // de l'autre via les oeuvres de l'annee.
+              var auteurF = auteurCtl.text.trim();
+              var oeuvreF = oeuvreCtl.text.trim();
+              if (oeuvreF.isNotEmpty && auteurF.isEmpty) {
+                for (final o in m.oeuvres) {
+                  if (o.titre.toLowerCase() == oeuvreF.toLowerCase()) {
+                    auteurF = o.auteur;
+                    break;
+                  }
+                }
+              } else if (auteurF.isNotEmpty && oeuvreF.isEmpty) {
+                final corresp = m.oeuvres
+                    .where((o) =>
+                        o.auteur.toLowerCase() == auteurF.toLowerCase())
+                    .toList();
+                if (corresp.length == 1) oeuvreF = corresp.first.titre;
+              }
               final c = initial ?? Citation(texte: '');
               c
                 ..texte = texteCtl.text.trim()
-                ..auteur = auteurCtl.text.trim()
-                ..oeuvre = oeuvreCtl.text.trim()
+                ..auteur = auteurF
+                ..oeuvre = oeuvreF
                 ..axe = axeCtl.text.trim()
                 ..usage = usageCtl.text.trim();
               Navigator.pop(context, c);
@@ -340,40 +358,52 @@ class _VocabScreenState extends State<VocabScreen> {
                             fontSize: 12,
                             color: couleurSecondaire(context))),
                   ),
-                for (final v in m.vocab)
-                  ListTile(
-                    dense: true,
-                    title: Text('${v.francais} → ${v.anglais}',
-                        style: const TextStyle(fontSize: 14)),
-                    subtitle: v.remarque.isEmpty
-                        ? null
-                        : Text(v.remarque,
-                            style: const TextStyle(fontSize: 11.5)),
-                    onTap: () async {
-                      final edited = await _editVocabDialog(context, v);
-                      if (edited != null) m.updateMotVocab(edited);
-                      if (mounted) setState(() {});
-                    },
-                    leading: IconButton(
-                      tooltip: 'À savoir pour la khôlle',
-                      icon: Icon(
-                          v.pourColle ? Icons.star : Icons.star_border,
-                          size: 20,
-                          color: v.pourColle ? Colors.amber : null),
-                      onPressed: () {
-                        v.pourColle = !v.pourColle;
-                        m.updateMotVocab(v);
-                        setState(() {});
-                      },
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      onPressed: () {
-                        m.deleteMotVocab(v.id);
-                        setState(() {});
-                      },
-                    ),
+                // Organise par LISTES (feuilles de voc) : une kholle
+                // d'anglais peut exiger telle(s) liste(s), pas du vrac.
+                for (final liste in _listes(m)) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 2),
+                    child: Text(
+                        '${liste.isEmpty ? 'Sans liste' : liste} · ${m.vocab.where((v) => v.liste.trim() == liste).length} mot(s)',
+                        style: Theme.of(context).textTheme.titleSmall),
                   ),
+                  for (final v in m.vocab
+                      .where((v) => v.liste.trim() == liste)
+                      .toList())
+                    ListTile(
+                      dense: true,
+                      title: Text('${v.francais} → ${v.anglais}',
+                          style: const TextStyle(fontSize: 14)),
+                      subtitle: v.remarque.isEmpty
+                          ? null
+                          : Text(v.remarque,
+                              style: const TextStyle(fontSize: 11.5)),
+                      onTap: () async {
+                        final edited = await _editVocabDialog(context, v);
+                        if (edited != null) m.updateMotVocab(edited);
+                        if (mounted) setState(() {});
+                      },
+                      leading: IconButton(
+                        tooltip: 'À savoir pour la khôlle',
+                        icon: Icon(
+                            v.pourColle ? Icons.star : Icons.star_border,
+                            size: 20,
+                            color: v.pourColle ? Colors.amber : null),
+                        onPressed: () {
+                          v.pourColle = !v.pourColle;
+                          m.updateMotVocab(v);
+                          setState(() {});
+                        },
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        onPressed: () {
+                          m.deleteMotVocab(v.id);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                ],
               ],
             ),
       floatingActionButton: Column(
@@ -408,43 +438,82 @@ class _VocabScreenState extends State<VocabScreen> {
     );
   }
 
+  /// Listes presentes, triees ('' — « Sans liste » — a la fin).
+  List<String> _listes(AppModel m) {
+    final l = m.vocab.map((v) => v.liste.trim()).toSet().toList()
+      ..sort((a, b) {
+        if (a.isEmpty) return 1;
+        if (b.isEmpty) return -1;
+        return a.compareTo(b);
+      });
+    return l;
+  }
+
   Future<MotVocab?> _editVocabDialog(BuildContext context, MotVocab? initial) {
+    final m = AppModel.instance;
     final frCtl = TextEditingController(text: initial?.francais ?? '');
     final enCtl = TextEditingController(text: initial?.anglais ?? '');
     final remCtl = TextEditingController(text: initial?.remarque ?? '');
+    final listeCtl = TextEditingController(text: initial?.liste ?? '');
     var pourColle = initial?.pourColle ?? false;
     return showDialog<MotVocab>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           title: Text(initial == null ? 'Nouveau mot' : 'Modifier'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: frCtl,
-                autofocus: initial == null,
-                decoration: const InputDecoration(labelText: 'Français'),
-              ),
-              TextField(
-                controller: enCtl,
-                decoration: const InputDecoration(labelText: 'Anglais'),
-              ),
-              TextField(
-                controller: remCtl,
-                decoration: const InputDecoration(
-                    labelText: 'Remarque (facultatif)',
-                    helperText: 'Prononciation, faux-ami, contexte…'),
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: const Text('⭐ À savoir pour la khôlle',
-                    style: TextStyle(fontSize: 14)),
-                value: pourColle,
-                onChanged: (v) => setState(() => pourColle = v),
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: frCtl,
+                  autofocus: initial == null,
+                  decoration: const InputDecoration(labelText: 'Français'),
+                ),
+                TextField(
+                  controller: enCtl,
+                  decoration: const InputDecoration(labelText: 'Anglais'),
+                ),
+                TextField(
+                  controller: remCtl,
+                  decoration: const InputDecoration(
+                      labelText: 'Remarque (facultatif)',
+                      helperText: 'Prononciation, faux-ami, contexte…'),
+                ),
+                TextField(
+                  controller: listeCtl,
+                  decoration: const InputDecoration(
+                      labelText: 'Liste',
+                      helperText:
+                          'La feuille d\'origine (ex. « Liste 5 ») — une khôlle peut exiger telle liste.'),
+                ),
+                if (m.listesVocNoms.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Wrap(
+                      spacing: 6,
+                      children: [
+                        for (final nom in m.listesVocNoms)
+                          ActionChip(
+                            label: Text(nom,
+                                style: const TextStyle(fontSize: 12)),
+                            onPressed: () =>
+                                setState(() => listeCtl.text = nom),
+                          ),
+                      ],
+                    ),
+                  ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('⭐ À savoir pour la khôlle',
+                      style: TextStyle(fontSize: 14)),
+                  value: pourColle,
+                  onChanged: (v) => setState(() => pourColle = v),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -460,6 +529,7 @@ class _VocabScreenState extends State<VocabScreen> {
                   ..francais = frCtl.text.trim()
                   ..anglais = enCtl.text.trim()
                   ..remarque = remCtl.text.trim()
+                  ..liste = listeCtl.text.trim()
                   ..pourColle = pourColle;
                 Navigator.pop(context, v);
               },

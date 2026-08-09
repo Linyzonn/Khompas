@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'cartes.dart';
 import 'dialogs.dart';
 import 'import_chapitres.dart';
 
@@ -28,6 +29,52 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
   void _importer(BuildContext context) {
     Navigator.push(context,
         MaterialPageRoute(builder: (_) => const ImportChapitresScreen()));
+  }
+
+  /// Petite tuile d'acces aux cartes (citations / voc) en tete d'onglet.
+  Widget _accesCartes(BuildContext context, String emoji, String titre,
+      String sousTitre, Future<dynamic> Function() ouvrir) {
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () async {
+          await ouvrir();
+          if (mounted) setState(() {});
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(titre,
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600)),
+                    Text(sousTitre,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: couleurSecondaire(context))),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 16),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   bool _garde(Chapitre c) {
@@ -104,6 +151,44 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
       body: ListView(
         padding: const EdgeInsets.only(bottom: 90),
         children: [
+          // ---- Cartes (citations, voc) : le savoir « hors chapitres »,
+          // accessible ICI plutot qu'au fond des reglages. ----
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _accesCartes(
+                    context,
+                    '📜',
+                    'Citations',
+                    m.citations.isEmpty
+                        ? 'Français-philo'
+                        : '${m.citations.length} · ${m.citationsDues().length} à revoir',
+                    () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const CitationsScreen())),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _accesCartes(
+                    context,
+                    '🇬🇧',
+                    'Voc d\'anglais',
+                    m.vocab.isEmpty
+                        ? 'Par listes'
+                        : '${m.vocab.length} · ${m.vocabDus().length} à revoir',
+                    () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const VocabScreen())),
+                  ),
+                ),
+              ],
+            ),
+          ),
           // ---- Recherche + filtres ----
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
