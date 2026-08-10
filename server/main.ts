@@ -936,7 +936,10 @@ export async function gerer(
     // toujours un ensemble COHERENT (avant, il pouvait melanger ancien et
     // nouveau pendant l'ecriture). Les versions precedentes (et l'ancien
     // schema non versionne) sont purgees apres coup.
-    const maj = Date.now();
+    // Version STRICTEMENT croissante : deux pushes dans la MEME milliseconde
+    // (vu sur le runner CI) recevaient le meme numero, et un appareil
+    // perime passait alors la garde — au moins prev+1, toujours.
+    const maj = Math.max(Date.now(), (metaPrev.maj ?? 0) + 1);
     let n = 0;
     for (; n * CHUNK < corps.length; n++) {
       await kv.set(
