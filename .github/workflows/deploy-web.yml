@@ -23,6 +23,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
       - name: Générer le squelette web
         run: flutter create . --platforms=web --project-name khompas
       - run: flutter pub get

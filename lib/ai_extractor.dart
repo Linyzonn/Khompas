@@ -74,14 +74,27 @@ Réponds UNIQUEMENT avec ce JSON, sans aucun texte autour :
   }
   clean = clean.substring(start, end + 1);
 
+  final warnings = <String>[];
   Map<String, dynamic>? j;
   try {
     j = jsonDecode(clean) as Map<String, dynamic>;
   } catch (_) {
-    j = null;
+    // Reponse tronquee en plein vol : REPARATION propre d'abord (fermeture
+    // des crochets restes ouverts) — le repechage regex ci-dessous perdait
+    // les elements contenant des accolades DANS une chaine ("ensembles
+    // {1;2}"), la reparation les conserve.
+    final repare = repareJsonTronque(clean);
+    if (repare != null) {
+      try {
+        j = jsonDecode(repare) as Map<String, dynamic>;
+        warnings.add(
+            "Réponse de l'IA incomplète (réparée) : les éléments de fin peuvent manquer — vérifie et relance l'extraction au besoin.");
+      } catch (_) {
+        j = null;
+      }
+    }
   }
 
-  final warnings = <String>[];
   List<dynamic> bruts;
   if (j != null) {
     bruts = (j[cleListe] ?? []) as List;

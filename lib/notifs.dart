@@ -67,11 +67,77 @@ class Notifs {
       'Veilles d\'échéances',
       channelDescription:
           'Rappels la veille au soir : khôlle ou oral demain, DM à rendre.',
-      importance: Importance.defaultImportance,
-      priority: Priority.defaultPriority,
+      // High : UNE notif par jour maximum (anti-spam assume), mais celle-la
+      // doit se voir — en defaultImportance, pas de heads-up Android et la
+      // veille de kholle passait inaperçue.
+      importance: Importance.high,
+      priority: Priority.high,
     ),
     iOS: DarwinNotificationDetails(),
   );
+
+  /// Ce qui merite une veille, TRIE par date : l'extrait PUR de
+  /// [replanifier], testable sans plugin (le tri-avant-plafond iOS est
+  /// exactement le genre de logique qui regresse en silence). Retourne des
+  /// triplets (date de l'evenement, titre, corps).
+  static List<(DateTime, String, String)> veillesAPlannifier(AppModel m,
+      {DateTime? maintenant}) {
+    final now = maintenant ?? DateTime.now();
+    // On COLLECTE tout, puis on trie par date avant de planifier : le
+    // plafond iOS (64 notifications en attente) doit couper les
+    // evenements les plus LOINTAINS — pas ceux traites en dernier dans
+    // le code (avant, c'etaient les jalons critiques 🚨 qui sautaient).
+    final aPlannifier = <(DateTime, String, String)>[];
+
+    if (m.notifVeilleKholle) {
+      for (final c in m.colles) {
+        if (!c.end.isAfter(now)) continue;
+        aPlannifier.add((
+          c.start,
+          'Khôlle demain — ${c.matiere}',
+          '${frHeure(c.start)}'
+              '${c.salle.isEmpty ? '' : ' · salle ${c.salle}'}'
+              '${c.kholleur.isEmpty ? '' : ' · ${c.kholleur}'}'
+              '${c.programme.trim().isEmpty ? '\n⚠ Programme manquant — colle-le dans l\'app' : '\n📋 ${c.programme}'}',
+        ));
+      }
+      for (final o in m.oraux) {
+        if (o.date == null || o.date!.isBefore(now)) continue;
+        aPlannifier.add((
+          o.date!,
+          'Oral demain — ${o.concours}',
+          '${o.epreuve}'
+              '${o.debutMin == null ? '' : ' · ${o.debutMin! ~/ 60}h${(o.debutMin! % 60).toString().padLeft(2, '0')}'}'
+              '${o.lieu.isEmpty ? '' : ' · ${o.lieu}'}',
+        ));
+      }
+    }
+
+    if (m.notifVeilleDm) {
+      for (final d in m.devoirsARendre()) {
+        if (d.dateRendu.isBefore(now)) continue;
+        aPlannifier.add((
+          d.dateRendu,
+          'À rendre demain — ${d.matiere}',
+          '${d.titre}${d.remarque.isEmpty ? '' : ' · ${d.remarque}'}',
+        ));
+      }
+    }
+
+    // Jalons critiques (🚨 SCEI, MCOT…) : toujours notifies la veille,
+    // quels que soient les sous-reglages — les rater coute une annee.
+    for (final e in m.evenements) {
+      if (!e.titre.contains('🚨') || e.date.isBefore(now)) continue;
+      aPlannifier.add((
+        e.date,
+        'Demain — ${e.titre.replaceAll('🚨 ', '')}',
+        'Ne le rate pas : vérifie l\'heure exacte sur le site du concours.',
+      ));
+    }
+
+    aPlannifier.sort((a, b) => a.$1.compareTo(b.$1));
+    return aPlannifier;
+  }
 
   /// Annule tout puis replanifie selon l'etat actuel des donnees.
   /// Appele au demarrage et (debounce) apres chaque modification.
@@ -99,59 +165,7 @@ class Notifs {
         return tz.TZDateTime.from(quand, tz.local);
       }
 
-      // On COLLECTE tout, puis on trie par date avant de planifier : le
-      // plafond iOS (64 notifications en attente) doit couper les
-      // evenements les plus LOINTAINS — pas ceux traites en dernier dans
-      // le code (avant, c'etaient les jalons critiques 🚨 qui sautaient).
-      final aPlannifier = <(DateTime, String, String)>[];
-
-      if (m.notifVeilleKholle) {
-        for (final c in m.collesAvenir()) {
-          aPlannifier.add((
-            c.start,
-            'Khôlle demain — ${c.matiere}',
-            '${frHeure(c.start)}'
-                '${c.salle.isEmpty ? '' : ' · salle ${c.salle}'}'
-                '${c.kholleur.isEmpty ? '' : ' · ${c.kholleur}'}'
-                '${c.programme.trim().isEmpty ? '\n⚠ Programme manquant — colle-le dans l\'app' : '\n📋 ${c.programme}'}',
-          ));
-        }
-        for (final o in m.oraux) {
-          if (o.date == null || o.date!.isBefore(now)) continue;
-          aPlannifier.add((
-            o.date!,
-            'Oral demain — ${o.concours}',
-            '${o.epreuve}'
-                '${o.debutMin == null ? '' : ' · ${o.debutMin! ~/ 60}h${(o.debutMin! % 60).toString().padLeft(2, '0')}'}'
-                '${o.lieu.isEmpty ? '' : ' · ${o.lieu}'}',
-          ));
-        }
-      }
-
-      if (m.notifVeilleDm) {
-        for (final d in m.devoirsARendre()) {
-          if (d.dateRendu.isBefore(now)) continue;
-          aPlannifier.add((
-            d.dateRendu,
-            'À rendre demain — ${d.matiere}',
-            '${d.titre}${d.remarque.isEmpty ? '' : ' · ${d.remarque}'}',
-          ));
-        }
-      }
-
-      // Jalons critiques (🚨 SCEI, MCOT…) : toujours notifies la veille,
-      // quels que soient les sous-reglages — les rater coute une annee.
-      for (final e in m.evenements) {
-        if (!e.titre.contains('🚨') || e.date.isBefore(now)) continue;
-        aPlannifier.add((
-          e.date,
-          'Demain — ${e.titre.replaceAll('🚨 ', '')}',
-          'Ne le rate pas : vérifie l\'heure exacte sur le site du concours.',
-        ));
-      }
-
-      aPlannifier.sort((a, b) => a.$1.compareTo(b.$1));
-      for (final n in aPlannifier) {
+      for (final n in veillesAPlannifier(m, maintenant: now)) {
         if (id > 60) break; // marge sous le plafond iOS de 64
         final quand = veilleDe(n.$1);
         if (quand == null) continue;

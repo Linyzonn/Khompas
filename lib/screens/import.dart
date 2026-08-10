@@ -371,7 +371,7 @@ class _ImportScreenState extends State<ImportScreen> {
                       "Quelqu'un de ta classe a déjà créé un code ? Entre-le : "
                       'tes khôlles arrivent toutes seules — sans photo, sans clé.',
                       style:
-                          TextStyle(fontSize: 13, color: Colors.grey.shade800),
+                          TextStyle(fontSize: 13, color: couleurSecondaire(context)),
                     ),
                     const SizedBox(height: 10),
                     Row(
@@ -464,7 +464,11 @@ class _ImportScreenState extends State<ImportScreen> {
                           ? Container(
                               height: 110,
                               width: 150,
-                              color: Colors.grey.shade200,
+                              // Suit le theme (grey.shade200 en dur donnait
+                              // du texte clair sur fond clair en sombre).
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -546,7 +550,7 @@ class _ImportScreenState extends State<ImportScreen> {
                 '1. Copie le prompt (bouton ci-dessous).\n'
                 '2. Dans ton appli d\'IA, joins la ou les photos du colloscope et colle le prompt.\n'
                 '3. Copie toute sa réponse, reviens ici et colle-la.',
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
+                style: TextStyle(fontSize: 13, color: couleurSecondaire(context)),
               ),
             ),
           ),

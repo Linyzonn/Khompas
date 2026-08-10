@@ -110,11 +110,20 @@ class ApiKhompas {
   /// Envoie la sauvegarde complete du compte (remplace la precedente).
   /// Retourne la VERSION serveur resultante (memorisee par l'app pour
   /// detecter plus tard qu'un autre appareil a pousse entre temps).
-  Future<int> envoyerCompte(String cle, String data) async {
+  /// [versionConnue] : la derniere version serveur que CET appareil a vue —
+  /// le serveur refuse (409) si un autre appareil a pousse depuis. Plus
+  /// fiable que l'horodatage client (les horloges de telephone derivent).
+  Future<int> envoyerCompte(String cle, String data,
+      {int versionConnue = 0}) async {
     final r = await http
         .put(
           Uri.parse('$base/api/compte/data'),
-          headers: {'content-type': 'text/plain', 'x-khompas-cle': cle},
+          headers: {
+            'content-type': 'text/plain',
+            'x-khompas-cle': cle,
+            if (versionConnue > 0)
+              'x-khompas-version-connue': versionConnue.toString(),
+          },
           body: data,
         )
         .timeout(const Duration(seconds: 45));
@@ -123,6 +132,28 @@ class ApiKhompas {
                 as Map<String, dynamic>)['version'] as num?)
             ?.toInt() ??
         0;
+  }
+
+  /// Supprime le COMPTE du serveur (donnees + profil) — RGPD : la classe
+  /// avait son DELETE, le compte y a droit aussi. Irreversible cote serveur.
+  Future<void> supprimerCompte(String cle) async {
+    final r = await http.delete(
+      Uri.parse('$base/api/compte'),
+      headers: {'x-khompas-cle': cle},
+    ).timeout(const Duration(seconds: 30));
+    if (r.statusCode != 200) _lance(r);
+  }
+
+  /// Jeton du flux ICS abonne (idempotent : toujours le meme pour un
+  /// compte). L'URL complete est '$base/api/compte/ics?j=JETON'.
+  Future<String> creerJetonIcs(String cle) async {
+    final r = await http.post(
+      Uri.parse('$base/api/compte/ics-jeton'),
+      headers: {'x-khompas-cle': cle},
+    ).timeout(const Duration(seconds: 30));
+    if (r.statusCode != 200) _lance(r);
+    return (jsonDecode(utf8.decode(r.bodyBytes))
+        as Map<String, dynamic>)['jeton'] as String;
   }
 
   /// (version, donnees) du compte, ou null si le compte n'a rien envoye.

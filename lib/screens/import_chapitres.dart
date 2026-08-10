@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../ai_extractor.dart';
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 
 /// Import des chapitres depuis le PROGRAMME OFFICIEL de la filiere
 /// (prepa.org ou PDF officiel), par copier-coller avec son IA — gratuit.
@@ -122,7 +123,7 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
                 '5/2 : colle les programmes de 1re ET 2e année si tu veux tout '
                 'réviser (les concours portent sur les deux), et active '
                 'l\'interrupteur 5/2 plus bas.',
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
+                style: TextStyle(fontSize: 13, color: couleurSecondaire(context)),
               ),
             ),
           ),
@@ -184,17 +185,28 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
             const SizedBox(height: 16),
             if (avertissements.isNotEmpty)
               Card(
-                color: Colors.amber.shade100,
+                // Couleurs du THEME (pas d'amber.shade100 en dur) : en mode
+                // sombre, le texte clair sur fond ambre clair etait illisible.
+                color: Theme.of(context).colorScheme.tertiaryContainer,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text("Points à vérifier signalés par l'IA :",
-                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text("Points à vérifier signalés par l'IA :",
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onTertiaryContainer)),
                       const SizedBox(height: 6),
                       for (final w in avertissements)
-                        Text('• $w', style: const TextStyle(fontSize: 13)),
+                        Text('• $w',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onTertiaryContainer)),
                     ],
                   ),
                 ),

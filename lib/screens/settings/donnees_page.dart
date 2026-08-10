@@ -24,6 +24,8 @@ class DonneesPage extends StatefulWidget {
 class _DonneesPageState extends State<DonneesPage> {
   late final TextEditingController serverCtl;
   late final TextEditingController keyCtl;
+  // Une copie de secours (.corrompu) existe-t-elle sur cet appareil ?
+  bool copieSecoursExiste = false;
 
   @override
   void initState() {
@@ -31,6 +33,11 @@ class _DonneesPageState extends State<DonneesPage> {
     final m = AppModel.instance;
     serverCtl = TextEditingController(text: m.serverUrl);
     keyCtl = TextEditingController(text: m.apiKey);
+    m.lireCopieSecours().then((raw) {
+      if (mounted && raw != null && raw.trim().isNotEmpty) {
+        setState(() => copieSecoursExiste = true);
+      }
+    });
   }
 
   @override
@@ -121,6 +128,70 @@ class _DonneesPageState extends State<DonneesPage> {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Restauration impossible : $msg')));
       }
+    }
+  }
+
+  // ---------- Copie de secours (.corrompu) ----------
+
+  Future<void> _restaurerSecours() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Récupérer la copie de secours ?'),
+        content: const Text(
+            'La copie créée quand des données étaient illisibles sera '
+            'restaurée (réparée automatiquement si sa fin est tronquée). '
+            'Les données ACTUELLES de l\'appareil seront remplacées.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Récupérer')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final resume = await AppModel.instance.restaurerCopieSecours();
+      if (mounted) _snack('Copie de secours restaurée ✅ ($resume)', secondes: 7);
+    } catch (e) {
+      if (mounted) {
+        _snack(
+            'Récupération impossible : ${e.toString().replaceFirst('Exception: ', '')}',
+            secondes: 8);
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _exporterSecours() async {
+    final raw = await AppModel.instance.lireCopieSecours();
+    if (raw == null || raw.trim().isEmpty) {
+      if (mounted) _snack('Aucune copie de secours sur cet appareil.');
+      return;
+    }
+    try {
+      if (kIsWeb) {
+        await Clipboard.setData(ClipboardData(text: raw));
+        if (mounted) {
+          _snack(
+              'Copie brute dans le presse-papiers ✅ Colle-la dans un fichier texte pour la réparer ou demander de l\'aide.',
+              secondes: 7);
+        }
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/khompas-copie-secours.json');
+      await f.writeAsString(raw);
+      await Share.shareXFiles(
+        [XFile(f.path, mimeType: 'application/json')],
+        text:
+            'Copie de secours Khompas (données brutes) — à garder pour réparation.',
+      );
+    } catch (e) {
+      if (mounted) _snack('Échec de l\'export : $e');
     }
   }
 
@@ -278,6 +349,39 @@ class _DonneesPageState extends State<DonneesPage> {
               ),
             ],
           ),
+          if (copieSecoursExiste || AppModel.instance.chargementEchoue) ...[
+            const SizedBox(height: 24),
+            Text('Copie de secours',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Une copie automatique a été créée quand des données étaient '
+              'illisibles. Tu peux tenter de la restaurer (réparation '
+              'automatique des fins de fichier tronquées), ou l\'exporter '
+              'brute pour la réparer à la main.',
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.healing_outlined),
+                    label: const Text('Récupérer'),
+                    onPressed: _restaurerSecours,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.ios_share),
+                    label: const Text('Exporter brute'),
+                    onPressed: _exporterSecours,
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 24),
           Text('Repartir de zéro',
               style: Theme.of(context).textTheme.titleMedium),

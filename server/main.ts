@@ -29,7 +29,15 @@ const MAX_PHOTOS = 5;
 const MAX_B64_PAR_PHOTO = 4_000_000; // ~2,8 Mo une fois decode (photo ou PDF)
 const CHUNK = 60_000; // Deno KV limite chaque valeur a 64 Ko
 const LIMITE_IP_JOUR = 30; // extractions max / appareil / jour
-const LIMITE_GLOBALE_JOUR = 200; // extractions max / jour (protege le budget)
+// Extractions max / jour, toutes classes confondues. Assez haut pour le PIC
+// DE LA RENTREE (des dizaines de classes le meme jour) : a 200, une seule
+// personne malveillante avec quelques IP pouvait assecher le quota de tout
+// le monde le jour ou l'app se joue. Le cout reel par extraction est nul.
+const LIMITE_GLOBALE_JOUR = 1000;
+// Donnees de compte : ~1 Mo (17 chunks). L'ancienne limite de 256 Ko etait
+// atteignable EN UNE ANNEE par un utilisateur assidu (kholles + voc +
+// citations + bilans) — et la synchro mourait alors en silence.
+const MAX_DONNEES_COMPTE = 1_000_000;
 const TTL = 400 * 24 * 3600 * 1000; // ~13 mois, en millisecondes
 // Les PHOTOS de colloscope (noms de kholleurs = donnees de tiers) expirent
 // bien avant le reste : ~4 mois couvrent le semestre + retardataires.
@@ -50,7 +58,7 @@ function cors(h: Headers = new Headers()): Headers {
   h.set('access-control-allow-origin', '*');
   h.set(
     'access-control-allow-headers',
-    'content-type, x-khompas-cle, x-khompas-gestion',
+    'content-type, x-khompas-cle, x-khompas-gestion, x-khompas-version-connue',
   );
   h.set('access-control-allow-methods', 'GET,POST,PUT,DELETE,OPTIONS');
   return h;
@@ -81,8 +89,9 @@ function genCode(): string {
 }
 
 // MEME prompt que buildPromptColloscope() dans lib/ai_extractor.dart :
-// si tu changes l'un, change l'autre.
-function promptColloscope(groupe: number): string {
+// si tu changes l'un, change l'autre — un test (main_test.ts) compare les
+// deux textes et echoue si l'un diverge de l'autre. Exporte pour ce test.
+export function promptColloscope(groupe: number): string {
   const now = new Date();
   const anneeDebut = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1;
   const anneeFin = anneeDebut + 1;
@@ -185,6 +194,25 @@ async function lirePhotos(code: string): Promise<Piece[] | null> {
   return out;
 }
 
+// Donnees completes d'un compte (chunks versionnes, repli sur l'ancien
+// schema plat), ou null si le compte n'a rien envoye.
+async function lireDonneesCompte(id: string): Promise<string | null> {
+  const meta = await kv.get(['accm', id]);
+  if (!meta.value) return null;
+  const { maj, chunks } = meta.value as { maj: number; chunks: number };
+  let data = '';
+  for (let i = 0; i < chunks; i++) {
+    const part = await kv.get(['accd', id, maj, i]);
+    if (part.value != null) {
+      data += part.value as string;
+      continue;
+    }
+    const ancien = await kv.get(['accd', id, i]);
+    data += (ancien.value as string | null) ?? '';
+  }
+  return data;
+}
+
 async function extraire(pieces: Piece[], groupe: number): Promise<string> {
   const cleGemini = Deno.env.get('GEMINI_API_KEY');
   const cleClaude = Deno.env.get('ANTHROPIC_API_KEY');
@@ -195,7 +223,173 @@ async function extraire(pieces: Piece[], groupe: number): Promise<string> {
   );
 }
 
-async function extraireGemini(
+// ---------- ICS (flux d'agenda ABONNE, par compte) ----------
+// L'agenda du telephone s'abonne a une URL et se met a jour tout seul :
+// kholles, DS, DM a rendre, oraux. Heures FLOTTANTES (pas de fuseau) comme
+// l'export local de l'app — interpretees dans le fuseau du telephone.
+
+function icsEsc(s: string): string {
+  return s.replaceAll('\\', '\\\\').replaceAll('\n', '\\n')
+    .replaceAll(';', '\\;').replaceAll(',', '\\,');
+}
+
+// Pliage RFC 5545 §3.1 : lignes <= 75 octets, continuation par un espace,
+// sans couper un caractere UTF-8 ni une sequence echappee ("\\n", "\\,").
+function icsPlie(s: string): string {
+  const enc = new TextEncoder();
+  let out = '';
+  let octets = 0;
+  const chars = [...s];
+  for (let i = 0; i < chars.length; i++) {
+    let chunk = chars[i];
+    if (chunk === '\\' && i + 1 < chars.length) {
+      chunk += chars[i + 1];
+      i++;
+    }
+    const taille = enc.encode(chunk).length;
+    if (octets + taille > 75) {
+      out += '\r\n ';
+      octets = 1;
+    }
+    out += chunk;
+    octets += taille;
+  }
+  return out;
+}
+
+// "2026-09-19T16:00:00.000" -> "20260919T160000" (par decoupage de chaine :
+// aucun parsing de Date, donc aucun piege de fuseau serveur).
+function icsDeIso(iso: string): string | null {
+  if (typeof iso !== 'string' || iso.length < 16) return null;
+  return iso.slice(0, 4) + iso.slice(5, 7) + iso.slice(8, 10) + 'T' +
+    iso.slice(11, 13) + iso.slice(14, 16) + '00';
+}
+
+function icsDateSeule(iso: string): string | null {
+  if (typeof iso !== 'string' || iso.length < 10) return null;
+  return iso.slice(0, 4) + iso.slice(5, 7) + iso.slice(8, 10);
+}
+
+// deno-lint-ignore no-explicit-any
+export function construireIcs(brut: Record<string, any>): string {
+  const lignes: string[] = [];
+  const l = (s: string) => lignes.push(icsPlie(s));
+  const two = (n: number) => String(n).padStart(2, '0');
+  const now = new Date();
+  const stampUtc = `${now.getUTCFullYear()}${two(now.getUTCMonth() + 1)}${
+    two(now.getUTCDate())
+  }T${two(now.getUTCHours())}${two(now.getUTCMinutes())}00Z`;
+
+  l('BEGIN:VCALENDAR');
+  l('VERSION:2.0');
+  l('PRODID:-//Khompas//Agenda abonne//FR');
+  l('CALSCALE:GREGORIAN');
+  l('X-WR-CALNAME:Khompas');
+
+  const evenement = (
+    uid: string,
+    resume: string,
+    options: {
+      debut?: string | null;
+      fin?: string | null;
+      jour?: string | null;
+      description?: string;
+      lieu?: string;
+      alarmeMin?: number;
+    },
+  ) => {
+    if (!options.debut && !options.jour) return;
+    l('BEGIN:VEVENT');
+    l(`UID:khompas-${uid}@khompas.app`);
+    l(`DTSTAMP:${stampUtc}`);
+    if (options.jour) {
+      l(`DTSTART;VALUE=DATE:${options.jour}`);
+    } else {
+      l(`DTSTART:${options.debut}`);
+      if (options.fin) l(`DTEND:${options.fin}`);
+    }
+    l(`SUMMARY:${icsEsc(resume)}`);
+    if (options.description) l(`DESCRIPTION:${icsEsc(options.description)}`);
+    if (options.lieu) l(`LOCATION:${icsEsc(options.lieu)}`);
+    if (options.alarmeMin) {
+      l('BEGIN:VALARM');
+      l(`TRIGGER:-PT${options.alarmeMin}M`);
+      l('ACTION:DISPLAY');
+      l(`DESCRIPTION:${icsEsc(resume)}`);
+      l('END:VALARM');
+    }
+    l('END:VEVENT');
+  };
+
+  // Fin d'une kholle : debut + duree, calcule sur les composants (pas de
+  // fuseau implique — l'heure reste flottante).
+  const finDe = (iso: string, dureeMin: number): string | null => {
+    const debut = icsDeIso(iso);
+    if (!debut) return null;
+    const h = Number(iso.slice(11, 13));
+    const min = Number(iso.slice(14, 16));
+    const total = h * 60 + min + (Number(dureeMin) || 60);
+    if (total >= 24 * 60) return debut; // depasse minuit : on omet DTEND
+    return debut.slice(0, 9) + two(Math.floor(total / 60)) + two(total % 60) +
+      '00';
+  };
+
+  for (const c of (Array.isArray(brut.colles) ? brut.colles : [])) {
+    const salle = c.salle ? ` (salle ${c.salle})` : '';
+    const desc: string[] = [];
+    if (c.kholleur) desc.push(`Khôlleur : ${c.kholleur}`);
+    if (c.programme) desc.push(`Programme : ${c.programme}`);
+    evenement(String(c.id ?? ''), `Khôlle ${c.matiere ?? ''}${salle}`, {
+      debut: icsDeIso(c.start),
+      fin: finDe(c.start, c.dureeMin),
+      description: desc.join(' — ') || undefined,
+      lieu: c.salle ? `Salle ${c.salle}` : undefined,
+      alarmeMin: 60,
+    });
+  }
+  for (const d of (Array.isArray(brut.ds) ? brut.ds : [])) {
+    evenement(String(d.id ?? ''), `📝 ${d.titre ?? 'DS'} ${d.matiere ?? ''}`, {
+      jour: icsDateSeule(d.date),
+    });
+  }
+  for (const d of (Array.isArray(brut.devoirs) ? brut.devoirs : [])) {
+    if (d.rendu) continue;
+    evenement(
+      String(d.id ?? ''),
+      `📥 ${d.titre ?? 'DM'} ${d.matiere ?? ''} à rendre`,
+      {
+        jour: icsDateSeule(d.dateRendu),
+        description: d.remarque || undefined,
+      },
+    );
+  }
+  for (const o of (Array.isArray(brut.oraux) ? brut.oraux : [])) {
+    if (!o.date) continue;
+    const jour = icsDateSeule(o.date);
+    if (o.debutMin == null) {
+      evenement(String(o.id ?? ''), `🎓 Oral ${o.concours ?? ''} — ${o.epreuve ?? ''}`, {
+        jour,
+        lieu: o.lieu || undefined,
+      });
+    } else {
+      const debut = jour
+        ? `${jour}T${two(Math.floor(o.debutMin / 60))}${two(o.debutMin % 60)}00`
+        : null;
+      evenement(String(o.id ?? ''), `🎓 Oral ${o.concours ?? ''} — ${o.epreuve ?? ''}`, {
+        debut,
+        lieu: o.lieu || undefined,
+        alarmeMin: 120,
+      });
+    }
+  }
+
+  l('END:VCALENDAR');
+  return lignes.join('\r\n') + '\r\n';
+}
+
+// Exportee pour les tests (fetch mocke) : c'est CETTE machine a etats qui
+// casse si Google retire encore un modele — elle merite son filet.
+export async function extraireGemini(
   cle: string,
   pieces: Piece[],
   groupe: number,
@@ -642,6 +836,17 @@ export async function gerer(
     return null;
   };
 
+  // Auth de compte AVEC anti brute-force : l'espace des secrets (31^12)
+  // rend l'attaque irrealiste, mais compter les echecs coute 3 lignes
+  // (defense en profondeur). Au-dela de 50 essais rates / IP / jour : 429.
+  // Retourne l'ID du compte, ou la Response d'erreur a renvoyer telle quelle.
+  const authOuRefus = async (): Promise<string | Response> => {
+    const id = await compteAuth();
+    if (id) return id;
+    const abus = await compterAbus('auth', 50);
+    return abus ? erreur(abus, 429) : erreur('Clé de compte invalide.', 401);
+  };
+
   if (p === '/api/comptes' && req.method === 'POST') {
     // Garde-fou : 10 creations de compte max par appareil et par jour.
     const jour = new Date().toISOString().slice(0, 10);
@@ -674,19 +879,41 @@ export async function gerer(
   }
 
   if (p === '/api/compte/data' && req.method === 'PUT') {
-    const id = await compteAuth();
-    if (!id) return erreur('Clé de compte invalide.', 401);
+    const auth = await authOuRefus();
+    if (auth instanceof Response) return auth;
+    const id = auth;
     // Rejeter les corps enormes AVANT de les materialiser en memoire.
     const annonce = Number(req.headers.get('content-length') ?? '0');
-    if (annonce > 300_000) return erreur('Données trop volumineuses.', 413);
+    if (annonce > MAX_DONNEES_COMPTE + 100_000) {
+      return erreur('Données trop volumineuses.', 413);
+    }
     const corps = await req.text();
     if (!corps.trim()) return erreur('Données vides.', 400);
-    if (corps.length > 256_000) return erreur('Données trop volumineuses.', 413);
-    // Garde anti-ecrasement : la sauvegarde porte son horodatage
-    // (exportedAt). Si le serveur detient deja une version PLUS RECENTE
-    // (poussee par un autre appareil), on refuse — l'app affiche alors un
-    // bandeau et propose « Récupérer ». Sans horodatage lisible (vieux
-    // client), on accepte comme avant.
+    if (corps.length > MAX_DONNEES_COMPTE) {
+      return erreur('Données trop volumineuses.', 413);
+    }
+    const metaAvant = await kv.get(['accm', id]);
+    // Garde anti-ecrasement, par VERSION SERVEUR : l'app envoie la derniere
+    // version qu'elle connait (x-khompas-version-connue). Si le serveur en
+    // detient une autre, un autre appareil a pousse entre temps -> 409,
+    // l'app affiche le bandeau « Récupérer ». Fiable meme quand l'horloge
+    // du telephone derive (l'ancienne garde comparait des horodatages
+    // ECRITS PAR LES CLIENTS).
+    const versionConnue = Number(
+      req.headers.get('x-khompas-version-connue') ?? '0',
+    );
+    const metaPrev = (metaAvant.value ?? {}) as {
+      maj?: number;
+      exportedAt?: number;
+    };
+    if (versionConnue && metaPrev.maj && versionConnue !== metaPrev.maj) {
+      return erreur(
+        'Ton autre appareil a des données plus récentes — fais « Récupérer » dans Réglages → Compte avant de pousser depuis celui-ci.',
+        409,
+      );
+    }
+    // Repli pour les VIEUX clients (pas d'en-tete de version) : l'ancienne
+    // garde par horodatage client, imparfaite mais mieux que rien.
     let exportedAt = 0;
     try {
       const t = Date.parse(JSON.parse(corps).exportedAt ?? '');
@@ -694,28 +921,39 @@ export async function gerer(
     } catch (_) {
       // corps illisible en JSON : pas de garde
     }
-    const metaAvant = await kv.get(['accm', id]);
-    const prev = (metaAvant.value ?? {}) as { exportedAt?: number };
-    if (exportedAt && prev.exportedAt && exportedAt < prev.exportedAt) {
+    const prev = metaPrev;
+    if (
+      !versionConnue && exportedAt && prev.exportedAt &&
+      exportedAt < prev.exportedAt
+    ) {
       return erreur(
         'Ton autre appareil a des données plus récentes — fais « Récupérer » dans Réglages → Compte avant de pousser depuis celui-ci.',
         409,
       );
     }
+    // Ecriture VERSIONNEE : les chunks partent sous ['accd', id, maj, n] et
+    // la meta ne bascule vers maj qu'a la fin — un GET concurrent lit donc
+    // toujours un ensemble COHERENT (avant, il pouvait melanger ancien et
+    // nouveau pendant l'ecriture). Les versions precedentes (et l'ancien
+    // schema non versionne) sont purgees apres coup.
+    const maj = Date.now();
     let n = 0;
     for (; n * CHUNK < corps.length; n++) {
-      await kv.set(['accd', id, n], corps.slice(n * CHUNK, (n + 1) * CHUNK), {
-        expireIn: TTL,
-      });
+      await kv.set(
+        ['accd', id, maj, n],
+        corps.slice(n * CHUNK, (n + 1) * CHUNK),
+        { expireIn: TTL },
+      );
     }
-    const maj = Date.now();
-    // meta.chunks borne la lecture : d'eventuels vieux chunks au-dela sont
-    // simplement ignores (pas besoin de les supprimer).
     await kv.set(
       ['accm', id],
       { maj, chunks: n, exportedAt: exportedAt || maj },
       { expireIn: TTL },
     );
+    for await (const e of kv.list({ prefix: ['accd', id] })) {
+      if (e.key.length === 4 && e.key[2] === maj) continue; // version courante
+      await kv.delete(e.key);
+    }
     return json({ version: maj });
   }
 
@@ -723,27 +961,91 @@ export async function gerer(
   // derniere version qu'ELLE connait — si un autre appareil a pousse entre
   // temps, bannière "Récupérer" AVANT la premiere modification locale.
   if (p === '/api/compte/version' && req.method === 'GET') {
-    const id = await compteAuth();
-    if (!id) return erreur('Clé de compte invalide.', 401);
+    const auth = await authOuRefus();
+    if (auth instanceof Response) return auth;
+    const id = auth;
     const meta = await kv.get(['accm', id]);
     if (!meta.value) return json({ version: 0 });
     return json({ version: (meta.value as { maj: number }).maj });
   }
 
   if (p === '/api/compte/data' && req.method === 'GET') {
-    const id = await compteAuth();
-    if (!id) return erreur('Clé de compte invalide.', 401);
+    const auth = await authOuRefus();
+    if (auth instanceof Response) return auth;
+    const id = auth;
     const meta = await kv.get(['accm', id]);
     if (!meta.value) {
       return erreur('Aucune donnée sur ce compte pour le moment.', 404);
     }
-    const { maj, chunks } = meta.value as { maj: number; chunks: number };
-    let data = '';
-    for (let i = 0; i < chunks; i++) {
-      const part = await kv.get(['accd', id, i]);
-      data += (part.value as string | null) ?? '';
+    const { maj } = meta.value as { maj: number };
+    const data = await lireDonneesCompte(id);
+    return json({ version: maj, data: data ?? '' });
+  }
+
+  // ---------- Flux ICS heberge (agenda ABONNE) ----------
+  // Le jeton est DEDIE et vit dans l'URL (les applis calendrier ne posent
+  // pas d'en-tetes) : moins privilegie que la cle — il ne donne que le
+  // calendrier, jamais la possibilite de modifier ou de tout lire ailleurs.
+
+  if (p === '/api/compte/ics-jeton' && req.method === 'POST') {
+    const auth = await authOuRefus();
+    if (auth instanceof Response) return auth;
+    const id = auth;
+    // Idempotent : le meme compte retrouve toujours le meme jeton.
+    const existant = await kv.get(['accicsDe', id]);
+    if (existant.value) return json({ jeton: existant.value });
+    const jeton = genCode() + genCode();
+    await kv.set(['accics', jeton], id, { expireIn: TTL });
+    await kv.set(['accicsDe', id], jeton, { expireIn: TTL });
+    return json({ jeton });
+  }
+
+  if (p === '/api/compte/ics' && req.method === 'GET') {
+    // Les applis calendrier interrogent toutes les quelques heures : 500/j
+    // par IP laisse de la marge tout en bloquant un scraping.
+    const refus = await compterAbus('ics', 500);
+    if (refus) return erreur(refus, 429);
+    const jeton = (url.searchParams.get('j') ?? '').trim().toUpperCase();
+    if (jeton.length !== 12) return erreur('Jeton invalide.', 404);
+    const acc = await kv.get(['accics', jeton]);
+    if (!acc.value) return erreur('Jeton inconnu.', 404);
+    const data = await lireDonneesCompte(acc.value as string);
+    if (data === null || !data.trim()) {
+      return erreur('Aucune donnée sur ce compte pour le moment.', 404);
     }
-    return json({ version: maj, data });
+    // deno-lint-ignore no-explicit-any
+    let brut: Record<string, any>;
+    try {
+      brut = JSON.parse(data);
+    } catch (_) {
+      return erreur('Données du compte illisibles.', 500);
+    }
+    return new Response(construireIcs(brut), {
+      headers: cors(new Headers({
+        'content-type': 'text/calendar; charset=utf-8',
+        'cache-control': 'private, max-age=3600',
+      })),
+    });
+  }
+
+  // Suppression du COMPTE (RGPD) : la classe avait son DELETE, le compte y
+  // a droit aussi — donnees, meta et profil purges, y compris d'eventuels
+  // vieux chunks au-dela de meta.chunks. Auth par la cle, comme le reste.
+  if (p === '/api/compte' && req.method === 'DELETE') {
+    const auth = await authOuRefus();
+    if (auth instanceof Response) return auth;
+    const id = auth;
+    for await (const entree of kv.list({ prefix: ['accd', id] })) {
+      await kv.delete(entree.key);
+    }
+    await kv.delete(['accm', id]);
+    // Le jeton ICS meurt avec le compte (sinon le calendrier resterait
+    // lisible apres la suppression RGPD).
+    const jetonIcs = await kv.get(['accicsDe', id]);
+    if (jetonIcs.value) await kv.delete(['accics', jetonIcs.value as string]);
+    await kv.delete(['accicsDe', id]);
+    await kv.delete(['acc', id]);
+    return json({ ok: true });
   }
 
   return erreur('Route inconnue.', 404);

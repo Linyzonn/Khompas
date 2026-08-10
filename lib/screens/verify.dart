@@ -31,25 +31,40 @@ class _VerifyScreenState extends State<VerifyScreen> {
         padding: const EdgeInsets.only(bottom: 100),
         children: [
           if (widget.result.avertissements.isNotEmpty)
+            // Couleurs du THEME (et pas amber.shade100 en dur) : en mode
+            // sombre, le texte clair sur fond ambre clair etait illisible.
             Card(
               margin: const EdgeInsets.all(12),
-              color: Colors.amber.shade100,
+              color: Theme.of(context).colorScheme.tertiaryContainer,
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.warning_amber, size: 18),
-                        SizedBox(width: 6),
+                        Icon(Icons.warning_amber,
+                            size: 18,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onTertiaryContainer),
+                        const SizedBox(width: 6),
                         Text("Points à vérifier signalés par l'IA :",
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onTertiaryContainer)),
                       ],
                     ),
                     const SizedBox(height: 6),
                     for (final w in widget.result.avertissements)
-                      Text('• $w', style: const TextStyle(fontSize: 13)),
+                      Text('• $w',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onTertiaryContainer)),
                   ],
                 ),
               ),

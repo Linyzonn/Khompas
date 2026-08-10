@@ -13,6 +13,27 @@ import 'models.dart';
 /// aucune URL a configurer. Modifiable dans Reglages.
 const String kServeurDefaut = 'https://khompas.linyzonn.deno.net';
 
+/// Parse une liste d'enregistrements en TOLERANT les elements abimes : une
+/// date illisible dans UNE kholle ne doit pas jeter les 199 autres.
+/// Retourne (liste des valides, nombre d'ignores). Publique pour les tests.
+(List<T>, int) parseListeTolerante<T>(
+    dynamic brut, T Function(Map<String, dynamic>) fromJson) {
+  final out = <T>[];
+  var ignores = 0;
+  for (final e in (brut ?? []) as List) {
+    try {
+      out.add(fromJson(e as Map<String, dynamic>));
+    } catch (_) {
+      ignores++;
+    }
+  }
+  return (out, ignores);
+}
+
+// repareJsonTronque vit dans models.dart : il sert aussi au plan B des
+// extractions IA (ai_extractor), qui ne peut pas importer store.dart
+// (cycle via api_client).
+
 /// Etat global de l'app, persiste dans un fichier JSON local.
 /// (La cle API, plus sensible, vit dans SharedPreferences.)
 class AppModel extends ChangeNotifier {
@@ -62,6 +83,14 @@ class AppModel extends ChangeNotifier {
   // Drapeaux d'alerte (non persistes) affiches sur le tableau de bord.
   bool chargementEchoue = false;
   bool syncConflit = false;
+  // Enregistrements illisibles ignores au chargement (chargement TOLERANT :
+  // 199 kholles saines ne disparaissent pas pour une 200e malade).
+  int enregistrementsIgnores = 0;
+  // Echecs CONSECUTIFS du push automatique (persiste : une synchro qui
+  // echoue en silence pendant des semaines est le pire des bugs — au-dela
+  // de quelques echecs, le tableau de bord previent).
+  int pushEchecs = 0;
+  String pushDerniereErreur = '';
   // Objectif de moyenne par matiere (facultatif, toujours formule en positif).
   Map<String, double> objectifs = {};
   // Date des ecrits : non nulle = MODE REVISIONS CONCOURS actif.
@@ -88,7 +117,51 @@ class AppModel extends ChangeNotifier {
   bool onboarded = false;
   bool loaded = false;
 
+  // Horodatage PAR ENREGISTREMENT (id -> derniere modification locale) et
+  // pierres tombales (id supprime -> date) : la fusion de synchro s'en sert
+  // pour departager deux versions d'un meme id et pour ne pas RESSUSCITER
+  // ce qui a ete efface. Un enregistrement jamais modifie n'a pas de date
+  // (epoque 0) : le cote qui l'a modifie gagne alors naturellement.
+  Map<String, DateTime> majEnregistrements = {};
+  Map<String, DateTime> suppressions = {};
+
+  void _stamp(String id) {
+    majEnregistrements[id] = DateTime.now();
+  }
+
+  void _tombe(String id) {
+    suppressions[id] = DateTime.now();
+    majEnregistrements.remove(id);
+  }
+
+  /// Menage des maps de fusion : suppressions > 90 j oubliees (les autres
+  /// appareils ont eu le temps de les voir), horodatages orphelins purges.
+  void _menageFusion() {
+    final limite = DateTime.now().subtract(const Duration(days: 90));
+    suppressions.removeWhere((_, quand) => quand.isBefore(limite));
+    final ids = <String>{
+      for (final x in colles) x.id,
+      for (final x in ds) x.id,
+      for (final x in chapitres) x.id,
+      for (final x in routines) x.id,
+      for (final x in devoirs) x.id,
+      for (final x in seances) x.id,
+      for (final x in bilans) x.id,
+      for (final x in evenements) x.id,
+      for (final x in sansCours) x.id,
+      for (final x in erreurs) x.id,
+      for (final x in annales) x.id,
+      for (final x in oraux) x.id,
+      for (final x in resultatsConcours) x.id,
+      for (final x in oeuvres) x.id,
+      for (final x in citations) x.id,
+      for (final x in vocab) x.id,
+    };
+    majEnregistrements.removeWhere((id, _) => !ids.contains(id));
+  }
+
   Timer? _pushTimer;
+  Timer? _saveTimer;
 
   // ---------- Persistance ----------
 
@@ -109,6 +182,9 @@ class AppModel extends ChangeNotifier {
       notifVeilleKholle = prefs.getBool('notifVeilleKholle') ?? true;
       notifVeilleDm = prefs.getBool('notifVeilleDm') ?? true;
       _majConnue = prefs.getInt('majConnue') ?? 0;
+      pushEchecs = prefs.getInt('pushEchecs') ?? 0;
+      cleCreeLe = DateTime.tryParse(prefs.getString('cleCreeLe') ?? '');
+      cleRappelOk = prefs.getBool('cleRappelOk') ?? false;
       String? raw;
       if (kIsWeb) {
         // Version web (PC) : pas de systeme de fichiers, la base vit dans
@@ -125,61 +201,43 @@ class AppModel extends ChangeNotifier {
           // que ce soit : avant, un JSON casse a mi-parcours laissait un
           // etat partiel (colles chargees, chapitres vides) qui pouvait
           // ensuite etre re-sauvegarde tel quel.
-          final newColles = ((j['colles'] ?? []) as List)
-              .map((e) => Colle.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newDs = ((j['ds'] ?? []) as List)
-              .map((e) => Ds.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newChapitres = ((j['chapitres'] ?? []) as List)
-              .map((e) => Chapitre.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newRoutines = ((j['routines'] ?? []) as List)
-              .map((e) => Routine.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newDevoirs = ((j['devoirs'] ?? []) as List)
-              .map((e) => Devoir.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newSeances = ((j['seances'] ?? []) as List)
-              .map((e) => Seance.fromJson(e as Map<String, dynamic>))
-              .toList();
+          // Chargement TOLERANT enregistrement par enregistrement : une
+          // seule date illisible jetait TOUTE la base (circuit corrompu,
+          // app vide) — 199 kholles saines ne doivent pas disparaitre pour
+          // une 200e malade. Les malades sont comptees et signalees.
+          var ignores = 0;
+          List<T> lit<T>(dynamic brut, T Function(Map<String, dynamic>) f) {
+            final (liste, rates) = parseListeTolerante(brut, f);
+            ignores += rates;
+            return liste;
+          }
+
+          final newColles = lit(j['colles'], Colle.fromJson);
+          final newDs = lit(j['ds'], Ds.fromJson);
+          final newChapitres = lit(j['chapitres'], Chapitre.fromJson);
+          final newRoutines = lit(j['routines'], Routine.fromJson);
+          final newDevoirs = lit(j['devoirs'], Devoir.fromJson);
+          final newSeances = lit(j['seances'], Seance.fromJson);
           final newObjectifs = ((j['objectifs'] ?? {}) as Map)
               .map((k, v) => MapEntry(k.toString(), (v as num).toDouble()));
           final newDateConcours = j['dateConcours'] == null
               ? null
               : DateTime.tryParse(j['dateConcours'] as String);
-          final newBilans = ((j['bilans'] ?? []) as List)
-              .map((e) => Bilan.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newEvenements = ((j['evenements'] ?? []) as List)
-              .map((e) => Evenement.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newSansCours = ((j['sansCours'] ?? []) as List)
-              .map((e) => PlageSansCours.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newErreurs = ((j['erreurs'] ?? []) as List)
-              .map((e) => Erreur.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newAnnales = ((j['annales'] ?? []) as List)
-              .map((e) => Annale.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newOraux = ((j['oraux'] ?? []) as List)
-              .map((e) => EpreuveOrale.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newResultats = ((j['resultatsConcours'] ?? []) as List)
-              .map((e) => ResultatConcours.fromJson(e as Map<String, dynamic>))
-              .toList();
+          final newBilans = lit(j['bilans'], Bilan.fromJson);
+          final newEvenements = lit(j['evenements'], Evenement.fromJson);
+          final newSansCours = lit(j['sansCours'], PlageSansCours.fromJson);
+          final newErreurs = lit(j['erreurs'], Erreur.fromJson);
+          final newAnnales = lit(j['annales'], Annale.fromJson);
+          final newOraux = lit(j['oraux'], EpreuveOrale.fromJson);
+          final newResultats =
+              lit(j['resultatsConcours'], ResultatConcours.fromJson);
           final newZone = (j['zoneVacances'] ?? '') as String;
-          final newOeuvres = ((j['oeuvres'] ?? []) as List)
-              .map((e) => Oeuvre.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newCitations = ((j['citations'] ?? []) as List)
-              .map((e) => Citation.fromJson(e as Map<String, dynamic>))
-              .toList();
-          final newVocab = ((j['vocab'] ?? []) as List)
-              .map((e) => MotVocab.fromJson(e as Map<String, dynamic>))
-              .toList();
+          final newOeuvres = lit(j['oeuvres'], Oeuvre.fromJson);
+          final newCitations = lit(j['citations'], Citation.fromJson);
+          final newVocab = lit(j['vocab'], MotVocab.fromJson);
           final newTrajet = ((j['trajetMinutes'] ?? 0) as num).toInt();
+          final newMajEnr = _litDates(j['majEnregistrements']);
+          final newSuppr = _litDates(j['suppressions']);
           final newJoursOff = ((j['joursOff'] ?? []) as List)
               .map((e) => DateTime.tryParse(e.toString()))
               .whereType<DateTime>()
@@ -216,6 +274,8 @@ class AppModel extends ChangeNotifier {
           citations = newCitations;
           vocab = newVocab;
           trajetMinutes = newTrajet;
+          majEnregistrements = newMajEnr;
+          suppressions = newSuppr;
           joursOff = newJoursOff;
           modeOraux = newModeOraux;
           refSemaineA = newRefSemaineA;
@@ -234,6 +294,23 @@ class AppModel extends ChangeNotifier {
           if (gestionClasse.isEmpty && ancienGestion.isNotEmpty) {
             gestionClasse = ancienGestion;
             await prefs.setString('gestionClasse', gestionClasse);
+          }
+          // Des enregistrements ont ete ignores : copie de secours du brut
+          // AVANT le premier save() (qui les perdrait definitivement) +
+          // compteur affiche sur le tableau de bord. Le circuit « corrompu »
+          // reste reserve au JSON racine illisible.
+          enregistrementsIgnores = ignores;
+          if (ignores > 0) {
+            try {
+              if (kIsWeb) {
+                await prefs.setString('db_corrompu', raw);
+              } else {
+                final f = await _dbFile();
+                await File('${f.path}.corrompu').writeAsString(raw);
+              }
+            } catch (_) {
+              // la copie a echoue : on garde au moins le compteur
+            }
           }
         } catch (_) {
           // Donnees illisibles : COPIE DE SECOURS AVANT TOUTE ECRITURE —
@@ -334,37 +411,70 @@ class AppModel extends ChangeNotifier {
   void fusionnerMatieres(String source, String cible) {
     if (source == cible) return;
     for (final c in colles) {
-      if (c.matiere == source) c.matiere = cible;
+      if (c.matiere == source) {
+        c.matiere = cible;
+        _stamp(c.id);
+      }
     }
     for (final d in ds) {
-      if (d.matiere == source) d.matiere = cible;
+      if (d.matiere == source) {
+        d.matiere = cible;
+        _stamp(d.id);
+      }
     }
     for (final c in chapitres) {
-      if (c.matiere == source) c.matiere = cible;
+      if (c.matiere == source) {
+        c.matiere = cible;
+        _stamp(c.id);
+      }
     }
     for (final r in routines) {
-      if (r.matiere == source) r.matiere = cible;
+      if (r.matiere == source) {
+        r.matiere = cible;
+        _stamp(r.id);
+      }
     }
     for (final d in devoirs) {
-      if (d.matiere == source) d.matiere = cible;
+      if (d.matiere == source) {
+        d.matiere = cible;
+        _stamp(d.id);
+      }
     }
     for (final s in seances) {
-      if (s.matiere == source) s.matiere = cible;
+      if (s.matiere == source) {
+        s.matiere = cible;
+        _stamp(s.id);
+      }
     }
     for (final b in bilans) {
-      if (b.matiere == source) b.matiere = cible;
+      if (b.matiere == source) {
+        b.matiere = cible;
+        _stamp(b.id);
+      }
     }
     for (final e in evenements) {
-      if (e.matiere == source) e.matiere = cible;
+      if (e.matiere == source) {
+        e.matiere = cible;
+        _stamp(e.id);
+      }
     }
     for (final e in erreurs) {
-      if (e.matiere == source) e.matiere = cible;
+      if (e.matiere == source) {
+        e.matiere = cible;
+        _stamp(e.id);
+      }
     }
     for (final a in annales) {
-      if (a.matiere == source) a.matiere = cible;
+      if (a.matiere == source) {
+        a.matiere = cible;
+        _stamp(a.id);
+      }
     }
     for (final r in resultatsConcours) {
-      if (r.matiere == source) r.matiere = cible;
+      if (r.matiere == source) {
+        r.matiere = cible;
+        _stamp(r.id);
+      }
     }
     final pSource = prios.remove(source);
     if (pSource != null) {
@@ -414,10 +524,25 @@ class AppModel extends ChangeNotifier {
         // suppression de la classe) reste local, dans SharedPreferences.
         'cinqDemi': cinqDemi,
         'prios': prios,
+        'majEnregistrements': majEnregistrements
+            .map((k, v) => MapEntry(k, v.toIso8601String())),
+        'suppressions':
+            suppressions.map((k, v) => MapEntry(k, v.toIso8601String())),
       };
+
+  /// Map {id -> date} depuis le JSON (entrees illisibles ignorees).
+  static Map<String, DateTime> _litDates(dynamic brut) {
+    final out = <String, DateTime>{};
+    ((brut ?? {}) as Map).forEach((k, v) {
+      final d = DateTime.tryParse(v.toString());
+      if (d != null) out[k.toString()] = d;
+    });
+    return out;
+  }
 
   Future<void> save() async {
     try {
+      _menageFusion();
       final raw = jsonEncode(_snapshot());
       if (kIsWeb) {
         final prefs = await SharedPreferences.getInstance();
@@ -446,36 +571,291 @@ class AppModel extends ChangeNotifier {
   /// Envoi automatique vers le compte, quelques secondes apres la derniere
   /// modification (debounce). Echec silencieux : hors ligne, la prochaine
   /// modification retentera.
+  // Dernier snapshot REELLEMENT envoye au compte : si rien n'a change,
+  // on ne repousse pas — chaque push reecrit TOUT le compte sur le KV
+  // (~1 unite d'ecriture / Ko sur le quota gratuit de Deno Deploy), la
+  // deduplication est le premier poste d'economie.
+  String? _dernierPushEnvoye;
+
   void _programmerPush() {
     if (compteCle.isEmpty || serverUrl.isEmpty) return;
     _pushTimer?.cancel();
-    _pushTimer = Timer(const Duration(seconds: 3), () async {
-      try {
-        final v =
-            await ApiKhompas(serverUrl).envoyerCompte(compteCle, exportJson());
-        await _memoriserVersion(v);
-        if (syncConflit || compteEnAvance) {
-          syncConflit = false;
-          compteEnAvance = false;
-          notifyListeners();
-        }
-      } catch (e) {
-        // Le serveur refuse car un autre appareil a des donnees plus
-        // recentes -> bandeau sur le tableau de bord (sinon : hors ligne,
-        // tant pis pour cette fois).
-        if (e.toString().contains('plus récentes')) {
-          syncConflit = true;
-          notifyListeners();
-        }
-      }
-    });
+    // 30 s (et non 3) : une soiree de travail declenche des dizaines de
+    // modifications — grouper divise d'autant les ecritures KV, et
+    // flushPush() pousse immediatement quand l'app passe en arriere-plan.
+    _pushTimer = Timer(const Duration(seconds: 30), _pousserAuto);
   }
 
-  Future<void> saveCompteCle(String cle) async {
+  /// Pousse immediatement le push automatique en attente (mise en
+  /// arriere-plan de l'app) — les 30 s de debounce ne doivent pas laisser
+  /// la derniere soiree hors ligne.
+  Future<void> flushPush() async {
+    if (_pushTimer?.isActive ?? false) {
+      _pushTimer!.cancel();
+      await _pousserAuto();
+    }
+  }
+
+  Future<void> _pousserAuto() async {
+    try {
+      // JSON COMPACT (l'indente est reserve au fichier de sauvegarde
+      // humain) : ~30-40 % plus petit, ca repousse d'autant la limite de
+      // taille du serveur ET reduit les ecritures KV.
+      final donnees = exportJsonCompact();
+      if (donnees == _dernierPushEnvoye) return; // rien de neuf : zero cout
+      final v = await ApiKhompas(serverUrl)
+          .envoyerCompte(compteCle, donnees, versionConnue: _majConnue);
+      _dernierPushEnvoye = donnees;
+      await _memoriserVersion(v);
+      await _pushReussi();
+      if (syncConflit || compteEnAvance) {
+        syncConflit = false;
+        compteEnAvance = false;
+        notifyListeners();
+      }
+    } catch (e) {
+      // Le serveur refuse car un autre appareil a des donnees plus
+      // recentes -> bandeau sur le tableau de bord.
+      if (e.toString().contains('plus récentes')) {
+        syncConflit = true;
+        notifyListeners();
+      } else {
+        // TOUT autre echec est COMPTE : une synchro qui meurt en silence
+        // (donnees trop grosses, serveur en panne, hors ligne chronique)
+        // est le pire des bugs — au-dela de quelques echecs consecutifs,
+        // le tableau de bord previent au lieu de laisser croire que le
+        // compte est a jour.
+        await _pushEchoue(e);
+      }
+    }
+  }
+
+  Future<void> _pushReussi() async {
+    if (pushEchecs == 0) return;
+    pushEchecs = 0;
+    pushDerniereErreur = '';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('pushEchecs', 0);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> _pushEchoue(Object e) async {
+    pushEchecs++;
+    pushDerniereErreur = e.toString().replaceFirst('Exception: ', '');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('pushEchecs', pushEchecs);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  /// [nouvelle] : la cle vient d'etre CREEE (pas connectee) — on memorise
+  /// la date pour le rappel « as-tu note ta cle ? » a J+7 (le drame
+  /// classique du telephone perdu a Noel, cle jamais notee).
+  Future<void> saveCompteCle(String cle, {bool nouvelle = false}) async {
     compteCle = cle.trim().toUpperCase();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('compteCle', compteCle);
+    if (nouvelle) {
+      cleCreeLe = DateTime.now();
+      cleRappelOk = false;
+      await prefs.setString('cleCreeLe', cleCreeLe!.toIso8601String());
+      await prefs.setBool('cleRappelOk', false);
+    }
     notifyListeners();
+  }
+
+  // Rappel de cle J+7 : date de creation de la cle sur CET appareil, et
+  // « l'utilisateur a confirme l'avoir notee ».
+  DateTime? cleCreeLe;
+  bool cleRappelOk = false;
+
+  Future<void> marquerCleNotee() async {
+    cleRappelOk = true;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('cleRappelOk', true);
+    notifyListeners();
+  }
+
+  /// Compare LOCAL vs COMPTE avant « Récupérer » : compte les
+  /// enregistrements des deux cotes SANS rien importer — le choix binaire
+  /// (ecraser ici ou la) devient au moins un choix eclaire.
+  /// Retourne (resume local, resume du compte).
+  Future<(String, String)> comparerAvecCompte() async {
+    final resultat = await ApiKhompas(serverUrl).recupererCompte(compteCle);
+    final data = resultat?.$2;
+    if (data == null || data.trim().isEmpty) {
+      throw Exception('aucune donnée sur ce compte pour le moment.');
+    }
+    String resume(Map<String, dynamic> j) {
+      int n(String cle) => ((j[cle] ?? []) as List).length;
+      var notes = 0;
+      for (final c in (j['colles'] ?? []) as List) {
+        if ((c as Map)['note'] != null) notes++;
+      }
+      for (final d in (j['ds'] ?? []) as List) {
+        if ((d as Map)['note'] != null) notes++;
+      }
+      return '${n('colles')} khôlles · $notes notes · ${n('chapitres')} chapitres · ${n('vocab')} voc · ${n('citations')} citations';
+    }
+
+    final local =
+        resume(jsonDecode(exportJsonCompact()) as Map<String, dynamic>);
+    String distant;
+    try {
+      distant = resume(jsonDecode(data) as Map<String, dynamic>);
+    } catch (_) {
+      distant = 'contenu illisible';
+    }
+    return (local, distant);
+  }
+
+  // ---------- Fusion de synchro (par enregistrement) ----------
+
+  static final DateTime _epoque = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _majDe(Map<String, DateTime> m, String id) => m[id] ?? _epoque;
+
+  /// Fusionne l'etat DISTANT (JSON du compte) dans l'etat local — fini le
+  /// choix binaire « ecraser ici ou la » :
+  ///  - union par id : ce qui n'existe que d'un cote est garde ;
+  ///  - meme id modifie des deux cotes -> la version la plus RECENTE gagne
+  ///    (horodatages par enregistrement ; sans horodatage, le local gagne) ;
+  ///  - les SUPPRESSIONS sont respectees des deux cotes (pierres tombales :
+  ///    rien ne ressuscite) ;
+  ///  - reglages scalaires (profil, methode...) : le LOCAL gagne — c'est
+  ///    ici qu'on est en train de travailler ; prios/objectifs : union.
+  /// Retourne un resume chiffre. Leve une exception si le JSON est illisible.
+  String fusionnerDonnees(String brutDistant) {
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(brutDistant);
+    } catch (_) {
+      throw Exception('données du compte illisibles.');
+    }
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('données du compte illisibles.');
+    }
+    final majDistant = _litDates(decoded['majEnregistrements']);
+    final supprDistant = _litDates(decoded['suppressions']);
+    var ajoutes = 0, remplaces = 0, retires = 0;
+
+    List<T> fusionne<T>(List<T> locaux, dynamic brut,
+        T Function(Map<String, dynamic>) fromJson, String Function(T) idDe) {
+      final (distants, _) = parseListeTolerante(brut, fromJson);
+      final parId = <String, T>{for (final l in locaux) idDe(l): l};
+      // Suppressions DISTANTES : retirent le local si elles sont plus
+      // recentes que sa derniere modification locale.
+      supprDistant.forEach((id, quand) {
+        if (parId.containsKey(id) &&
+            quand.isAfter(_majDe(majEnregistrements, id))) {
+          parId.remove(id);
+          retires++;
+        }
+      });
+      for (final d in distants) {
+        final id = idDe(d);
+        // Supprime LOCALEMENT apres sa derniere modif distante : reste mort.
+        final tombeLocal = suppressions[id];
+        if (tombeLocal != null && tombeLocal.isAfter(_majDe(majDistant, id))) {
+          continue;
+        }
+        final local = parId[id];
+        if (local == null) {
+          parId[id] = d;
+          ajoutes++;
+        } else if (_majDe(majDistant, id)
+            .isAfter(_majDe(majEnregistrements, id))) {
+          parId[id] = d;
+          remplaces++;
+        }
+      }
+      return parId.values.toList();
+    }
+
+    colles = fusionne(colles, decoded['colles'], Colle.fromJson, (c) => c.id)
+      ..sort((a, b) => a.start.compareTo(b.start));
+    ds = fusionne(ds, decoded['ds'], Ds.fromJson, (d) => d.id)
+      ..sort((a, b) => a.date.compareTo(b.date));
+    chapitres =
+        fusionne(chapitres, decoded['chapitres'], Chapitre.fromJson, (c) => c.id);
+    routines =
+        fusionne(routines, decoded['routines'], Routine.fromJson, (r) => r.id);
+    _trierRoutines();
+    devoirs = fusionne(devoirs, decoded['devoirs'], Devoir.fromJson, (d) => d.id)
+      ..sort((a, b) => a.dateRendu.compareTo(b.dateRendu));
+    seances =
+        fusionne(seances, decoded['seances'], Seance.fromJson, (s) => s.id);
+    bilans = fusionne(bilans, decoded['bilans'], Bilan.fromJson, (b) => b.id);
+    evenements = fusionne(
+        evenements, decoded['evenements'], Evenement.fromJson, (e) => e.id)
+      ..sort((a, b) => a.date != b.date
+          ? a.date.compareTo(b.date)
+          : a.debutMin.compareTo(b.debutMin));
+    sansCours = fusionne(
+        sansCours, decoded['sansCours'], PlageSansCours.fromJson, (p) => p.id)
+      ..sort((a, b) => a.debut.compareTo(b.debut));
+    erreurs = fusionne(erreurs, decoded['erreurs'], Erreur.fromJson, (e) => e.id);
+    annales = fusionne(annales, decoded['annales'], Annale.fromJson, (a) => a.id)
+      ..sort((x, y) => x.matiere != y.matiere
+          ? x.matiere.compareTo(y.matiere)
+          : y.annee.compareTo(x.annee));
+    oraux = fusionne(oraux, decoded['oraux'], EpreuveOrale.fromJson, (o) => o.id);
+    _trierOraux();
+    resultatsConcours = fusionne(resultatsConcours, decoded['resultatsConcours'],
+        ResultatConcours.fromJson, (r) => r.id)
+      ..sort((a, b) => a.concours != b.concours
+          ? a.concours.compareTo(b.concours)
+          : a.epreuve.compareTo(b.epreuve));
+    oeuvres = fusionne(oeuvres, decoded['oeuvres'], Oeuvre.fromJson, (o) => o.id);
+    citations =
+        fusionne(citations, decoded['citations'], Citation.fromJson, (c) => c.id);
+    vocab = fusionne(vocab, decoded['vocab'], MotVocab.fromJson, (v) => v.id);
+
+    // prios / objectifs : union — le LOCAL gagne sur un conflit de cle.
+    ((decoded['prios'] ?? {}) as Map).forEach((k, v) {
+      if (v is num) prios.putIfAbsent(k.toString(), () => v.toInt());
+    });
+    ((decoded['objectifs'] ?? {}) as Map).forEach((k, v) {
+      if (v is num) objectifs.putIfAbsent(k.toString(), () => v.toDouble());
+    });
+    // joursOff : union de dates.
+    for (final e in (decoded['joursOff'] ?? []) as List) {
+      final d = DateTime.tryParse(e.toString());
+      if (d != null && !estJourOff(d)) {
+        joursOff.add(DateTime(d.year, d.month, d.day));
+      }
+    }
+    joursOff.sort();
+    // Horodatages et tombales : union, la date la plus recente est gardee.
+    majDistant.forEach((k, v) {
+      if (v.isAfter(_majDe(majEnregistrements, k))) majEnregistrements[k] = v;
+    });
+    supprDistant.forEach((k, v) {
+      final l = suppressions[k];
+      if (l == null || v.isAfter(l)) suppressions[k] = v;
+    });
+    _migrerMatieres();
+    _touch();
+    return '$ajoutes ajouté(s) · $remplaces mis à jour · $retires retiré(s)';
+  }
+
+  /// Recupere le compte, FUSIONNE avec l'etat local, et repousse le
+  /// resultat — la reponse propre au bandeau « ton autre appareil a aussi
+  /// travaille » (rien ne s'ecrase).
+  Future<String> fusionnerAvecCompte() async {
+    final resultat = await ApiKhompas(serverUrl).recupererCompte(compteCle);
+    final data = resultat?.$2;
+    if (data == null || data.trim().isEmpty) {
+      throw Exception('aucune donnée sur ce compte pour le moment.');
+    }
+    final resume = fusionnerDonnees(data);
+    await _memoriserVersion(resultat!.$1);
+    syncConflit = false;
+    compteEnAvance = false;
+    await pousserCompte();
+    return resume;
   }
 
   /// Dissocie l'appareil du compte (les donnees restent locales ET sur le
@@ -504,9 +884,20 @@ class AppModel extends ChangeNotifier {
   /// Les donnees deja envoyees au compte RESTENT sur le serveur (aucun
   /// endpoint de suppression) : recuperables plus tard avec la cle.
   Future<void> reinitialiser() async {
-    // 1. Compte : plus AUCUN push ne doit partir.
+    // 1. Compte : plus AUCUN push ne doit partir — et aucun save() en
+    // attente ne doit recreer le fichier apres sa suppression.
     _pushTimer?.cancel();
     _pushTimer = null;
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    pushEchecs = 0;
+    pushDerniereErreur = '';
+    enregistrementsIgnores = 0;
+    _dernierPushEnvoye = null;
+    cleCreeLe = null;
+    cleRappelOk = false;
+    majEnregistrements = {};
+    suppressions = {};
     compteCle = '';
     gestionClasse = '';
     apiKey = '';
@@ -563,6 +954,9 @@ class AppModel extends ChangeNotifier {
         'notifsActives',
         'notifVeilleKholle',
         'notifVeilleDm',
+        'pushEchecs',
+        'cleCreeLe',
+        'cleRappelOk',
       ]) {
         await prefs.remove(k);
       }
@@ -606,8 +1000,12 @@ class AppModel extends ChangeNotifier {
 
   /// Envoi immediat (bouton Reglages).
   Future<void> pousserCompte() async {
-    final v = await ApiKhompas(serverUrl).envoyerCompte(compteCle, exportJson());
+    final donnees = exportJsonCompact();
+    final v = await ApiKhompas(serverUrl)
+        .envoyerCompte(compteCle, donnees, versionConnue: _majConnue);
+    _dernierPushEnvoye = donnees;
     await _memoriserVersion(v);
+    await _pushReussi();
     syncConflit = false;
     compteEnAvance = false;
     notifyListeners();
@@ -621,9 +1019,20 @@ class AppModel extends ChangeNotifier {
       throw Exception('aucune donnée sur ce compte pour le moment.');
     }
     await _memoriserVersion(resultat!.$1);
+    await _pushReussi(); // re-synchronise : le compteur d'echecs repart a zero
     syncConflit = false;
     compteEnAvance = false;
     return importJson(data);
+  }
+
+  /// Suppression du COMPTE sur le serveur (RGPD) : purge les donnees et le
+  /// profil cote serveur, puis oublie la cle locale (les donnees de CET
+  /// appareil restent intactes).
+  Future<void> supprimerCompteServeur() async {
+    await ApiKhompas(serverUrl).supprimerCompte(compteCle);
+    await deconnecterCompte();
+    _majConnue = 0;
+    await _pushReussi();
   }
 
   /// Derniere version serveur que CET appareil connait (prefs locales).
@@ -671,6 +1080,53 @@ class AppModel extends ChangeNotifier {
   /// Contenu du fichier de sauvegarde partageable (meme format que le
   /// stockage interne, indente pour rester lisible).
   String exportJson() => const JsonEncoder.withIndent('  ').convert(_snapshot());
+
+  /// Version COMPACTE (pour la synchro de compte) : memes donnees, ~30-40 %
+  /// plus petites — l'indentation est reservee au fichier humain.
+  String exportJsonCompact() => jsonEncode(_snapshot());
+
+  // ---------- Copie de secours (.corrompu / db_corrompu) ----------
+
+  /// Contenu brut de la copie de secours, ou null s'il n'y en a pas.
+  Future<String?> lireCopieSecours() async {
+    try {
+      if (kIsWeb) {
+        final prefs = await SharedPreferences.getInstance();
+        return prefs.getString('db_corrompu');
+      }
+      final f = await _dbFile();
+      final c = File('${f.path}.corrompu');
+      if (await c.exists()) return await c.readAsString();
+    } catch (_) {
+      // stockage inaccessible
+    }
+    return null;
+  }
+
+  /// Tente de RESTAURER la copie de secours : telle quelle d'abord, puis en
+  /// reparant une eventuelle troncature de fin de fichier. Retourne le
+  /// resume d'importJson ; leve une exception explicite sinon.
+  Future<String> restaurerCopieSecours() async {
+    final raw = await lireCopieSecours();
+    if (raw == null || raw.trim().isEmpty) {
+      throw Exception('aucune copie de secours sur cet appareil.');
+    }
+    String resume;
+    try {
+      resume = importJson(raw);
+    } catch (_) {
+      final repare = repareJsonTronque(raw);
+      if (repare == null) {
+        throw Exception(
+            'copie illisible même réparée — utilise « Exporter la copie brute » pour la récupérer à la main.');
+      }
+      resume = '${importJson(repare)} — fin de fichier tronquée réparée';
+    }
+    chargementEchoue = false;
+    enregistrementsIgnores = 0;
+    notifyListeners();
+    return resume;
+  }
 
   /// Restaure une sauvegarde : REMPLACE toutes les donnees actuelles
   /// (la cle API n'est pas concernee). Tout est parse AVANT d'ecraser quoi
@@ -783,6 +1239,8 @@ class AppModel extends ChangeNotifier {
       citations = newCitations;
       vocab = newVocab;
       trajetMinutes = newTrajet;
+      majEnregistrements = _litDates(decoded['majEnregistrements']);
+      suppressions = _litDates(decoded['suppressions']);
       joursOff = newJoursOff;
       modeOraux = newModeOraux;
       refSemaineA = newRefSemaineA;
@@ -843,6 +1301,9 @@ class AppModel extends ChangeNotifier {
   int nettoyerCollesPassees() {
     final now = DateTime.now();
     final avant = colles.length;
+    for (final c in colles.where((c) => c.end.isBefore(now))) {
+      _tombe(c.id);
+    }
     colles.removeWhere((c) => c.end.isBefore(now));
     _touch();
     return avant - colles.length;
@@ -921,12 +1382,28 @@ class AppModel extends ChangeNotifier {
     c.dernierRevu = now;
     final demain = now.add(const Duration(days: 1));
     c.prochaineRevision = DateTime(demain.year, demain.month, demain.day);
+    _stamp(c.id);
     _touch();
   }
 
   void _touch() {
-    save();
+    // Ecriture DEBOUNCEE (400 ms) : chaque tap re-encodait toute la base en
+    // JSON sur le thread UI — invisible en debut d'annee, micro-gels en fin
+    // d'annee (surtout en session de cartes, un verdict toutes les 3 s).
+    // La fenetre de perte est negligeable, et flushSave() force l'ecriture
+    // quand l'app passe en arriere-plan.
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 400), save);
     notifyListeners();
+  }
+
+  /// Force l'ecriture en attente (appele quand l'app passe en arriere-plan :
+  /// les 400 ms de debounce ne doivent pas coûter les derniers gestes).
+  Future<void> flushSave() async {
+    if (_saveTimer?.isActive ?? false) {
+      _saveTimer!.cancel();
+      await save();
+    }
   }
 
   // ---------- Khôlles ----------
@@ -952,10 +1429,12 @@ class AppModel extends ChangeNotifier {
     final i = colles.indexWhere((e) => e.id == c.id);
     if (i >= 0) colles[i] = c;
     colles.sort((a, b) => a.start.compareTo(b.start));
+    _stamp(c.id);
     _touch();
   }
 
   void deleteColle(String id) {
+    _tombe(id);
     colles.removeWhere((e) => e.id == id);
     _touch();
   }
@@ -991,10 +1470,12 @@ class AppModel extends ChangeNotifier {
   void updateDs(Ds d) {
     final i = ds.indexWhere((e) => e.id == d.id);
     if (i >= 0) ds[i] = d;
+    _stamp(d.id);
     _touch();
   }
 
   void deleteDs(String id) {
+    _tombe(id);
     ds.removeWhere((e) => e.id == id);
     _touch();
   }
@@ -1026,10 +1507,12 @@ class AppModel extends ChangeNotifier {
   void updateChapitre(Chapitre c) {
     final i = chapitres.indexWhere((e) => e.id == c.id);
     if (i >= 0) chapitres[i] = c;
+    _stamp(c.id);
     _touch();
   }
 
   void deleteChapitre(String id) {
+    _tombe(id);
     chapitres.removeWhere((e) => e.id == id);
     _touch();
   }
@@ -1046,10 +1529,12 @@ class AppModel extends ChangeNotifier {
     final i = devoirs.indexWhere((e) => e.id == d.id);
     if (i >= 0) devoirs[i] = d;
     devoirs.sort((a, b) => a.dateRendu.compareTo(b.dateRendu));
+    _stamp(d.id);
     _touch();
   }
 
   void deleteDevoir(String id) {
+    _tombe(id);
     devoirs.removeWhere((e) => e.id == id);
     _touch();
   }
@@ -1068,6 +1553,72 @@ class AppModel extends ChangeNotifier {
     final limite = DateTime.now().subtract(const Duration(days: 400));
     seances.removeWhere((s) => s.date.isBefore(limite));
     _touch();
+  }
+
+  /// Minutes travaillees par semaine (lundi, total) sur les [semaines]
+  /// dernieres — l'histogramme de l'ecran Progression. C'est pour lui que
+  /// les seances sont conservees ~13 mois.
+  List<(DateTime, int)> minutesParSemaineHisto(
+      {DateTime? maintenant, int semaines = 12}) {
+    final now = maintenant ?? DateTime.now();
+    final lundiCourant = mondayOf(now);
+    final out = <(DateTime, int)>[];
+    for (var i = semaines - 1; i >= 0; i--) {
+      final lundi = lundiCourant.subtract(Duration(days: 7 * i));
+      final fin = lundi.add(const Duration(days: 7));
+      var total = 0;
+      for (final s in seances) {
+        if (!s.date.isBefore(lundi) && s.date.isBefore(fin)) {
+          total += s.minutes;
+        }
+      }
+      out.add((lundi, total));
+    }
+    return out;
+  }
+
+  /// Minutes par matiere sur les [jours] derniers jours (tri decroissant).
+  List<(String, int)> minutesParMatiere({DateTime? maintenant, int jours = 28}) {
+    final now = maintenant ?? DateTime.now();
+    final debut = now.subtract(Duration(days: jours));
+    final map = <String, int>{};
+    for (final s in seances) {
+      if (s.date.isBefore(debut) || s.date.isAfter(now)) continue;
+      if (s.matiere.trim().isEmpty) continue;
+      map[s.matiere] = (map[s.matiere] ?? 0) + s.minutes;
+    }
+    final l = map.entries.map((e) => (e.key, e.value)).toList()
+      ..sort((a, b) => b.$2.compareTo(a.$2));
+    return l;
+  }
+
+  /// Tendance de moyenne d'une matiere : (moyenne des 30 derniers jours,
+  /// moyenne des 30 jours PRECEDENTS) — kholles et DS confondus, non
+  /// ponderes (on regarde une direction, pas un bulletin).
+  (double?, double?) tendanceNotes(String matiere, {DateTime? maintenant}) {
+    final now = maintenant ?? DateTime.now();
+    final coupure = now.subtract(const Duration(days: 30));
+    final debut = now.subtract(const Duration(days: 60));
+    final recentes = <double>[];
+    final anciennes = <double>[];
+    void classe(String mat, DateTime d, double? note) {
+      if (mat != matiere || note == null || d.isAfter(now)) return;
+      if (d.isAfter(coupure)) {
+        recentes.add(note);
+      } else if (d.isAfter(debut)) {
+        anciennes.add(note);
+      }
+    }
+
+    for (final c in colles) {
+      classe(c.matiere, c.start, c.note);
+    }
+    for (final d in ds) {
+      classe(d.matiere, d.date, d.note);
+    }
+    double? moy(List<double> l) =>
+        l.isEmpty ? null : l.reduce((a, b) => a + b) / l.length;
+    return (moy(recentes), moy(anciennes));
   }
 
   /// Minutes travaillees cette semaine, par matiere (+ cle '' = total).
@@ -1112,10 +1663,12 @@ class AppModel extends ChangeNotifier {
     final i = routines.indexWhere((e) => e.id == r.id);
     if (i >= 0) routines[i] = r;
     _trierRoutines();
+    _stamp(r.id);
     _touch();
   }
 
   void deleteRoutine(String id) {
+    _tombe(id);
     routines.removeWhere((e) => e.id == id);
     _touch();
   }
@@ -1188,10 +1741,12 @@ class AppModel extends ChangeNotifier {
   void updateOeuvre(Oeuvre o) {
     final i = oeuvres.indexWhere((x) => x.id == o.id);
     if (i >= 0) oeuvres[i] = o;
+    _stamp(o.id);
     _touch();
   }
 
   void deleteOeuvre(String id) {
+    _tombe(id);
     oeuvres.removeWhere((o) => o.id == id);
     _touch();
   }
@@ -1271,10 +1826,12 @@ class AppModel extends ChangeNotifier {
   void updateCitation(Citation c) {
     final i = citations.indexWhere((x) => x.id == c.id);
     if (i >= 0) citations[i] = c;
+    _stamp(c.id);
     _touch();
   }
 
   void deleteCitation(String id) {
+    _tombe(id);
     citations.removeWhere((c) => c.id == id);
     _touch();
   }
@@ -1304,10 +1861,12 @@ class AppModel extends ChangeNotifier {
   void updateMotVocab(MotVocab v) {
     final i = vocab.indexWhere((x) => x.id == v.id);
     if (i >= 0) vocab[i] = v;
+    _stamp(v.id);
     _touch();
   }
 
   void deleteMotVocab(String id) {
+    _tombe(id);
     vocab.removeWhere((v) => v.id == id);
     _touch();
   }
@@ -1345,6 +1904,7 @@ class AppModel extends ChangeNotifier {
     c.echecs = echecs;
     c.prochaineRevision = prochaine;
     c.dernierRevu = now;
+    _stamp(c.id);
     _touch();
   }
 
@@ -1359,6 +1919,7 @@ class AppModel extends ChangeNotifier {
     v.echecs = echecs;
     v.prochaineRevision = prochaine;
     v.dernierRevu = now;
+    _stamp(v.id);
     _touch();
   }
 
@@ -1413,6 +1974,7 @@ class AppModel extends ChangeNotifier {
   }
 
   void deletePlageSansCours(String id) {
+    _tombe(id);
     sansCours.removeWhere((p) => p.id == id);
     _touch();
   }
@@ -1451,10 +2013,12 @@ class AppModel extends ChangeNotifier {
     evenements.sort((a, b) => a.date != b.date
         ? a.date.compareTo(b.date)
         : a.debutMin.compareTo(b.debutMin));
+    _stamp(e.id);
     _touch();
   }
 
   void deleteEvenement(String id) {
+    _tombe(id);
     evenements.removeWhere((x) => x.id == id);
     _touch();
   }
@@ -1491,6 +2055,13 @@ class AppModel extends ChangeNotifier {
   ///   seulement [Chapitre.entame] — pas d'etape, pas d'espacement. Un
   ///   chapitre a moitie vu n'est pas un chapitre vu.
   void setBilan(Bilan b, {bool chapitreTermine = true}) {
+    for (final e in bilans.where((e) =>
+        e.routineId == b.routineId &&
+        e.jour.year == b.jour.year &&
+        e.jour.month == b.jour.month &&
+        e.jour.day == b.jour.day)) {
+      _tombe(e.id);
+    }
     bilans.removeWhere((e) =>
         e.routineId == b.routineId &&
         e.jour.year == b.jour.year &&
@@ -1516,6 +2087,7 @@ class AppModel extends ChangeNotifier {
         } else {
           chapitres[i].entame = true;
         }
+        _stamp(chapitres[i].id);
       }
     }
     _touch();
@@ -1583,6 +2155,7 @@ class AppModel extends ChangeNotifier {
     if (prochaine.isBefore(demain)) prochaine = demain;
     c.prochaineRevision = prochaine;
     c.dernierRevu = now;
+    _stamp(c.id);
     _touch();
   }
 
@@ -1599,6 +2172,7 @@ class AppModel extends ChangeNotifier {
       if (c.maitrise > 2) c.maitrise = 2;
       c.intervalleJours = 1;
       c.prochaineRevision = DateTime(demain.year, demain.month, demain.day);
+      _stamp(c.id);
     }
     _touch();
   }
@@ -1613,10 +2187,12 @@ class AppModel extends ChangeNotifier {
   void updateErreur(Erreur e) {
     final i = erreurs.indexWhere((x) => x.id == e.id);
     if (i >= 0) erreurs[i] = e;
+    _stamp(e.id);
     _touch();
   }
 
   void deleteErreur(String id) {
+    _tombe(id);
     erreurs.removeWhere((e) => e.id == id);
     _touch();
   }
@@ -1655,10 +2231,12 @@ class AppModel extends ChangeNotifier {
   void updateAnnale(Annale a) {
     final i = annales.indexWhere((x) => x.id == a.id);
     if (i >= 0) annales[i] = a;
+    _stamp(a.id);
     _touch();
   }
 
   void deleteAnnale(String id) {
+    _tombe(id);
     annales.removeWhere((a) => a.id == id);
     _touch();
   }
@@ -1677,10 +2255,12 @@ class AppModel extends ChangeNotifier {
   void updateResultatConcours(ResultatConcours r) {
     final i = resultatsConcours.indexWhere((x) => x.id == r.id);
     if (i >= 0) resultatsConcours[i] = r..matiere = normaliseMatiere(r.matiere);
+    _stamp(r.id);
     _touch();
   }
 
   void deleteResultatConcours(String id) {
+    _tombe(id);
     resultatsConcours.removeWhere((r) => r.id == id);
     _touch();
   }
@@ -1795,10 +2375,12 @@ class AppModel extends ChangeNotifier {
     final i = oraux.indexWhere((x) => x.id == o.id);
     if (i >= 0) oraux[i] = o;
     _trierOraux();
+    _stamp(o.id);
     _touch();
   }
 
   void deleteOral(String id) {
+    _tombe(id);
     oraux.removeWhere((o) => o.id == id);
     _touch();
   }

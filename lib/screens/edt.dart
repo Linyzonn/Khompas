@@ -154,9 +154,11 @@ class _EdtScreenState extends State<EdtScreen> {
                                           decoration: BoxDecoration(
                                             border: Border(
                                               left: BorderSide(
-                                                  color: Colors.grey.shade200),
+                                                  color: Colors.grey
+                                                      .withValues(alpha: 0.25)),
                                               bottom: BorderSide(
-                                                  color: Colors.grey.shade200),
+                                                  color: Colors.grey
+                                                      .withValues(alpha: 0.25)),
                                             ),
                                           ),
                                         ),

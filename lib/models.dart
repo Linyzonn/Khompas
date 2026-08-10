@@ -1,4 +1,58 @@
+import 'dart:convert';
 import 'dart:math';
+
+/// Tente de reparer un JSON TRONQUE (fichier coupe en pleine ecriture,
+/// reponse d'IA interrompue par la limite de tokens) : coupe au dernier
+/// separateur d'objet complet et referme les crochets restes ouverts.
+/// Retourne le JSON repare, ou null si rien n'y fait. Publique : utilisee
+/// par la copie de secours (store) ET le plan B des extractions IA.
+String? repareJsonTronque(String raw) {
+  // Points de coupe candidats : chaque '}' ou ']' en remontant depuis la
+  // fin (bornes pour rester rapide sur un gros fichier).
+  var essais = 0;
+  for (var i = raw.length - 1; i >= 0 && essais < 60; i--) {
+    final ch = raw[i];
+    if (ch != '}' && ch != ']') continue;
+    essais++;
+    final tronque = raw.substring(0, i + 1);
+    // Referme ce qui reste ouvert (scan hors chaines de caracteres).
+    final pile = <String>[];
+    var enChaine = false;
+    var echappe = false;
+    for (var k = 0; k < tronque.length; k++) {
+      final c = tronque[k];
+      if (echappe) {
+        echappe = false;
+        continue;
+      }
+      if (c == r'\') {
+        echappe = true;
+        continue;
+      }
+      if (c == '"') {
+        enChaine = !enChaine;
+        continue;
+      }
+      if (enChaine) continue;
+      if (c == '{' || c == '[') pile.add(c);
+      if (c == '}' || c == ']') {
+        if (pile.isEmpty) break; // desequilibre : candidat invalide
+        pile.removeLast();
+      }
+    }
+    if (enChaine) continue;
+    final fermetures =
+        pile.reversed.map((c) => c == '{' ? '}' : ']').join();
+    final candidat = tronque + fermetures;
+    try {
+      jsonDecode(candidat);
+      return candidat;
+    } catch (_) {
+      // candidat invalide : on remonte encore
+    }
+  }
+  return null;
+}
 
 /// Couleur stable par matiere (palette fixe, choisie par hachage du nom).
 const List<int> kSubjectPalette = [

@@ -13,6 +13,7 @@ import 'import_chapitres.dart';
 import 'lectures.dart';
 import 'minuteur.dart';
 import 'oraux.dart';
+import 'progression.dart';
 import 'semaine.dart';
 import 'settings/compte_page.dart';
 
@@ -382,26 +383,95 @@ class _TodayScreenState extends State<TodayScreen> {
         _banniere(
           Colors.red,
           Icons.error_outline,
-          'Tes données n\'ont pas pu être lues au démarrage — rien n\'est écrasé, une copie de secours a été conservée. Restaure une sauvegarde (Réglages → Données & avancé) ou récupère ton compte.',
+          'Tes données n\'ont pas pu être lues au démarrage — rien n\'est écrasé, une copie de secours a été conservée. Tente « Récupérer la copie de secours » (Réglages → Données & avancé) ou récupère ton compte.',
         ),
-      if (m.syncConflit)
+      if (m.enregistrementsIgnores > 0)
         _banniere(
           Colors.orange,
+          Icons.report_problem_outlined,
+          '${m.enregistrementsIgnores} élément(s) illisible(s) ignoré(s) au chargement — tout le reste est intact, et une copie de secours complète existe (Réglages → Données & avancé).',
+        ),
+      // Rappel J+7 : la cle de compte EST le compte — creee il y a une
+      // semaine et jamais confirmee « notee quelque part », on la remontre
+      // (le drame classique : telephone perdu a Noel, cle jamais notee).
+      if (m.compteCle.isNotEmpty &&
+          !m.cleRappelOk &&
+          m.cleCreeLe != null &&
+          now.difference(m.cleCreeLe!).inDays >= 7)
+        _banniereAction(
+          Colors.indigo,
+          Icons.key,
+          'Ta clé de compte a une semaine — l\'as-tu vraiment notée quelque part (notes, mail à toi-même…) ? Sans elle, impossible de récupérer tes données si tu changes d\'appareil.',
+          'La voir',
+          () async {
+            await montrerCleCompte(context, m.compteCle,
+                rappel: 'Une fois notée, ce rappel disparaît.');
+            m.marquerCleNotee();
+          },
+        ),
+      // Synchro qui echoue EN SILENCE : le pire des bugs — au-dela de
+      // quelques echecs consecutifs, on previent au lieu de laisser croire
+      // que le compte est a jour.
+      if (m.compteCle.isNotEmpty && m.pushEchecs >= 3)
+        _banniereAction(
+          Colors.red,
+          Icons.cloud_off,
+          'La synchronisation du compte échoue depuis ${m.pushEchecs} envois — tes dernières modifications ne sont PAS sauvegardées en ligne'
+          '${m.pushDerniereErreur.isEmpty ? '.' : ' (${m.pushDerniereErreur})'}',
+          'Réessayer',
+          () async {
+            try {
+              await m.pousserCompte();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Synchronisation réussie ✅')));
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(
+                        'Toujours en échec : ${e.toString().replaceFirst('Exception: ', '')}')));
+              }
+            }
+          },
+        ),
+      // Les deux appareils ont travaille chacun de leur cote : la reponse
+      // propre est la FUSION par enregistrement (union par id, le plus
+      // recent gagne, les suppressions respectees) — rien ne s'ecrase.
+      if (m.syncConflit)
+        _banniereAction(
+          Colors.orange,
           Icons.sync_problem,
-          'Ton autre appareil a des données plus récentes. Fais « Récupérer » dans Réglages → Compte & synchronisation avant de continuer ici, sinon rien ne sera synchronisé.',
+          'Ton autre appareil a aussi travaillé de son côté. Fusionne les deux : rien ne s\'écrase, chaque modification garde la version la plus récente.',
+          'Fusionner',
+          () async {
+            try {
+              final resume = await m.fusionnerAvecCompte();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Fusionné ✅ ($resume)')));
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(
+                        'Échec : ${e.toString().replaceFirst('Exception: ', '')}')));
+              }
+            }
+          },
         ),
       if (m.compteEnAvance && !m.syncConflit)
         _banniereAction(
           Colors.orange,
           Icons.cloud_sync,
-          'Ton compte a des données plus récentes que cet appareil (poussées par ton autre appareil). Récupère-les AVANT de modifier ici.',
-          'Récupérer',
+          'Ton compte a des données plus récentes (poussées par ton autre appareil). Fusionne-les avant de modifier ici — rien ne s\'écrase.',
+          'Fusionner',
           () async {
             try {
-              final resume = await m.tirerCompte();
+              final resume = await m.fusionnerAvecCompte();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Récupéré ✅ ($resume)')));
+                    SnackBar(content: Text('Fusionné ✅ ($resume)')));
               }
             } catch (e) {
               if (context.mounted) {
@@ -1085,6 +1155,20 @@ class _TodayScreenState extends State<TodayScreen> {
               ],
             ),
           ],
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: OutlinedButton.icon(
+              style:
+                  OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+              icon: const Icon(Icons.insights, size: 15),
+              label: const Text('Ma progression',
+                  style: TextStyle(fontSize: 12)),
+              onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const ProgressionScreen())),
+            ),
+          ),
         ],
       ),
     );

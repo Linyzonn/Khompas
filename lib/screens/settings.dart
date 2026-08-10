@@ -104,7 +104,7 @@ class SettingsScreen extends StatelessWidget {
               const Divider(),
               const ListTile(
                 leading: Icon(Icons.info_outline),
-                title: Text('Khompas — bêta 0.18'),
+                title: Text('Khompas — bêta 0.19'),
                 subtitle: Text(
                     'Le compagnon de ta prépa. Tes données restent sur ton téléphone.'),
               ),

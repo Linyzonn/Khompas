@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../ai_extractor.dart';
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 
 /// Import du planning de DS par copier-coller avec son IA (gratuit) :
 /// meme principe que le colloscope — prompt copie, photo/PDF joint dans
@@ -102,7 +103,7 @@ class _ImportDsScreenState extends State<ImportDsScreen> {
                 '1. Copie le prompt.\n'
                 '2. Dans ton appli d\'IA (ChatGPT, Claude, Gemini), joins la photo ou le PDF du planning et colle le prompt.\n'
                 '3. Copie toute sa réponse et reviens la coller ici.',
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
+                style: TextStyle(fontSize: 13, color: couleurSecondaire(context)),
               ),
             ),
           ),
@@ -122,17 +123,28 @@ class _ImportDsScreenState extends State<ImportDsScreen> {
             const SizedBox(height: 16),
             if (avertissements.isNotEmpty)
               Card(
-                color: Colors.amber.shade100,
+                // Couleurs du THEME (pas d'amber.shade100 en dur) : en mode
+                // sombre, le texte clair sur fond ambre clair etait illisible.
+                color: Theme.of(context).colorScheme.tertiaryContainer,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text("Points à vérifier signalés par l'IA :",
-                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text("Points à vérifier signalés par l'IA :",
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onTertiaryContainer)),
                       const SizedBox(height: 6),
                       for (final w in avertissements)
-                        Text('• $w', style: const TextStyle(fontSize: 13)),
+                        Text('• $w',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onTertiaryContainer)),
                     ],
                   ),
                 ),

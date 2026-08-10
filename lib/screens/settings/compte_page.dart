@@ -30,7 +30,7 @@ class _ComptePageState extends State<ComptePage> {
     try {
       final cle = await ApiKhompas(m.serverUrl)
           .creerCompte(filiere: m.filiere, cinqDemi: m.cinqDemi);
-      await m.saveCompteCle(cle);
+      await m.saveCompteCle(cle, nouvelle: true);
       try {
         await m.pousserCompte();
       } catch (_) {
@@ -69,13 +69,24 @@ class _ComptePageState extends State<ComptePage> {
   }
 
   Future<void> _tirer() async {
+    // COMPARATIF avant le choix : « ecraser ici ou la » est binaire, mais
+    // au moins l'utilisateur voit ce que chaque cote contient.
+    String comparatif = '';
+    try {
+      final (local, distant) = await AppModel.instance.comparerAvecCompte();
+      comparatif = '\n\nIci : $local\nSur le compte : $distant';
+    } catch (_) {
+      // hors ligne ou compte vide : le dialogue reste utilisable sans
+    }
+    if (!mounted) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Récupérer du compte ?'),
-        content: const Text(
+        content: Text(
             'Les données de cet appareil seront REMPLACÉES par celles du compte '
-            '(la dernière version envoyée, depuis n\'importe quel appareil).'),
+            '(la dernière version envoyée, depuis n\'importe quel appareil).'
+            '$comparatif'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -94,6 +105,66 @@ class _ComptePageState extends State<ComptePage> {
       _snack('Données récupérées ✅ ($resume)');
     } catch (e) {
       if (mounted) _snack('Récupération impossible : ${_msg(e)}', secondes: 6);
+    }
+  }
+
+  /// Affiche (et cree au besoin) le lien du flux ICS abonne, pret a copier.
+  Future<void> _lienAgenda() async {
+    final m = AppModel.instance;
+    try {
+      final jeton = await ApiKhompas(m.serverUrl).creerJetonIcs(m.compteCle);
+      final lien = '${m.serverUrl}/api/compte/ics?j=$jeton';
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Ton lien d\'agenda 📅'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SelectableText(lien, style: const TextStyle(fontSize: 12.5)),
+              const SizedBox(height: 10),
+              Text(
+                'iPhone : Réglages → Calendrier → Comptes → Ajouter → '
+                'Abonnement de calendrier.\n'
+                'Google Agenda : Autres agendas → + → À partir d\'une URL.\n\n'
+                'Le calendrier se met à jour tout seul (quelques heures de '
+                'délai selon l\'application). Ce lien est personnel : ne le '
+                'partage pas.',
+                style: TextStyle(
+                    fontSize: 12, color: couleurSecondaire(context)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: lien));
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: const Text('Copier le lien'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Fermer'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) _snack('Lien impossible : ${_msg(e)}', secondes: 6);
+    }
+  }
+
+  Future<void> _fusionner() async {
+    try {
+      final resume = await AppModel.instance.fusionnerAvecCompte();
+      if (!mounted) return;
+      setState(() {});
+      _snack('Fusionné ✅ ($resume)');
+    } catch (e) {
+      if (mounted) _snack('Fusion impossible : ${_msg(e)}', secondes: 6);
     }
   }
 
@@ -199,13 +270,85 @@ class _ComptePageState extends State<ComptePage> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            FilledButton.tonalIcon(
+              icon: const Icon(Icons.merge),
+              label: const Text('Fusionner avec le compte'),
+              onPressed: _fusionner,
+            ),
+            Text(
+              'La fusion garde le meilleur des deux côtés : union par '
+              'enregistrement, la version la plus récente gagne, les '
+              'suppressions sont respectées. « Récupérer » remplace tout.',
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 11.5),
+            ),
+            const SizedBox(height: 16),
+            Text('Agenda abonné',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Abonne l\'agenda de ton téléphone à ton lien Khompas : khôlles, '
+              'DS, DM et oraux s\'y mettent à jour TOUT SEULS (plus besoin de '
+              'ré-exporter quand un programme change).',
+              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            ),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.link),
+              label: const Text('Mon lien d\'agenda'),
+              onPressed: _lienAgenda,
+            ),
             TextButton(
               onPressed: _dissocier,
               child: const Text('Dissocier cet appareil'),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error),
+              onPressed: _supprimerCompte,
+              child: const Text('Supprimer mon compte du serveur'),
             ),
           ],
         ],
       ),
     );
+  }
+
+  /// RGPD : purge le compte cote SERVEUR (donnees + profil). Les donnees de
+  /// cet appareil restent intactes ; seule la copie en ligne disparait.
+  Future<void> _supprimerCompte() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Supprimer ton compte du serveur ?'),
+        content: const Text(
+            'Toutes les données de ton compte EN LIGNE seront effacées '
+            'immédiatement et définitivement du serveur, et ta clé ne '
+            'fonctionnera plus.\n\nLes données de CET appareil restent '
+            'intactes — tu perds seulement la sauvegarde en ligne et la '
+            'synchronisation entre appareils.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annuler')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await AppModel.instance.supprimerCompteServeur();
+      if (mounted) {
+        setState(() {});
+        _snack('Compte supprimé du serveur ✅ Tes données locales sont intactes.');
+      }
+    } catch (e) {
+      if (mounted) _snack('Suppression impossible : ${_msg(e)}', secondes: 6);
+    }
   }
 }

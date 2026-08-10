@@ -10,6 +10,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
       # Le dépôt ne contient que lib/ + pubspec : on génère le squelette iOS ici.
       # (flutter create ne touche jamais aux fichiers existants.)
       - name: Générer le squelette iOS

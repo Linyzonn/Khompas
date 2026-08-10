@@ -17,6 +17,11 @@ import 'store.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   AppModel.instance.load();
+  // save() est debounce (400 ms) : quand l'app passe en arriere-plan, on
+  // FORCE l'ecriture en attente — les derniers gestes (verdict de carte,
+  // note saisie juste avant de ranger le telephone) ne doivent jamais
+  // dependre d'un retour dans l'app.
+  WidgetsBinding.instance.addObserver(_FlushObservateur());
   // Chaque changement de donnees replanifie les notifications (veille de
   // kholle / oral / DM), avec un debounce pour grouper les rafales.
   if (!kIsWeb) {
@@ -29,6 +34,20 @@ void main() {
     });
   }
   runApp(const KhompasApp());
+}
+
+/// Force l'ecriture disque ET le push de compte en attente des que l'app
+/// quitte le premier plan (leurs debounces ne doivent rien perdre).
+class _FlushObservateur with WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      AppModel.instance.flushSave();
+      AppModel.instance.flushPush();
+    }
+  }
 }
 
 class KhompasApp extends StatelessWidget {

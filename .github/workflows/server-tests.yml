@@ -21,4 +21,7 @@ jobs:
         with:
           deno-version: v2.x
       - run: deno check server/main.ts server/main_test.ts
-      - run: deno test --unstable-kv server/
+      # --allow-read : le test d'égalité des prompts lit lib/ai_extractor.dart.
+      # --allow-env : la machine d'extraction (testée avec fetch mocké) lit
+      # GEMINI_MODEL / GEMINI_API_KEY.
+      - run: deno test --unstable-kv --allow-read --allow-env server/

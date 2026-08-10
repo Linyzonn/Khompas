@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:khompas/ai_extractor.dart';
+import 'package:khompas/notifs.dart';
 import 'package:khompas/engine.dart';
 import 'package:khompas/ics.dart';
 import 'package:khompas/vacances_officielles.dart';
@@ -1328,6 +1331,195 @@ Voici le résultat demandé :
     m.importJson(raw);
     expect(m.colles.first.listesVoc, ['Liste 5', 'Liste 6']);
     expect(m.vocab.where((v) => v.liste == 'Liste 5'), hasLength(1));
+  });
+
+  // ---------- v0.19 : robustesse des donnees (review 0.18) ----------
+
+  test('parseListeTolerante : un enregistrement abîmé ne jette pas les autres',
+      () {
+    final brut = [
+      Colle(matiere: 'Maths', start: DateTime(2026, 9, 10)).toJson(),
+      {'matiere': 'Physique', 'start': 'pas-une-date'}, // malade
+      Colle(matiere: 'Anglais', start: DateTime(2026, 9, 12)).toJson(),
+    ];
+    final (liste, ignores) = parseListeTolerante(brut, Colle.fromJson);
+    expect(liste, hasLength(2));
+    expect(ignores, 1);
+    expect(liste.first.matiere, 'Maths');
+  });
+
+  test('repareJsonTronque : une sauvegarde coupée en pleine écriture se répare',
+      () {
+    m.colles.add(Colle(matiere: 'Maths', start: DateTime(2026, 9, 10)));
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
+    final complet = m.exportJson();
+    // Coupure brutale au milieu du fichier (coupure de courant, kill).
+    final tronque = complet.substring(0, complet.length ~/ 2);
+    final repare = repareJsonTronque(tronque);
+    expect(repare, isNotNull);
+    // Le JSON repare est restaurable (au moins partiellement).
+    reset(m);
+    m.importJson(repare!);
+    // Un texte sans aucune structure JSON reste irreparable.
+    expect(repareJsonTronque('pas du json'), isNull);
+  });
+
+  test('exportJsonCompact : mêmes données, nettement plus petit (synchro)',
+      () {
+    for (var i = 0; i < 20; i++) {
+      m.chapitres.add(Chapitre(
+          matiere: 'Maths', nom: 'Chapitre $i', etape: 1, maitrise: 2));
+    }
+    final compact = m.exportJsonCompact();
+    final indente = m.exportJson();
+    // Meme contenu logique (exportedAt mis a part : deux horodatages).
+    final a = jsonDecode(compact) as Map<String, dynamic>..remove('exportedAt');
+    final b = jsonDecode(indente) as Map<String, dynamic>..remove('exportedAt');
+    expect(a, b);
+    // ...mais bien plus court : c'est lui qui part vers le serveur.
+    expect(compact.length * 1.2, lessThan(indente.length));
+  });
+
+  test('étaleur de DM : une semaine de RÉVISIONS n\'est pas des vacances', () {
+    final now = DateTime(2026, 10, 20, 10);
+    m.sansCours.add(PlageSansCours(
+      titre: 'Révisions',
+      debut: DateTime(2026, 10, 18),
+      fin: DateTime(2026, 11, 1),
+      type: 'revisions',
+    ));
+    m.devoirs.add(Devoir(
+        matiere: 'Maths',
+        titre: 'DM 5',
+        dateRendu: now.add(const Duration(days: 5)),
+        dateDonne: now.subtract(const Duration(days: 1))));
+    final s = suggere(m, 240, maintenant: now);
+    expect(s.any((x) => x.titre.contains('Créneau DM')), isFalse,
+        reason:
+            'pas de « Créneau DM (vacances) » pendant une semaine banalisée');
+  });
+
+  test('extraction IA tronquée : les accolades DANS une chaîne survivent', () {
+    // Reponse d'IA coupee par la limite de tokens, avec un nom de chapitre
+    // contenant des accolades : l'ancien repechage regex \{[^{}]*\} perdait
+    // cet element — la reparation propre (fermeture des crochets) le garde.
+    const complet = '{"chapitres": ['
+        '{"matiere": "Maths", "nom": "Ensembles {1;2} et parties"},'
+        '{"matiere": "Maths", "nom": "Applications"},'
+        '{"matiere": "Maths", "nom": "Relations"}'
+        '], "avertissements": []}';
+    final tronque = complet.substring(0, complet.indexOf('"Relations"') + 4);
+    final r = parseChapitresExtraction(tronque);
+    expect(r.chapitres.length, 2);
+    expect(r.chapitres.first.nom, contains('{1;2}'));
+    expect(r.avertissements.join(), contains('incomplète'));
+  });
+
+  test('veillesAPlannifier : tri par date, jalons 🚨 inclus, DM respecte son '
+      'réglage', () {
+    final now = DateTime(2026, 10, 5, 12);
+    m.notifVeilleKholle = true;
+    m.notifVeilleDm = false;
+    m.colles
+        .add(Colle(matiere: 'Anglais', start: DateTime(2026, 10, 20, 16)));
+    m.colles.add(Colle(matiere: 'Maths', start: DateTime(2026, 10, 8, 16)));
+    // DM : exclu (notifVeilleDm desactive).
+    m.devoirs.add(Devoir(
+        matiere: 'Physique',
+        dateRendu: DateTime(2026, 10, 9),
+        dateDonne: DateTime(2026, 10, 2)));
+    // Jalon critique : TOUJOURS inclus, quels que soient les sous-reglages.
+    m.evenements.add(Evenement(
+        titre: '🚨 Clôture SCEI',
+        matiere: 'TIPE',
+        date: DateTime(2026, 12, 10),
+        debutMin: 8 * 60,
+        dureeMin: 60));
+    final l = Notifs.veillesAPlannifier(m, maintenant: now);
+    expect(l.map((e) => e.$2).toList(), [
+      'Khôlle demain — Maths',
+      'Khôlle demain — Anglais',
+      'Demain — Clôture SCEI',
+    ]);
+    // Le reglage DM reactive : le devoir entre, a sa place chronologique.
+    m.notifVeilleDm = true;
+    final l2 = Notifs.veillesAPlannifier(m, maintenant: now);
+    expect(l2[1].$2, 'À rendre demain — Physique');
+  });
+
+  test('fusion de synchro : union par id, plus récent gagne, suppressions '
+      'respectées des deux côtés', () {
+    // LOCAL : A (modifiee ICI le 5), C (jamais touchee) ; B supprimee ici.
+    final a = Colle(matiere: 'Maths', start: DateTime(2026, 9, 10, 16));
+    final b = Colle(matiere: 'Physique', start: DateTime(2026, 9, 11, 16));
+    final c = Colle(matiere: 'Anglais', start: DateTime(2026, 9, 12, 16));
+    m.colles.addAll([a, c]);
+    m.majEnregistrements[a.id] = DateTime(2026, 9, 5);
+    m.suppressions[b.id] = DateTime(2026, 9, 6);
+    // DISTANT : A en version plus VIEILLE (le 3), B toujours presente
+    // (jamais retouchee la-bas), D nouvelle.
+    final aDistant = Colle(
+        id: a.id,
+        matiere: 'Maths',
+        start: DateTime(2026, 9, 10, 16),
+        note: 15);
+    final d = Colle(matiere: 'SII', start: DateTime(2026, 9, 13, 16));
+    final resume = m.fusionnerDonnees(jsonEncode({
+      'colles': [aDistant.toJson(), b.toJson(), d.toJson()],
+      'majEnregistrements': {a.id: DateTime(2026, 9, 3).toIso8601String()},
+    }));
+    // Union : A + C + D ; B reste MORTE (tombale locale plus recente).
+    expect(m.colles.map((x) => x.id).toSet(), {a.id, c.id, d.id});
+    // A locale plus recente : la note distante n'ecrase pas.
+    expect(m.colles.firstWhere((x) => x.id == a.id).note, isNull);
+    expect(resume, contains('1 ajouté'));
+    // Cas inverse : le distant plus RECENT gagne.
+    m.fusionnerDonnees(jsonEncode({
+      'colles': [aDistant.toJson()],
+      'majEnregistrements': {a.id: DateTime(2026, 9, 8).toIso8601String()},
+    }));
+    expect(m.colles.firstWhere((x) => x.id == a.id).note, 15);
+    // Suppression DISTANTE d'un enregistrement local jamais retouche.
+    m.fusionnerDonnees(jsonEncode({
+      'suppressions': {c.id: DateTime(2026, 9, 9).toIso8601String()},
+    }));
+    expect(m.colles.any((x) => x.id == c.id), isFalse);
+  });
+
+  test('fusion : deleteColle pose une pierre tombale, updateColle un '
+      'horodatage', () {
+    final a = Colle(matiere: 'Maths', start: DateTime(2026, 9, 10, 16));
+    m.colles.add(a);
+    m.updateColle(a);
+    expect(m.majEnregistrements.containsKey(a.id), isTrue);
+    m.deleteColle(a.id);
+    expect(m.suppressions.containsKey(a.id), isTrue);
+    expect(m.majEnregistrements.containsKey(a.id), isFalse);
+  });
+
+  test('progression : histogramme hebdo, minutes par matière, tendance de '
+      'notes', () {
+    final now = DateTime(2026, 10, 20, 18); // mardi (lundi = 19/10)
+    m.seances.add(Seance(
+        matiere: 'Maths', date: DateTime(2026, 10, 19, 20), minutes: 60));
+    m.seances.add(Seance(
+        matiere: 'Maths', date: DateTime(2026, 10, 12, 20), minutes: 30));
+    m.seances.add(Seance(
+        matiere: 'Physique', date: DateTime(2026, 10, 13, 20), minutes: 45));
+    final histo = m.minutesParSemaineHisto(maintenant: now, semaines: 3);
+    expect(histo, hasLength(3));
+    expect(histo.last.$2, 60); // semaine courante
+    expect(histo[1].$2, 75); // semaine precedente
+    final parMat = m.minutesParMatiere(maintenant: now);
+    expect(parMat.first, ('Maths', 90));
+    // Tendance : 12 sur les 30 derniers jours, 10 sur les 30 d'avant.
+    m.colles.add(
+        Colle(matiere: 'Maths', start: DateTime(2026, 10, 5, 16), note: 12));
+    m.ds.add(Ds(matiere: 'Maths', date: DateTime(2026, 9, 1), note: 10));
+    final (recente, ancienne) = m.tendanceNotes('Maths', maintenant: now);
+    expect(recente, 12);
+    expect(ancienne, 10);
   });
 
   test('sauvegarde : citations, voc, trajet et interro survivent au round-trip',

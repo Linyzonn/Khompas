@@ -179,7 +179,9 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
   // ---- 2 ter. Vacances : un creneau DM a cadence fixe et annoncee
   // ("un jour sur N") — de l'etalement TRANSPARENT, pas un planificateur.
   // Les DM qui tombent dans ≤ 3 jours passent par le circuit urgence normal.
-  if (plage != null && budget >= 60) {
+  // Une semaine de REVISIONS n'est pas des vacances : pas d'etalement
+  // « Vacances — ... » incongru pendant une semaine banalisee.
+  if (plage != null && plage.type != 'revisions' && budget >= 60) {
     final aEtaler = m
         .devoirsARendre()
         .where((d) => d.dateRendu.difference(now).inDays >= 3)

@@ -63,7 +63,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _profilLocal();
       final cle = await ApiKhompas(m.serverUrl)
           .creerCompte(filiere: filiere, cinqDemi: cinqDemi);
-      await m.saveCompteCle(cle);
+      await m.saveCompteCle(cle, nouvelle: true);
       try {
         await m.pousserCompte();
       } catch (_) {
