@@ -29,27 +29,42 @@ const MAX_PHOTOS = 5;
 const MAX_B64_PAR_PHOTO = 4_000_000; // ~2,8 Mo une fois decode (photo ou PDF)
 const CHUNK = 60_000; // Deno KV limite chaque valeur a 64 Ko (base64 = ASCII)
 
-// Deno KV compte des OCTETS (65 536 max), pas des caracteres : un texte
-// francais (accents = 2 octets, emojis = 4) faisait exploser un decoupage
-// naif en 60 000 CARACTERES -> « Value too large », synchro morte en prod.
-// Ici on coupe sur des frontieres de caracteres, a 60 000 OCTETS max.
-function decouperUtf8(s: string, maxOctets = 60_000): string[] {
-  const enc = new TextEncoder();
-  const out: string[] = [];
-  let courant = '';
-  let octets = 0;
-  for (const car of s) {
-    const taille = enc.encode(car).length;
-    if (octets + taille > maxOctets) {
-      out.push(courant);
-      courant = '';
-      octets = 0;
-    }
-    courant += car;
-    octets += taille;
+// Deno KV limite chaque valeur a 65 536 octets SERIALISES par V8 — et pour
+// une chaine, V8 bascule en UTF-16 (2 octets par caractere, meme pour
+// l'ASCII) des qu'UN SEUL caractere sort du latin1 : un emoji dans les
+// donnees (l'app en met partout : 🎤 📝 ☀️) doublait la taille reelle de
+// chaque morceau, d'ou « Value too large » et la synchro morte en prod.
+// On stocke donc des OCTETS BRUTS (Uint8Array), dont la taille sérialisée
+// est previsible, et on decoupe a 48 Ko pour garder une marge confortable.
+const CHUNK_OCTETS = 48_000;
+
+function decouperOctets(s: string): Uint8Array[] {
+  const octets = new TextEncoder().encode(s);
+  const out: Uint8Array[] = [];
+  for (let i = 0; i < octets.length; i += CHUNK_OCTETS) {
+    out.push(octets.slice(i, i + CHUNK_OCTETS));
   }
-  if (courant) out.push(courant);
-  return out;
+  return out.length ? out : [new Uint8Array(0)];
+}
+
+// Recolle les morceaux : Uint8Array (format actuel) ou chaine (ancien
+// format, comptes qui n'ont pas repousse depuis la migration).
+function recollerMorceaux(morceaux: (Uint8Array | string)[]): string {
+  if (morceaux.every((m) => typeof m === 'string')) {
+    return (morceaux as string[]).join('');
+  }
+  let total = 0;
+  const bruts = morceaux.map((m) =>
+    typeof m === 'string' ? new TextEncoder().encode(m) : m
+  );
+  for (const b of bruts) total += b.length;
+  const tout = new Uint8Array(total);
+  let pos = 0;
+  for (const b of bruts) {
+    tout.set(b, pos);
+    pos += b.length;
+  }
+  return new TextDecoder().decode(tout);
 }
 const LIMITE_IP_JOUR = 30; // extractions max / appareil / jour
 // Extractions max / jour, toutes classes confondues. Assez haut pour le PIC
@@ -223,17 +238,19 @@ async function lireDonneesCompte(id: string): Promise<string | null> {
   const meta = await kv.get(['accm', id]);
   if (!meta.value) return null;
   const { maj, chunks } = meta.value as { maj: number; chunks: number };
-  let data = '';
+  const morceaux: (Uint8Array | string)[] = [];
   for (let i = 0; i < chunks; i++) {
     const part = await kv.get(['accd', id, maj, i]);
     if (part.value != null) {
-      data += part.value as string;
+      morceaux.push(part.value as Uint8Array | string);
       continue;
     }
     const ancien = await kv.get(['accd', id, i]);
-    data += (ancien.value as string | null) ?? '';
+    if (ancien.value != null) {
+      morceaux.push(ancien.value as Uint8Array | string);
+    }
   }
-  return data;
+  return recollerMorceaux(morceaux);
 }
 
 async function extraire(pieces: Piece[], groupe: number): Promise<string> {
@@ -963,9 +980,8 @@ export async function gerer(
     // (vu sur le runner CI) recevaient le meme numero, et un appareil
     // perime passait alors la garde — au moins prev+1, toujours.
     const maj = Math.max(Date.now(), (metaPrev.maj ?? 0) + 1);
-    // Decoupage en OCTETS : les donnees sont du texte francais (accents,
-    // emojis) — un decoupage en caracteres depassait la limite KV.
-    const morceaux = decouperUtf8(corps);
+    // Octets bruts (voir decouperOctets) : taille previsible cote KV.
+    const morceaux = decouperOctets(corps);
     for (let i = 0; i < morceaux.length; i++) {
       await kv.set(['accd', id, maj, i], morceaux[i], { expireIn: TTL });
     }

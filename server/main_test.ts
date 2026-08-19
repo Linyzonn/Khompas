@@ -577,7 +577,13 @@ Deno.test('compte : un texte ACCENTUÉ volumineux passe (octets, pas caractères
   // 100 000 caractères d'accents = 200 000 octets : l'ancien découpage en
   // 60 000 CARACTÈRES produisait des valeurs de 120 000 octets -> KV refusait
   // ("Value too large"), et la synchro mourait en production.
-  const donnees = JSON.stringify({ app: 'khompas', note: 'é'.repeat(100_000) });
+  // Un SEUL emoji suffit : V8 stocke alors toute la chaîne en UTF-16
+  // (2 octets/caractère même pour l'ASCII) -> la valeur sérialisée double.
+  const donnees = JSON.stringify({
+    app: 'khompas',
+    programme: 'Espaces vectoriels normes, series entieres. '.repeat(5_000),
+    note: 'é'.repeat(20_000) + ' 🎤 revoir le chapitre',
+  });
   const rPut = await gerer(
     req('PUT', '/api/compte/data', { body: donnees, headers: { 'x-khompas-cle': cle } }),
     infoIp(ip),
