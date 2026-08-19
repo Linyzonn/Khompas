@@ -147,7 +147,27 @@ class _PlanningPageState extends State<PlanningPage> {
                 'Roulement semaines A/B, vacances, semaines de révisions'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const CalendrierScreen())),
+                    MaterialPageRoute(builder: (_) => const CalendrierScreen()))
+                .then((_) => setState(() {})),
+          ),
+          // Raccourci DIRECT : l'import des vacances officielles etait
+          // enterre dans le Calendrier — personne ne le trouvait.
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Text('🏖', style: TextStyle(fontSize: 20)),
+            title: const Text('Vacances officielles (zone A / B / C)'),
+            subtitle: Text(
+                m.zoneVacances.isEmpty
+                    ? 'Choisis ta zone → toutes les vacances de l\'année arrivent d\'un coup.'
+                    : 'Zone ${m.zoneVacances} · ${m.sansCours.length} période(s) au calendrier — appuie pour mettre à jour.',
+                style: const TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) =>
+                        const CalendrierScreen(ouvrirVacances: true))).then(
+                (_) => setState(() {})),
           ),
           const SizedBox(height: 24),
           Text('Temps de trajet',

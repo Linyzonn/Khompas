@@ -27,7 +27,30 @@ const MODELES_GEMINI = [
 ];
 const MAX_PHOTOS = 5;
 const MAX_B64_PAR_PHOTO = 4_000_000; // ~2,8 Mo une fois decode (photo ou PDF)
-const CHUNK = 60_000; // Deno KV limite chaque valeur a 64 Ko
+const CHUNK = 60_000; // Deno KV limite chaque valeur a 64 Ko (base64 = ASCII)
+
+// Deno KV compte des OCTETS (65 536 max), pas des caracteres : un texte
+// francais (accents = 2 octets, emojis = 4) faisait exploser un decoupage
+// naif en 60 000 CARACTERES -> « Value too large », synchro morte en prod.
+// Ici on coupe sur des frontieres de caracteres, a 60 000 OCTETS max.
+function decouperUtf8(s: string, maxOctets = 60_000): string[] {
+  const enc = new TextEncoder();
+  const out: string[] = [];
+  let courant = '';
+  let octets = 0;
+  for (const car of s) {
+    const taille = enc.encode(car).length;
+    if (octets + taille > maxOctets) {
+      out.push(courant);
+      courant = '';
+      octets = 0;
+    }
+    courant += car;
+    octets += taille;
+  }
+  if (courant) out.push(courant);
+  return out;
+}
 const LIMITE_IP_JOUR = 30; // extractions max / appareil / jour
 // Extractions max / jour, toutes classes confondues. Assez haut pour le PIC
 // DE LA RENTREE (des dizaines de classes le meme jour) : a 200, une seule
@@ -940,14 +963,13 @@ export async function gerer(
     // (vu sur le runner CI) recevaient le meme numero, et un appareil
     // perime passait alors la garde — au moins prev+1, toujours.
     const maj = Math.max(Date.now(), (metaPrev.maj ?? 0) + 1);
-    let n = 0;
-    for (; n * CHUNK < corps.length; n++) {
-      await kv.set(
-        ['accd', id, maj, n],
-        corps.slice(n * CHUNK, (n + 1) * CHUNK),
-        { expireIn: TTL },
-      );
+    // Decoupage en OCTETS : les donnees sont du texte francais (accents,
+    // emojis) — un decoupage en caracteres depassait la limite KV.
+    const morceaux = decouperUtf8(corps);
+    for (let i = 0; i < morceaux.length; i++) {
+      await kv.set(['accd', id, maj, i], morceaux[i], { expireIn: TTL });
     }
+    const n = morceaux.length;
     await kv.set(
       ['accm', id],
       { maj, chunks: n, exportedAt: exportedAt || maj },

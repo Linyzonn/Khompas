@@ -570,3 +570,24 @@ Deno.test('flux ICS : jeton idempotent, calendrier généré, 404 sinon', async 
   }
   await rMort.body?.cancel();
 });
+
+Deno.test('compte : un texte ACCENTUÉ volumineux passe (octets, pas caractères)', async () => {
+  const ip = '10.0.4.1';
+  const cle = await creerCompte(ip);
+  // 100 000 caractères d'accents = 200 000 octets : l'ancien découpage en
+  // 60 000 CARACTÈRES produisait des valeurs de 120 000 octets -> KV refusait
+  // ("Value too large"), et la synchro mourait en production.
+  const donnees = JSON.stringify({ app: 'khompas', note: 'é'.repeat(100_000) });
+  const rPut = await gerer(
+    req('PUT', '/api/compte/data', { body: donnees, headers: { 'x-khompas-cle': cle } }),
+    infoIp(ip),
+  );
+  if (rPut.status !== 200) throw new Error(`push : HTTP ${rPut.status}`);
+  await rPut.body?.cancel();
+  const rGet = await gerer(
+    req('GET', '/api/compte/data', { headers: { 'x-khompas-cle': cle } }),
+    infoIp(ip),
+  );
+  const { data } = await rGet.json();
+  if (data !== donnees) throw new Error('données accentuées corrompues au retour');
+});

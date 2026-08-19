@@ -9,13 +9,25 @@ import '../vacances_officielles.dart';
 /// (vacances, semaines de revisions avant les concours). L'emploi du temps
 /// et le plan du soir en tiennent compte automatiquement.
 class CalendrierScreen extends StatefulWidget {
-  const CalendrierScreen({super.key});
+  /// true = ouvre directement le choix de zone des vacances officielles
+  /// (raccourci depuis Réglages → Planning & matières).
+  final bool ouvrirVacances;
+  const CalendrierScreen({super.key, this.ouvrirVacances = false});
 
   @override
   State<CalendrierScreen> createState() => _CalendrierScreenState();
 }
 
 class _CalendrierScreenState extends State<CalendrierScreen> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.ouvrirVacances) {
+      WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _importerVacancesOfficielles());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = AppModel.instance;
