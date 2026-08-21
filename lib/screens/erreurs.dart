@@ -201,7 +201,7 @@ Future<bool> ajouterErreurDialog(BuildContext context,
                   children: [
                     for (final t in kTypesErreur)
                       ChoiceChip(
-                        label: Text(t, style: const TextStyle(fontSize: 12)),
+                        label: Text(t),
                         selected: type == t,
                         onSelected: (_) => setState(() => type = t),
                       ),
@@ -214,7 +214,7 @@ Future<bool> ajouterErreurDialog(BuildContext context,
                   children: [
                     for (final s in kSourcesErreur)
                       ChoiceChip(
-                        label: Text(s, style: const TextStyle(fontSize: 12)),
+                        label: Text(s),
                         selected: source == s,
                         onSelected: (_) => setState(() => source = s),
                       ),

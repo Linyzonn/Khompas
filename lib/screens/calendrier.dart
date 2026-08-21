@@ -318,8 +318,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                 children: [
                   for (final t in kTypesPlage)
                     ChoiceChip(
-                      label: Text('${t.$2} ${t.$3}',
-                          style: const TextStyle(fontSize: 12)),
+                      label: Text('${t.$2} ${t.$3}'),
                       selected: type == t.$1,
                       onSelected: (_) => setLocal(() {
                         type = t.$1;

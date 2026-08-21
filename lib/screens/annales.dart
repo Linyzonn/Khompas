@@ -169,7 +169,7 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
                     children: [
                       for (final c in kConcoursPour(m.filiere))
                         ActionChip(
-                          label: Text(c, style: const TextStyle(fontSize: 12)),
+                          label: Text(c),
                           onPressed: () =>
                               setState(() => concoursCtl.text = c),
                         ),
@@ -189,8 +189,7 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
                       children: [
                         for (final mat in m.matieres)
                           ActionChip(
-                            label: Text(mat,
-                                style: const TextStyle(fontSize: 12)),
+                            label: Text(mat),
                             onPressed: () =>
                                 setState(() => matiereCtl.text = mat),
                           ),

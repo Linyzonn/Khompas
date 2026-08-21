@@ -45,7 +45,13 @@ class _LecturesScreenState extends State<LecturesScreen> {
               'les lire. Ce qui n\'est pas fini revient en début '
               'd\'année.',
           )
-          : ReorderableListView(
+          // Bornee en largeur comme les autres listes, mais le
+          // ReorderableListView est conserve : c'est lui qui porte le
+          // glisser-deposer de l'ordre de lecture.
+          : Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 680),
+                child: ReorderableListView(
               padding: const EdgeInsets.only(bottom: 90),
               header: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
@@ -61,7 +67,9 @@ class _LecturesScreenState extends State<LecturesScreen> {
                 m.reorderOeuvres(oldIndex, newIndex);
                 setState(() {});
               },
-              children: [for (final o in m.oeuvres) _tuile(o)],
+                  children: [for (final o in m.oeuvres) _tuile(o)],
+                ),
+              ),
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _editer(null),

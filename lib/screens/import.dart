@@ -327,9 +327,7 @@ class _ImportScreenState extends State<ImportScreen> {
     final montrerClePerso = !serveurActif || m.apiKey.isNotEmpty;
     return Scaffold(
       appBar: AppBar(title: const Text('Importer mon colloscope')),
-      body: ListView(
-        padding: const EdgeInsets.all(kEsp16),
-        children: [
+      body: listeCentree(context, children: [
           if (busy)
             Card(
               color: Theme.of(context).colorScheme.primaryContainer,

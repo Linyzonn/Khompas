@@ -189,7 +189,7 @@ class _PlanningPageState extends State<PlanningPage> {
                 (60, '1 h'),
               ])
                 ChoiceChip(
-                  label: Text(label, style: const TextStyle(fontSize: 12)),
+                  label: Text(label),
                   selected: m.trajetMinutes == minutes,
                   onSelected: (_) {
                     m.setTrajetMinutes(minutes);
@@ -202,8 +202,7 @@ class _PlanningPageState extends State<PlanningPage> {
                 label: Text(
                     const [0, 15, 30, 45, 60].contains(m.trajetMinutes)
                         ? 'Autre…'
-                        : '${m.trajetMinutes} min',
-                    style: const TextStyle(fontSize: 12)),
+                        : '${m.trajetMinutes} min'),
                 selected:
                     !const [0, 15, 30, 45, 60].contains(m.trajetMinutes),
                 onSelected: (_) => _trajetPersonnalise(),

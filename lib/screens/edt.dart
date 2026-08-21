@@ -246,7 +246,7 @@ class _EdtScreenState extends State<EdtScreen> {
                     ActionChip(
                       avatar: CircleAvatar(
                           backgroundColor: Color(subjectColor(mat)), radius: 6),
-                      label: Text(mat, style: const TextStyle(fontSize: 12)),
+                      label: Text(mat),
                       onPressed: () => Navigator.pop(context, (mat, true)),
                     ),
                 ],
@@ -261,7 +261,7 @@ class _EdtScreenState extends State<EdtScreen> {
                 children: [
                   for (final v in _vie)
                     ActionChip(
-                      label: Text(v, style: const TextStyle(fontSize: 12)),
+                      label: Text(v),
                       onPressed: () => Navigator.pop(context, (v, false)),
                     ),
                   ActionChip(
@@ -355,8 +355,7 @@ class _EdtScreenState extends State<EdtScreen> {
                 children: [
                   for (var s = 0; s < kSemainesLabels.length; s++)
                     ChoiceChip(
-                      label: Text(kSemainesLabels[s],
-                          style: const TextStyle(fontSize: 12)),
+                      label: Text(kSemainesLabels[s]),
                       selected: semaines == s,
                       onSelected: (_) => setLocal(() => semaines = s),
                     ),
@@ -426,8 +425,7 @@ class _EdtScreenState extends State<EdtScreen> {
                 children: [
                   for (var s = 0; s < kSemainesLabels.length; s++)
                     ChoiceChip(
-                      label: Text(kSemainesLabels[s],
-                          style: const TextStyle(fontSize: 12)),
+                      label: Text(kSemainesLabels[s]),
                       selected: semaines == s,
                       onSelected: (_) => setLocal(() => semaines = s),
                     ),

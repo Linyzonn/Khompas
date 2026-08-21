@@ -139,9 +139,9 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
     final actif = filtre != 'tous' || recherche.isNotEmpty;
 
     return Scaffold(
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 90),
-        children: [
+      body: listeCentree(context,
+          padding: const EdgeInsets.only(bottom: 90),
+          children: [
           // ---- Cartes (citations, voc) : le savoir « hors chapitres »,
           // accessible ICI plutot qu'au fond des reglages. ----
           Padding(
@@ -502,8 +502,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                   label: Text(
                       c.prochaineRevision == null
                           ? 'Vu aujourd\'hui → réviser demain (répétition espacée)'
-                          : 'Revoir dès demain (réinitialise l\'espacement)',
-                      style: const TextStyle(fontSize: 12.5)),
+                          : 'Revoir dès demain (réinitialise l\'espacement)'),
                   onPressed: () {
                     m.demarrerEspacement(c.id);
                     setSheet(() {});
@@ -575,7 +574,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                     children: [
                       for (final mat in m.matieres)
                         ActionChip(
-                          label: Text(mat, style: const TextStyle(fontSize: 12)),
+                          label: Text(mat),
                           onPressed: () => setState(() => matiereCtl.text = mat),
                         ),
                     ],

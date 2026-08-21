@@ -240,7 +240,7 @@ class _OrauxScreenState extends State<OrauxScreen> {
                     children: [
                       for (final c in kConcoursPour(m.filiere))
                         ActionChip(
-                          label: Text(c, style: const TextStyle(fontSize: 12)),
+                          label: Text(c),
                           onPressed: () =>
                               setState(() => concoursCtl.text = c),
                         ),
@@ -259,7 +259,7 @@ class _OrauxScreenState extends State<OrauxScreen> {
                     children: [
                       for (final e in kEpreuvesOrales)
                         ActionChip(
-                          label: Text(e, style: const TextStyle(fontSize: 12)),
+                          label: Text(e),
                           onPressed: () =>
                               setState(() => epreuveCtl.text = e),
                         ),

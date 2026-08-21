@@ -128,9 +128,7 @@ class _ImportCartesScreenState extends State<ImportCartesScreen> {
           title: Text(voc
               ? 'Importer ma feuille de voc'
               : 'Importer mes citations')),
-      body: ListView(
-        padding: const EdgeInsets.all(kEsp16),
-        children: [
+      body: listeCentree(context, children: [
           Card(
             child: Padding(
               padding: const EdgeInsets.all(kEsp12),

@@ -28,9 +28,9 @@ class _VerifyScreenState extends State<VerifyScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('Vérifie tes ${colles.length} khôlles')),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 100),
-        children: [
+      body: listeCentree(context,
+          padding: const EdgeInsets.only(bottom: 100),
+          children: [
           if (widget.result.avertissements.isNotEmpty)
             // Couleurs du THEME (et pas amber.shade100 en dur) : en mode
             // sombre, le texte clair sur fond ambre clair etait illisible.

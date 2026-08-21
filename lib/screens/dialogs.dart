@@ -201,7 +201,7 @@ Future<Colle?> editColleDialog(BuildContext context, {Colle? initial}) async {
                     children: [
                       for (final mat in m.matieres)
                         ActionChip(
-                          label: Text(mat, style: const TextStyle(fontSize: 12)),
+                          label: Text(mat),
                           onPressed: () => setState(() => matiereCtl.text = mat),
                         ),
                     ],
@@ -293,7 +293,7 @@ Future<Colle?> editColleDialog(BuildContext context, {Colle? initial}) async {
                       for (final nom in m.listesVocNoms)
                         FilterChip(
                           label:
-                              Text(nom, style: const TextStyle(fontSize: 12)),
+                              Text(nom),
                           selected: listesVoc.contains(nom),
                           onSelected: (v) => setState(() {
                             v ? listesVoc.add(nom) : listesVoc.remove(nom);
@@ -362,7 +362,7 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
                   children: [
                     for (final mat in m.matieres)
                       ActionChip(
-                        label: Text(mat, style: const TextStyle(fontSize: 12)),
+                        label: Text(mat),
                         onPressed: () => setState(() => matiereCtl.text = mat),
                       ),
                   ],
@@ -498,7 +498,7 @@ Future<Devoir?> editDevoirDialog(BuildContext context,
                     children: [
                       for (final mat in m.matieres)
                         ActionChip(
-                          label: Text(mat, style: const TextStyle(fontSize: 12)),
+                          label: Text(mat),
                           onPressed: () => setState(() => matiereCtl.text = mat),
                         ),
                     ],
@@ -516,7 +516,7 @@ Future<Devoir?> editDevoirDialog(BuildContext context,
                   children: [
                     for (final t in const ['DM', 'DNS', 'Exos'])
                       ActionChip(
-                        label: Text(t, style: const TextStyle(fontSize: 12)),
+                        label: Text(t),
                         onPressed: () => setState(() => titreCtl.text = t),
                       ),
                   ],
@@ -618,7 +618,7 @@ Future<Evenement?> editEvenementDialog(BuildContext context,
                       for (final mat in m.matieres)
                         ActionChip(
                           label:
-                              Text(mat, style: const TextStyle(fontSize: 12)),
+                              Text(mat),
                           onPressed: () =>
                               setState(() => matiereCtl.text = mat),
                         ),
@@ -781,8 +781,7 @@ Future<double?> noteAvecRecalibrage(BuildContext context,
                     children: [
                       for (final c in chs)
                         FilterChip(
-                          label: Text(c.nom,
-                              style: const TextStyle(fontSize: 12)),
+                          label: Text(c.nom),
                           selected: choisis.contains(c.id),
                           onSelected: (sel) => setState(() =>
                               sel ? choisis.add(c.id) : choisis.remove(c.id)),

@@ -193,8 +193,7 @@ Future<Citation?> editCitationDialog(BuildContext context,
                     children: [
                       for (final o in m.oeuvres)
                         ActionChip(
-                          label: Text(o.titre,
-                              style: const TextStyle(fontSize: 12)),
+                          label: Text(o.titre),
                           onPressed: () => setState(() {
                             oeuvreCtl.text = o.titre;
                             if (auteurCtl.text.trim().isEmpty) {
@@ -220,7 +219,7 @@ Future<Citation?> editCitationDialog(BuildContext context,
                       for (final a in axesConnus)
                         ActionChip(
                           label:
-                              Text(a, style: const TextStyle(fontSize: 12)),
+                              Text(a),
                           onPressed: () => setState(() => axeCtl.text = a),
                         ),
                     ],
@@ -472,8 +471,7 @@ class _VocabScreenState extends State<VocabScreen> {
                       children: [
                         for (final nom in m.listesVocNoms)
                           ActionChip(
-                            label: Text(nom,
-                                style: const TextStyle(fontSize: 12)),
+                            label: Text(nom),
                             onPressed: () =>
                                 setState(() => listeCtl.text = nom),
                           ),

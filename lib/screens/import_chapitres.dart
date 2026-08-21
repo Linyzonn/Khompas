@@ -106,9 +106,7 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
         : (t.map((c) => c.matiere).toSet().toList()..sort());
     return Scaffold(
       appBar: AppBar(title: const Text('Importer le programme officiel')),
-      body: ListView(
-        padding: const EdgeInsets.all(kEsp16),
-        children: [
+      body: listeCentree(context, children: [
           Card(
             child: Padding(
               padding: const EdgeInsets.all(kEsp12),
@@ -148,7 +146,7 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
                   ...AppModel.instance.matieres,
                 })
                   ActionChip(
-                    label: Text(mat, style: const TextStyle(fontSize: 12)),
+                    label: Text(mat),
                     onPressed: () => setState(() => matiereCtl.text = mat),
                   ),
               ],

@@ -790,8 +790,7 @@ class _TodayScreenState extends State<TodayScreen> {
               style:
                   OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
               icon: const Icon(Icons.play_arrow, size: 16),
-              label: Text('Réviser ($total)',
-                  style: const TextStyle(fontSize: 12)),
+              label: Text('Réviser ($total)'),
               onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -1297,7 +1296,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   ('pomoAuto', '🍅 Auto'),
                 ])
                   ChoiceChip(
-                    label: Text(me.$2, style: const TextStyle(fontSize: 12)),
+                    label: Text(me.$2),
                     visualDensity: VisualDensity.compact,
                     selected: m.methodeTravail == me.$1,
                     onSelected: (_) => m.saveMethodeTravail(me.$1),
