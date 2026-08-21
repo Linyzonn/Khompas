@@ -92,11 +92,11 @@ class _ImportDsScreenState extends State<ImportDsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Importer un planning de DS')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(kEsp16),
         children: [
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(kEsp12),
               child: Text(
                 'Ton lycée distribue un planning de DS (souvent le samedi matin) ? '
                 'Importe-le en une fois, gratuitement :\n'
@@ -107,27 +107,27 @@ class _ImportDsScreenState extends State<ImportDsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           OutlinedButton.icon(
             icon: const Icon(Icons.copy_all),
             label: const Text('1. Copier le prompt'),
             onPressed: _copierPrompt,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           FilledButton.tonalIcon(
             icon: const Icon(Icons.content_paste_go),
             label: const Text("2. Coller la réponse de l'IA"),
             onPressed: _collerReponse,
           ),
           if (t != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: kEsp16),
             if (avertissements.isNotEmpty)
               Card(
                 // Couleurs du THEME (pas d'amber.shade100 en dur) : en mode
                 // sombre, le texte clair sur fond ambre clair etait illisible.
                 color: Theme.of(context).colorScheme.tertiaryContainer,
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(kEsp12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -167,7 +167,7 @@ class _ImportDsScreenState extends State<ImportDsScreen> {
                   onPressed: () => setState(() => t.removeAt(i)),
                 ),
               ),
-            const SizedBox(height: 12),
+            const SizedBox(height: kEsp12),
             FilledButton.icon(
               icon: const Icon(Icons.check),
               label: Text('Ajouter ces ${t.length} DS à mon agenda'),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../ai_extractor.dart';
 import '../models.dart';
 import '../store.dart';
+import '../theme.dart';
 import 'dialogs.dart';
 
 /// Verification humaine AVANT l'ajout : l'IA propose, tu disposes.
@@ -34,10 +35,10 @@ class _VerifyScreenState extends State<VerifyScreen> {
             // Couleurs du THEME (et pas amber.shade100 en dur) : en mode
             // sombre, le texte clair sur fond ambre clair etait illisible.
             Card(
-              margin: const EdgeInsets.all(12),
+              margin: const EdgeInsets.all(kEsp12),
               color: Theme.of(context).colorScheme.tertiaryContainer,
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(kEsp12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -71,7 +72,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
             ),
           for (var i = 0; i < colles.length; i++) _tile(context, i),
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(kEsp12),
             child: OutlinedButton.icon(
               icon: const Icon(Icons.add),
               label: const Text('Ajouter un créneau manquant'),
@@ -90,7 +91,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(kEsp12),
           child: FilledButton.icon(
             icon: const Icon(Icons.check),
             label: Text('Ajouter ces ${colles.length} khôlles à mon agenda'),

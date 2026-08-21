@@ -31,24 +31,12 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Annales')),
       body: m.annales.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('📜', style: TextStyle(fontSize: 48)),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Ajoute les annales que tu comptes faire (CCINP 2024 Maths, Centrale 2023 Physique…).\n\nÀ J-45 des écrits, le plan du soir te proposera « une annale en conditions » en piochant ici, matière la moins couverte d\'abord.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: couleurSecondaire(context)),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : ListView(
+          ? etatVide(
+            context,
+            emoji: '📜',
+            message: 'Ajoute les annales que tu comptes faire (CCINP 2024 Maths, Centrale 2023 Physique…).\n\nÀ J-45 des écrits, le plan du soir te proposera « une annale en conditions » en piochant ici, matière la moins couverte d\'abord.',
+          )
+          : listeCentree(context,
               padding: const EdgeInsets.only(bottom: 90),
               children: [
                 Padding(
@@ -85,7 +73,7 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
       ),
       title: Text(mat, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text('$faites / ${liste.length} faites',
-          style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
+          style: styleMeta(context)),
       children: [
         for (final a in liste) _tuile(a),
       ],

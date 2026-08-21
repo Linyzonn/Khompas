@@ -28,7 +28,7 @@ class SettingsScreen extends StatelessWidget {
       leading: Icon(icone),
       title: Text(titre),
       subtitle: Text(sousTitre,
-          style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
+          style: styleMeta(context)),
       trailing: const Icon(Icons.chevron_right),
       onTap: () =>
           Navigator.push(context, MaterialPageRoute(builder: (_) => page())),
@@ -100,7 +100,7 @@ class SettingsScreen extends StatelessWidget {
                 sousTitre: 'Sauvegarde, restauration, remise à zéro, serveur',
                 page: () => const DonneesPage(),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: kEsp16),
               const Divider(),
               const ListTile(
                 leading: Icon(Icons.info_outline),

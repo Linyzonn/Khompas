@@ -37,15 +37,15 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
       body: listeCentree(context, children: [
           Text('Roulement des semaines (A/B)',
               style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
+          const SizedBox(height: kEsp4),
           Text(
             'Si ton emploi du temps alterne une semaine sur deux, indique un '
             'lundi de semaine A : l\'app saura ensuite quelle semaine tu vis, '
             'et n\'affichera que les bons créneaux (marqués « Semaine A/B » '
             'dans Mon emploi du temps).',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           if (m.refSemaineA == null)
             OutlinedButton.icon(
               icon: const Icon(Icons.looks_one),
@@ -69,7 +69,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                 child: const Text('Retirer'),
               ),
             ),
-          const SizedBox(height: 24),
+          const SizedBox(height: kEsp24),
           Row(
             children: [
               Expanded(
@@ -87,9 +87,9 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
             'Vacances, et — pour les 3/2 et 5/2 — semaines de révisions avant '
             'les concours : l\'emploi du temps se met en veille sur ces '
             'périodes (pas de « cours du jour » dans le plan du soir).',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           OutlinedButton.icon(
             icon: const Icon(Icons.cloud_download_outlined),
             label: Text(m.zoneVacances.isEmpty
@@ -97,7 +97,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                 : 'Importer les vacances officielles (zone ${m.zoneVacances})'),
             onPressed: _importerVacancesOfficielles,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           if (m.sansCours.isEmpty)
             Text('Aucune période pour le moment.',
                 style: TextStyle(color: couleurSecondaire(context))),
@@ -124,7 +124,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                 },
               ),
             ),
-          const SizedBox(height: 24),
+          const SizedBox(height: kEsp24),
           Row(
             children: [
               Expanded(
@@ -142,9 +142,9 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
             'Trajet, fête de famille, journée où travailler est impossible : '
             'le plan du soir se tait ce jour-là, et la réactivation d\'été '
             'évite ces dates en s\'étalant.',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           if (m.joursOff.isEmpty)
             Text('Aucun jour off prévu.',
                 style: TextStyle(color: couleurSecondaire(context))),
@@ -201,7 +201,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                     ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               const Text('Année scolaire :', style: TextStyle(fontSize: 13)),
               const SizedBox(height: 6),
               Wrap(
@@ -220,7 +220,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                 'Source : data.education.gouv.fr (calendrier scolaire '
                 'officiel). Les périodes déjà présentes ne sont pas dupliquées.',
                 style:
-                    TextStyle(fontSize: 11.5, color: couleurSecondaire(context)),
+                    styleMeta(context),
               ),
             ],
           ),
@@ -331,7 +331,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                     ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               Row(
                 children: [
                   Expanded(
@@ -353,7 +353,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                       },
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: kEsp8),
                   Expanded(
                     child: OutlinedButton(
                       child: Text('au ${frDateCourte(fin)}'),

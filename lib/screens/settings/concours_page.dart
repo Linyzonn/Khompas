@@ -138,15 +138,15 @@ class _ConcoursPageState extends State<ConcoursPage> {
       appBar: AppBar(title: const Text('Concours & oraux')),
       body: listeCentree(context, children: [
           Text('Concours', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
+          const SizedBox(height: kEsp4),
           if (m.dateConcours == null) ...[
             Text(
               'À l\'approche des écrits, active le mode révisions : le plan du '
               'soir bascule sur la rotation de TOUS tes chapitres (jamais revus '
               'd\'abord, puis les plus anciens), avec le compte à rebours J-X.',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+              style: styleMeta(context),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: kEsp8),
             Row(
               children: [
                 Expanded(

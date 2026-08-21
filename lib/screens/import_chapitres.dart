@@ -107,11 +107,11 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Importer le programme officiel')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(kEsp16),
         children: [
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(kEsp12),
               child: Text(
                 'Sur prepa.org, les programmes officiels sont publiés MATIÈRE par '
                 'matière. Choisis une matière ci-dessous, puis :\n'
@@ -127,7 +127,7 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: kEsp12),
           TextField(
             controller: matiereCtl,
             decoration: const InputDecoration(
@@ -154,7 +154,7 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Je suis 5/2'),
@@ -169,27 +169,27 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
               setState(() => cinqDemi = v);
             },
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           OutlinedButton.icon(
             icon: const Icon(Icons.copy_all),
             label: const Text('1. Copier le prompt'),
             onPressed: _copierPrompt,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           FilledButton.tonalIcon(
             icon: const Icon(Icons.content_paste_go),
             label: const Text("2. Coller la réponse de l'IA"),
             onPressed: _collerReponse,
           ),
           if (t != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: kEsp16),
             if (avertissements.isNotEmpty)
               Card(
                 // Couleurs du THEME (pas d'amber.shade100 en dur) : en mode
                 // sombre, le texte clair sur fond ambre clair etait illisible.
                 color: Theme.of(context).colorScheme.tertiaryContainer,
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(kEsp12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -225,7 +225,7 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
                           color: Color(subjectColor(mat)),
                           shape: BoxShape.circle),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: kEsp8),
                     Text(mat, style: Theme.of(context).textTheme.titleSmall),
                   ],
                 ),
@@ -241,7 +241,7 @@ class _ImportChapitresScreenState extends State<ImportChapitresScreen> {
                   ),
                 ),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: kEsp12),
             FilledButton.icon(
               icon: const Icon(Icons.check),
               label: Text('Ajouter ces ${t.length} chapitres'),

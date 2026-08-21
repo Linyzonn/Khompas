@@ -27,9 +27,9 @@ class _OrauxScreenState extends State<OrauxScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Mode oraux')),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 90),
-        children: [
+      body: listeCentree(context,
+          padding: const EdgeInsets.only(bottom: 90),
+          children: [
           SwitchListTile(
             title: const Text('Activer le mode oraux'),
             subtitle: const Text(
@@ -44,11 +44,11 @@ class _OrauxScreenState extends State<OrauxScreen> {
           ),
           if (m.oraux.isEmpty)
             Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(kEsp24),
               child: Column(
                 children: [
                   const Text('🎓', style: TextStyle(fontSize: 48)),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: kEsp12),
                   Text(
                     'Coche tes concours et Khompas génère les épreuves orales '
                     'classiques de ta filière — les dates et salles se '
@@ -58,7 +58,7 @@ class _OrauxScreenState extends State<OrauxScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(color: couleurSecondaire(context)),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: kEsp16),
                   FilledButton.icon(
                     icon: const Icon(Icons.auto_awesome),
                     label: const Text('Générer mon planning d\'oraux'),
@@ -87,7 +87,7 @@ class _OrauxScreenState extends State<OrauxScreen> {
       title:
           Text(concours, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text('${liste.length} épreuve(s)',
-          style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
+          style: styleMeta(context)),
       children: [
         for (final o in liste) _tuile(o),
       ],
@@ -119,7 +119,7 @@ class _OrauxScreenState extends State<OrauxScreen> {
       ),
       title: Text(o.epreuve),
       subtitle: Text(sous,
-          style: TextStyle(fontSize: 11.5, color: couleurSecondaire(context))),
+          style: styleMeta(context)),
       trailing: PopupMenuButton<String>(
         onSelected: (v) {
           if (v == 'edit') {
@@ -160,7 +160,7 @@ class _OrauxScreenState extends State<OrauxScreen> {
                   style:
                       TextStyle(fontSize: 12.5, color: couleurSecondaire(context)),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: kEsp8),
                 for (final c in kConcoursPour(m.filiere))
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
@@ -266,7 +266,7 @@ class _OrauxScreenState extends State<OrauxScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: kEsp12),
                 Row(
                   children: [
                     Expanded(
@@ -286,7 +286,7 @@ class _OrauxScreenState extends State<OrauxScreen> {
                         },
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: kEsp8),
                     Expanded(
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.schedule, size: 18),

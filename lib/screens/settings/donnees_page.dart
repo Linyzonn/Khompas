@@ -318,16 +318,16 @@ class _DonneesPageState extends State<DonneesPage> {
       appBar: AppBar(title: const Text('Données & avancé')),
       body: listeCentree(context, children: [
           Text('Mes données', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
+          const SizedBox(height: kEsp4),
           Text(
             'Tout est stocké sur cet appareil (téléphone, ou navigateur pour la '
             'version web). La sauvegarde sert aussi à passer tes données d\'un '
             'appareil à l\'autre. Sur iPhone en AltStore (compte Apple gratuit), '
             'l\'app peut expirer : sauvegarde régulièrement pour ne jamais perdre '
             'ton semestre — colloscope, notes et chapitres compris.',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           Row(
             children: [
               Expanded(
@@ -348,18 +348,18 @@ class _DonneesPageState extends State<DonneesPage> {
             ],
           ),
           if (copieSecoursExiste || AppModel.instance.chargementEchoue) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: kEsp24),
             Text('Copie de secours',
                 style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             Text(
               'Une copie automatique a été créée quand des données étaient '
               'illisibles. Tu peux tenter de la restaurer (réparation '
               'automatique des fins de fichier tronquées), ou l\'exporter '
               'brute pour la réparer à la main.',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+              style: styleMeta(context),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: kEsp8),
             Row(
               children: [
                 Expanded(
@@ -380,16 +380,16 @@ class _DonneesPageState extends State<DonneesPage> {
               ],
             ),
           ],
-          const SizedBox(height: 24),
+          const SizedBox(height: kEsp24),
           Text('Repartir de zéro',
               style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
+          const SizedBox(height: kEsp4),
           Text(
             'Efface tout ce qui est sur cet appareil et raffiche l\'écran de '
             'bienvenue. Ton compte en ligne, si tu en as un, n\'est pas supprimé.',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           OutlinedButton.icon(
             icon: const Icon(Icons.restart_alt),
             style: OutlinedButton.styleFrom(
@@ -399,18 +399,18 @@ class _DonneesPageState extends State<DonneesPage> {
             label: const Text('Tout effacer et repartir de zéro…'),
             onPressed: _remettreAZero,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: kEsp24),
           Text('Serveur Khompas & extraction IA',
               style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
+          const SizedBox(height: kEsp4),
           Text(
             'Avec le serveur Khompas, ta classe partage son colloscope par un '
             'simple CODE : personne n\'a besoin de clé API. Colle ici l\'URL du '
             'serveur (ex. https://khompas.deno.dev) — la section « Code de '
             'classe » apparaîtra sur l\'écran d\'import.',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           TextField(
             controller: serverCtl,
             keyboardType: TextInputType.url,
@@ -440,21 +440,21 @@ class _DonneesPageState extends State<DonneesPage> {
             ),
             Text(
               'Photos du colloscope, extractions et programmes partagés compris. (Les photos expirent de toute façon après ~4 mois.)',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 11.5),
+              style: styleMeta(context),
             ),
           ],
           // Sans serveur (ou si une cle est deja enregistree), on propose la
           // cle API personnelle en secours. Sinon : inutile, on masque.
           if (m.serverUrl.isEmpty || m.apiKey.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: kEsp12),
             Text(
               'Sans serveur, deux autres options sur l\'écran d\'import : ta propre '
               'clé API Claude ci-dessous (console.anthropic.com → API keys, quelques '
               'centimes par import), ou l\'import GRATUIT par copier-coller avec ton '
               'appli d\'IA (ChatGPT, Claude, Gemini).',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+              style: styleMeta(context),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: kEsp8),
             TextField(
               controller: keyCtl,
               obscureText: true,

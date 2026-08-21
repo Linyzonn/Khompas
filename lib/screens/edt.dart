@@ -173,7 +173,7 @@ class _EdtScreenState extends State<EdtScreen> {
                           ),
                       ],
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: kEsp24),
                   ],
                 ),
               ),
@@ -226,7 +226,7 @@ class _EdtScreenState extends State<EdtScreen> {
       context,
       (context) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(kEsp16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,8 +236,8 @@ class _EdtScreenState extends State<EdtScreen> {
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 10),
               Text('Cours',
-                  style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
-              const SizedBox(height: 4),
+                  style: styleMeta(context)),
+              const SizedBox(height: kEsp4),
               Wrap(
                 spacing: 6,
                 runSpacing: 4,
@@ -253,8 +253,8 @@ class _EdtScreenState extends State<EdtScreen> {
               ),
               const SizedBox(height: 10),
               Text('Vie quotidienne',
-                  style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
-              const SizedBox(height: 4),
+                  style: styleMeta(context)),
+              const SizedBox(height: kEsp4),
               Wrap(
                 spacing: 6,
                 runSpacing: 4,
@@ -334,7 +334,7 @@ class _EdtScreenState extends State<EdtScreen> {
               Row(
                 children: [
                   const Text('Durée : '),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: kEsp8),
                   DropdownButton<int>(
                     value: duree,
                     items: [
@@ -349,7 +349,7 @@ class _EdtScreenState extends State<EdtScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: kEsp8),
               Wrap(
                 spacing: 6,
                 children: [
@@ -403,7 +403,7 @@ class _EdtScreenState extends State<EdtScreen> {
                       if (t != null) setLocal(() => time = t);
                     },
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: kEsp8),
                   DropdownButton<int>(
                     value: duree,
                     items: [
@@ -420,7 +420,7 @@ class _EdtScreenState extends State<EdtScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: kEsp8),
               Wrap(
                 spacing: 6,
                 children: [

@@ -111,16 +111,16 @@ Future<String?> demanderAutoEvaluation(BuildContext context, String titre) {
     context,
     (context) => SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(kEsp16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(titre, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             Text(
               'Ta réponse règle la date de la prochaine révision. Sois honnête, personne ne regarde 😉',
-              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+              style: styleMeta(context),
             ),
             const SizedBox(height: 14),
             Row(
@@ -145,7 +145,7 @@ Future<String?> demanderAutoEvaluation(BuildContext context, String titre) {
                       ),
                     ),
                   ),
-                  if (v.$1 != 'facile') const SizedBox(width: 8),
+                  if (v.$1 != 'facile') const SizedBox(width: kEsp8),
                 ],
               ],
             ),
@@ -215,7 +215,7 @@ Future<Colle?> editColleDialog(BuildContext context, {Colle? initial}) async {
                 controller: salleCtl,
                 decoration: const InputDecoration(labelText: 'Salle (facultatif)'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               Row(
                 children: [
                   Expanded(
@@ -233,7 +233,7 @@ Future<Colle?> editColleDialog(BuildContext context, {Colle? initial}) async {
                       },
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: kEsp8),
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.schedule, size: 18),
@@ -246,11 +246,11 @@ Future<Colle?> editColleDialog(BuildContext context, {Colle? initial}) async {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               Row(
                 children: [
                   const Text('Durée : '),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: kEsp8),
                   DropdownButton<int>(
                     value: duree,
                     // La valeur courante est toujours dans la liste, meme si
@@ -275,11 +275,11 @@ Future<Colle?> editColleDialog(BuildContext context, {Colle? initial}) async {
               if (matiereLitteraire(matiereCtl.text) &&
                   !matiereCtl.text.toLowerCase().contains('fran') &&
                   !matiereCtl.text.toLowerCase().contains('philo')) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: kEsp12),
                 const Text('Voc à savoir pour cette colle',
                     style:
                         TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
+                const SizedBox(height: kEsp4),
                 if (m.listesVocNoms.isEmpty)
                   Text(
                     'Aucune liste de voc pour l\'instant — crée ou importe ta feuille dans Chapitres → Voc d\'anglais, puis associe-la ici.',
@@ -390,7 +390,7 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
                 }
               }),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             OutlinedButton.icon(
               icon: const Icon(Icons.event, size: 18),
               label: Text(frDate(date)),
@@ -404,11 +404,11 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
                 if (d != null) setState(() => date = d);
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: kEsp12),
             Row(
               children: [
                 const Text('Coefficient : '),
-                const SizedBox(width: 8),
+                const SizedBox(width: kEsp8),
                 DropdownButton<double>(
                   value: coeff,
                   items: [
@@ -522,7 +522,7 @@ Future<Devoir?> editDevoirDialog(BuildContext context,
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               OutlinedButton.icon(
                 icon: const Icon(Icons.event, size: 18),
                 label: Text('À rendre le ${frDateCourte(date)}'),
@@ -625,7 +625,7 @@ Future<Evenement?> editEvenementDialog(BuildContext context,
                     ],
                   ),
                 ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               Row(
                 children: [
                   Expanded(
@@ -643,7 +643,7 @@ Future<Evenement?> editEvenementDialog(BuildContext context,
                       },
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: kEsp8),
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.schedule, size: 18),
@@ -657,11 +657,11 @@ Future<Evenement?> editEvenementDialog(BuildContext context,
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               Row(
                 children: [
                   const Text('Durée : '),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: kEsp8),
                   DropdownButton<int>(
                     value: duree,
                     items: [
@@ -759,7 +759,7 @@ Future<double?> noteAvecRecalibrage(BuildContext context,
     (context) => StatefulBuilder(
       builder: (context, setState) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(kEsp16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -806,7 +806,7 @@ Future<double?> noteAvecRecalibrage(BuildContext context,
                     onPressed: () => Navigator.pop(context),
                     child: const Text('Passer'),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: kEsp8),
                   FilledButton(
                     onPressed: choisis.isEmpty
                         ? null

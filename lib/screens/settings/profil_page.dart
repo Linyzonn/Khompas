@@ -105,7 +105,7 @@ class _ProfilPageState extends State<ProfilPage> {
               ),
               Text(
                 'Ensuite : importe le colloscope de ta nouvelle classe et le programme de ta nouvelle filière (le dédoublonnage protège des ré-imports).',
-                style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+                style: styleMeta(context),
               ),
             ],
           ),
@@ -168,7 +168,7 @@ class _ProfilPageState extends State<ProfilPage> {
                 'pour cibler où tu perds des points ;\n'
                 '2. ☀️ Réactivation d\'été — étale la révision du programme '
                 'sur les vacances.',
-                style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+                style: styleMeta(context),
               ),
             ],
           ),
@@ -199,7 +199,7 @@ class _ProfilPageState extends State<ProfilPage> {
       appBar: AppBar(title: const Text('Profil & scolarité')),
       body: listeCentree(context, children: [
           Text('Mon profil', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           DropdownButtonFormField<String>(
             initialValue: kFilieres.contains(m.filiere) ? m.filiere : 'Autre',
             decoration: const InputDecoration(
@@ -213,7 +213,7 @@ class _ProfilPageState extends State<ProfilPage> {
               }
             },
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: kEsp12),
           TextField(
             controller: groupeCtl,
             keyboardType: TextInputType.number,
@@ -258,9 +258,9 @@ class _ProfilPageState extends State<ProfilPage> {
               onTap: _devenirCinqDemi,
             ),
           if (m.cinqDemi) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: kEsp24),
             Text('Ma 5/2', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Text('🎯', style: TextStyle(fontSize: 20)),

@@ -328,13 +328,13 @@ class _ImportScreenState extends State<ImportScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Importer mon colloscope')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(kEsp16),
         children: [
           if (busy)
             Card(
               color: Theme.of(context).colorScheme.primaryContainer,
               child: Padding(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(kEsp12),
                 child: Row(
                   children: [
                     const SizedBox(
@@ -342,7 +342,7 @@ class _ImportScreenState extends State<ImportScreen> {
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: kEsp12),
                     Expanded(child: Text(busyLabel)),
                   ],
                 ),
@@ -360,10 +360,10 @@ class _ImportScreenState extends State<ImportScreen> {
             const SizedBox(height: 20),
             Text('Ma classe — avec un code',
                 style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
+            const SizedBox(height: kEsp8),
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(kEsp12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -395,12 +395,12 @@ class _ImportScreenState extends State<ImportScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: kEsp12),
                     Text(
                       'Premier de ta classe ? Ajoute les photos ou le PDF du '
                       'colloscope (section suivante) puis :',
                       style:
-                          TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+                          styleMeta(context),
                     ),
                     const SizedBox(height: 6),
                     OutlinedButton.icon(
@@ -418,9 +418,9 @@ class _ImportScreenState extends State<ImportScreen> {
               style: Theme.of(context).textTheme.titleMedium),
           Text(
             'Envoyées à un serveur, les photos y sont stockées ~4 mois pour ta classe puis supprimées automatiquement (suppression anticipée possible par le créateur du code, dans Réglages).',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 11.5),
+            style: styleMeta(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           Row(
             children: [
               Expanded(
@@ -455,7 +455,7 @@ class _ImportScreenState extends State<ImportScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: pieces.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                separatorBuilder: (_, __) => const SizedBox(width: kEsp8),
                 itemBuilder: (context, i) => Stack(
                   children: [
                     ClipRRect(
@@ -506,13 +506,13 @@ class _ImportScreenState extends State<ImportScreen> {
           const SizedBox(height: 6),
           Text(
             'Une photo bien à plat, nette et entière (tableau + tableau des semaines + notes du bas) donne les meilleurs résultats.',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
           if (montrerClePerso) ...[
             const SizedBox(height: 20),
             Text('Extraction directe — avec ta clé API',
                 style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
+            const SizedBox(height: kEsp8),
             FilledButton.icon(
               icon: const Icon(Icons.auto_awesome),
               label: const Text("Lancer l'extraction"),
@@ -521,7 +521,7 @@ class _ImportScreenState extends State<ImportScreen> {
             const SizedBox(height: 6),
             Text(
               'Nécessite ta clé API dans Réglages (quelques centimes par import).',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+              style: styleMeta(context),
             ),
           ],
           const SizedBox(height: 20),
@@ -541,10 +541,10 @@ class _ImportScreenState extends State<ImportScreen> {
           const SizedBox(height: 20),
           Text('Gratuit — avec ton IA à toi',
               style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(kEsp12),
               child: Text(
                 'Tu as déjà ChatGPT, Claude ou Gemini ? Pas besoin de clé :\n'
                 '1. Copie le prompt (bouton ci-dessous).\n'
@@ -554,22 +554,22 @@ class _ImportScreenState extends State<ImportScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           OutlinedButton.icon(
             icon: const Icon(Icons.copy_all),
             label: const Text('1. Copier le prompt'),
             onPressed: busy ? null : _copierPrompt,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           FilledButton.tonalIcon(
             icon: const Icon(Icons.content_paste_go),
             label: const Text("2. Coller la réponse de l'IA"),
             onPressed: busy ? null : _collerReponse,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           Text(
             'Les photos restent dans ton appli d\'IA : Khompas n\'a besoin que de la réponse.',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
         ],
       ),

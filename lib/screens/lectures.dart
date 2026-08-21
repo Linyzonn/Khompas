@@ -35,28 +35,16 @@ class _LecturesScreenState extends State<LecturesScreen> {
         ],
       ),
       body: m.oeuvres.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('📖', style: TextStyle(fontSize: 48)),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Ajoute les œuvres du programme de français-philo de '
-                      'l\'année (le thème et ses 3 livres).\n\nPendant les '
-                      'grandes vacances, le plan te programme des séances de '
-                      'lecture un jour sur deux — l\'été est LE moment pour '
-                      'les lire. Ce qui n\'est pas fini revient en début '
-                      'd\'année.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: couleurSecondaire(context)),
-                    ),
-                  ],
-                ),
-              ),
-            )
+          ? etatVide(
+            context,
+            emoji: '📖',
+            message: 'Ajoute les œuvres du programme de français-philo de '
+              'l\'année (le thème et ses 3 livres).\n\nPendant les '
+              'grandes vacances, le plan te programme des séances de '
+              'lecture un jour sur deux — l\'été est LE moment pour '
+              'les lire. Ce qui n\'est pas fini revient en début '
+              'd\'année.',
+          )
           : ReorderableListView(
               padding: const EdgeInsets.only(bottom: 90),
               header: Padding(
@@ -103,7 +91,7 @@ class _LecturesScreenState extends State<LecturesScreen> {
             Row(
               children: [
                 Text(o.finie ? '✅' : '📖', style: const TextStyle(fontSize: 20)),
-                const SizedBox(width: 8),
+                const SizedBox(width: kEsp8),
                 Expanded(
                   child: Text(
                     '${o.titre}${o.auteur.isEmpty ? '' : ' — ${o.auteur}'}',

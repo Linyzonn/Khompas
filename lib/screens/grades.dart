@@ -19,7 +19,7 @@ class GradesScreen extends StatelessWidget {
     if (matieres.isEmpty) {
       return const Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
+          padding: EdgeInsets.all(kEsp32),
           child: Text(
             'Tes notes de khôlles et de DS apparaîtront ici.\nCommence par importer ton colloscope.',
             textAlign: TextAlign.center,
@@ -29,9 +29,9 @@ class GradesScreen extends StatelessWidget {
     }
 
     final aRefaire = m.erreurs.where((e) => !e.refaite).length;
-    return ListView(
-      padding: const EdgeInsets.only(bottom: 90),
-      children: [
+    return listeCentree(context,
+        padding: const EdgeInsets.only(bottom: 90),
+        children: [
         ListTile(
           leading: const Text('📕', style: TextStyle(fontSize: 22)),
           title: const Text('Cahier d\'erreurs',
@@ -40,7 +40,7 @@ class GradesScreen extends StatelessWidget {
             aRefaire == 0
                 ? 'Note tes erreurs de khôlle/DS — refais-les jusqu\'à les maîtriser.'
                 : '$aRefaire erreur(s) à refaire',
-            style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+            style: styleMeta(context),
           ),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => Navigator.push(context,
@@ -55,7 +55,7 @@ class GradesScreen extends StatelessWidget {
               m.resultatsConcours.isEmpty
                   ? 'Tes notes de l\'an dernier par épreuve → où tu perds des points.'
                   : '${m.resultatsConcours.length} résultat(s) saisi(s)',
-              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+              style: styleMeta(context),
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context,
@@ -164,7 +164,7 @@ class GradesScreen extends StatelessWidget {
       subtitle: Text(
         'Khôlles : ${mc == null ? '—' : mc.toStringAsFixed(1)}/20'
         '   ·   DS : ${md == null ? '—' : md.toStringAsFixed(1)}/20',
-        style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+        style: styleMeta(context),
       ),
       children: [
         if (t != null)
@@ -173,7 +173,7 @@ class GradesScreen extends StatelessWidget {
             child: Text(
               '${_tendLabel(t.$1)} : ${t.$2.toStringAsFixed(1)}/20 sur les 3 dernières notes, '
               'contre ${t.$3.toStringAsFixed(1)}/20 en moyenne générale.',
-              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+              style: styleMeta(context),
             ),
           ),
         if (obj != null)
@@ -181,12 +181,12 @@ class GradesScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
             child: Text(
               _ligneObjectif(obj, avgGlobal),
-              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+              style: styleMeta(context),
             ),
           ),
         if (collesPassees.isEmpty && dsMat.isEmpty)
           const Padding(
-            padding: EdgeInsets.all(12),
+            padding: EdgeInsets.all(kEsp12),
             child: Text('Rien à noter pour le moment.'),
           ),
         for (final c in collesPassees)

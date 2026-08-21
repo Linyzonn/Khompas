@@ -200,16 +200,16 @@ class _ComptePageState extends State<ComptePage> {
           if (m.serverUrl.isEmpty)
             Text(
               'Renseigne d\'abord l\'URL du serveur (Réglages → Données & avancé) pour activer les comptes.',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+              style: styleMeta(context),
             )
           else if (m.compteCle.isEmpty) ...[
             Text(
               'Un compte = tes données sauvegardées en ligne et synchronisées '
               'entre ton téléphone et ton PC. Gratuit et anonyme : une simple '
               'clé secrète, pas d\'email ni de mot de passe.',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+              style: styleMeta(context),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: kEsp8),
             Row(
               children: [
                 Expanded(
@@ -268,7 +268,7 @@ class _ComptePageState extends State<ComptePage> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: kEsp8),
             FilledButton.tonalIcon(
               icon: const Icon(Icons.merge),
               label: const Text('Fusionner avec le compte'),
@@ -278,17 +278,17 @@ class _ComptePageState extends State<ComptePage> {
               'La fusion garde le meilleur des deux côtés : union par '
               'enregistrement, la version la plus récente gagne, les '
               'suppressions sont respectées. « Récupérer » remplace tout.',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 11.5),
+              style: styleMeta(context),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: kEsp16),
             Text('Agenda abonné',
                 style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             Text(
               'Abonne l\'agenda de ton téléphone à ton lien Khompas : khôlles, '
               'DS, DM et oraux s\'y mettent à jour TOUT SEULS (plus besoin de '
               'ré-exporter quand un programme change).',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+              style: styleMeta(context),
             ),
             const SizedBox(height: 6),
             OutlinedButton.icon(

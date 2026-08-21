@@ -129,11 +129,11 @@ class _ImportCartesScreenState extends State<ImportCartesScreen> {
               ? 'Importer ma feuille de voc'
               : 'Importer mes citations')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(kEsp16),
         children: [
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(kEsp12),
               child: Text(
                 voc
                     ? 'Ta feuille de voc entière en 1 minute :\n'
@@ -151,7 +151,7 @@ class _ImportCartesScreenState extends State<ImportCartesScreen> {
             ),
           ),
           if (voc) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: kEsp12),
             TextField(
               controller: listeCtl,
               decoration: const InputDecoration(
@@ -163,27 +163,27 @@ class _ImportCartesScreenState extends State<ImportCartesScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: kEsp12),
           OutlinedButton.icon(
             icon: const Icon(Icons.copy_all),
             label: const Text('1. Copier le prompt'),
             onPressed: _copierPrompt,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           FilledButton.tonalIcon(
             icon: const Icon(Icons.content_paste_go),
             label: const Text("2. Coller la réponse de l'IA"),
             onPressed: _collerReponse,
           ),
           if (nb > 0) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: kEsp16),
             if (avertissements.isNotEmpty)
               Card(
                 // Couleurs du THEME (pas d'amber.shade100 en dur) : en mode
                 // sombre, le texte clair sur fond ambre clair etait illisible.
                 color: Theme.of(context).colorScheme.tertiaryContainer,
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(kEsp12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -242,7 +242,7 @@ class _ImportCartesScreenState extends State<ImportCartesScreen> {
                     onPressed: () => setState(() => cits.remove(c)),
                   ),
                 ),
-            const SizedBox(height: 12),
+            const SizedBox(height: kEsp12),
             FilledButton.icon(
               icon: const Icon(Icons.check),
               label: Text(voc

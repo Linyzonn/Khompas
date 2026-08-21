@@ -223,13 +223,13 @@ class _AgendaScreenState extends State<AgendaScreen> {
         side: BorderSide(color: scheme.primary.withValues(alpha: 0.4)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(kEsp12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('📸 Ton colloscope n\'est pas encore importé',
                 style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             Text(
               'Une photo (ou le code de ta classe) et toutes tes khôlles arrivent ici, avec salle, heure et khôlleur.',
               style: TextStyle(fontSize: 12.5, color: couleurSecondaire(context)),
@@ -273,7 +273,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
         side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(kEsp12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -285,7 +285,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   fontWeight: FontWeight.w700,
                   color: couleurSecondaire(context)),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: kEsp8),
             if (lignes.isEmpty)
               Text('Rien à l\'horizon 🎉',
                   style: TextStyle(fontSize: 13, color: couleurSecondaire(context)))

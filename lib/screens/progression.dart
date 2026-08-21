@@ -45,12 +45,12 @@ class ProgressionScreen extends StatelessWidget {
           // ---- Heures par semaine ----
           Text('Heures de travail — 12 semaines',
               style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
+          const SizedBox(height: kEsp4),
           Text(
             totalHisto == 0
                 ? 'Coche tes sessions du soir : les heures se comptent toutes seules.'
                 : '${_labelMin(totalHisto)} au total · ${semainesActives == 0 ? '—' : _labelMin(totalHisto ~/ semainesActives)} par semaine active.',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
           const SizedBox(height: 10),
           SizedBox(
@@ -100,14 +100,14 @@ class ProgressionScreen extends StatelessWidget {
           ),
 
           // ---- Par matiere (4 dernieres semaines) ----
-          const SizedBox(height: 24),
+          const SizedBox(height: kEsp24),
           Text('Par matière — 4 dernières semaines',
               style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           if (parMatiere.isEmpty)
             Text('Pas encore de séance enregistrée sur la période.',
                 style:
-                    TextStyle(color: couleurSecondaire(context), fontSize: 12)),
+                    styleMeta(context)),
           for (final (mat, minutes) in parMatiere.take(8))
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
@@ -132,7 +132,7 @@ class ProgressionScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: kEsp8),
                   SizedBox(
                     width: 48,
                     child: Text(_labelMin(minutes),
@@ -147,13 +147,13 @@ class ProgressionScreen extends StatelessWidget {
 
           // ---- Tendance des notes ----
           if (tendances.isNotEmpty) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: kEsp24),
             Text('Notes — tendance sur 30 jours',
                 style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             Text(
               'Moyenne des 30 derniers jours (khôlles + DS) comparée aux 30 jours d\'avant.',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+              style: styleMeta(context),
             ),
             const SizedBox(height: 6),
             for (final (mat, recente, ancienne) in tendances)
@@ -168,7 +168,7 @@ class ProgressionScreen extends StatelessWidget {
                           color: Color(subjectColor(mat)),
                           shape: BoxShape.circle),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: kEsp8),
                     Expanded(child: Text(mat, style: const TextStyle(fontSize: 13))),
                     Text(
                       _labelTendance(recente, ancienne),
@@ -185,19 +185,19 @@ class ProgressionScreen extends StatelessWidget {
 
           // ---- Chapitres consolides ----
           if (matieresChapitres.isNotEmpty) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: kEsp24),
             Text('Chapitres consolidés',
                 style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             Text(
               'Consolidé = maîtrise ≥ 3. C\'est la jauge qui monte au fil des révisions espacées.',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+              style: styleMeta(context),
             ),
             const SizedBox(height: 6),
             for (final mat in matieresChapitres)
               _ligneChapitres(context, m, mat),
           ],
-          const SizedBox(height: 24),
+          const SizedBox(height: kEsp24),
         ],
       ),
     );
@@ -230,7 +230,7 @@ class ProgressionScreen extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: kEsp8),
           SizedBox(
             width: 86,
             child: Text('$consolides/${tous.length} · $commences vus',

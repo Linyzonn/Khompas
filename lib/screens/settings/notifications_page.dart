@@ -41,10 +41,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
           if (!kIsWeb) ...[
             Text('Notifications',
                 style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             Text(
               'Des rappels la VEILLE au soir (19 h), et uniquement ça — pas de spam. (Sur la version web PC, les notifications n\'existent pas.)',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+              style: styleMeta(context),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -96,17 +96,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 },
               ),
             ],
-            const SizedBox(height: 24),
+            const SizedBox(height: kEsp24),
           ],
           Text('Sommeil', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
+          const SizedBox(height: kEsp4),
           Text(
             'Fixe une heure limite : le plan du soir se raccourcit tout seul '
             'pour finir avant. Le sommeil consolide la mémoire — travailler '
             'jusqu\'à 1h du matin fait perdre plus qu\'il ne fait gagner.',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           if (m.heureLimiteMin == null)
             OutlinedButton.icon(
               icon: const Icon(Icons.bedtime_outlined),

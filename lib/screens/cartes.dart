@@ -50,30 +50,18 @@ class _CitationsScreenState extends State<CitationsScreen> {
         ],
       ),
       body: m.citations.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('📜', style: TextStyle(fontSize: 48)),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Tes citations, classées par axe du thème, avec « comment '
-                      's\'en servir » — l\'arme de la dissert et de la khôlle.\n\n'
-                      'Ajoute-les au fil des lectures (bouton + citation sur '
-                      'chaque œuvre) ou importe ta fiche entière avec l\'IA '
-                      '(bouton ✨ en haut).\n\nElles se révisent ensuite façon '
-                      'Anki : l\'axe s\'affiche, tu restitues la citation et '
-                      'son auteur.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: couleurSecondaire(context)),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : ListView(
+          ? etatVide(
+            context,
+            emoji: '📜',
+            message: 'Tes citations, classées par axe du thème, avec « comment '
+              's\'en servir » — l\'arme de la dissert et de la khôlle.\n\n'
+              'Ajoute-les au fil des lectures (bouton + citation sur '
+              'chaque œuvre) ou importe ta fiche entière avec l\'IA '
+              '(bouton ✨ en haut).\n\nElles se révisent ensuite façon '
+              'Anki : l\'axe s\'affiche, tu restitues la citation et '
+              'son auteur.',
+          )
+          : listeCentree(context,
               padding: const EdgeInsets.only(bottom: 90),
               children: [
                 for (final axe in axes) ...[
@@ -323,30 +311,18 @@ class _VocabScreenState extends State<VocabScreen> {
         ],
       ),
       body: m.vocab.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('🇬🇧', style: TextStyle(fontSize: 48)),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Le voc que le prof d\'anglais exige en khôlle.\n\n'
-                      'Importe ta feuille de voc entière avec l\'IA (bouton ✨ '
-                      'en haut) ou ajoute les mots un par un.\n\nRévision façon '
-                      'Anki dans le sens de la colle : le français s\'affiche, '
-                      'tu sors l\'anglais. Marque ⭐ les mots à savoir '
-                      'absolument — la veille d\'une khôlle d\'anglais, le '
-                      'tableau de bord te les rappelle.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: couleurSecondaire(context)),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : ListView(
+          ? etatVide(
+            context,
+            emoji: '🇬🇧',
+            message: 'Le voc que le prof d\'anglais exige en khôlle.\n\n'
+              'Importe ta feuille de voc entière avec l\'IA (bouton ✨ '
+              'en haut) ou ajoute les mots un par un.\n\nRévision façon '
+              'Anki dans le sens de la colle : le français s\'affiche, '
+              'tu sors l\'anglais. Marque ⭐ les mots à savoir '
+              'absolument — la veille d\'une khôlle d\'anglais, le '
+              'tableau de bord te les rappelle.',
+          )
+          : listeCentree(context,
               padding: const EdgeInsets.only(bottom: 90),
               children: [
                 if (pourColle > 0)
@@ -584,10 +560,10 @@ class _RevisionCartesScreenState extends State<RevisionCartesScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text('🎉', style: TextStyle(fontSize: 48)),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               Text('Session finie — $revues carte(s) revue(s)',
                   style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 16),
+              const SizedBox(height: kEsp16),
               FilledButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Retour'),
@@ -633,7 +609,7 @@ class _RevisionCartesScreenState extends State<RevisionCartesScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: kEsp16),
             if (!montreVerso)
               FilledButton.tonal(
                 onPressed: () => setState(() => montreVerso = true),
@@ -666,7 +642,7 @@ class _RevisionCartesScreenState extends State<RevisionCartesScreen> {
                         ),
                       ),
                     ),
-                    if (v.$1 != 'facile') const SizedBox(width: 8),
+                    if (v.$1 != 'facile') const SizedBox(width: kEsp8),
                   ],
                 ],
               ),
@@ -679,11 +655,11 @@ class _RevisionCartesScreenState extends State<RevisionCartesScreen> {
   List<Widget> _faceCitation(Citation c) {
     return [
       Text('📜 CITATION', style: _etiquette(context)),
-      const SizedBox(height: 12),
+      const SizedBox(height: kEsp12),
       if (c.axe.isNotEmpty) ...[
         Text('Axe : ${c.axe}',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
+        const SizedBox(height: kEsp8),
       ],
       if (c.usage.isNotEmpty)
         Text(c.usage, style: const TextStyle(fontSize: 15))
@@ -711,7 +687,7 @@ class _RevisionCartesScreenState extends State<RevisionCartesScreen> {
   List<Widget> _faceVocab(MotVocab v) {
     return [
       Text('🇬🇧 VOC ${v.pourColle ? '⭐' : ''}', style: _etiquette(context)),
-      const SizedBox(height: 16),
+      const SizedBox(height: kEsp16),
       Text(v.francais,
           style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
       const SizedBox(height: 6),
@@ -725,7 +701,7 @@ class _RevisionCartesScreenState extends State<RevisionCartesScreen> {
                 fontWeight: FontWeight.bold,
                 color: context.tokens.succes)),
         if (v.remarque.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           Text(v.remarque,
               style:
                   TextStyle(fontSize: 13, color: couleurSecondaire(context))),

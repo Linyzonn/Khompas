@@ -52,7 +52,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
           child: Row(
             children: [
               Text(emoji, style: const TextStyle(fontSize: 20)),
-              const SizedBox(width: 8),
+              const SizedBox(width: kEsp8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -162,7 +162,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                             builder: (_) => const CitationsScreen())),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: kEsp8),
                 Expanded(
                   child: _accesCartes(
                     context,
@@ -199,7 +199,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                     onChanged: (v) => setState(() => recherche = v.trim()),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: kEsp8),
                 IconButton(
                   tooltip: 'Importer le programme officiel (IA)',
                   icon: const Icon(Icons.menu_book),
@@ -280,7 +280,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: kEsp8),
             Expanded(
               flex: 3,
               child: Text(
@@ -288,7 +288,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 '${fragiles == 0 ? '' : ' · ⚠ $fragiles fragile(s)'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11.5, color: couleurSecondaire(context)),
+                style: styleMeta(context),
               ),
             ),
           ],
@@ -403,7 +403,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
       (context) => StatefulBuilder(
         builder: (context, setSheet) => SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(kEsp16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -426,7 +426,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 ),
                 Text(c.matiere,
                     style:
-                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
+                        styleMeta(context)),
                 if (c.prochaineRevision != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -436,11 +436,11 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                           fontSize: 12, color: couleurSecondaire(context)),
                     ),
                   ),
-                const SizedBox(height: 12),
+                const SizedBox(height: kEsp12),
                 Text('Étape',
                     style:
-                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
-                const SizedBox(height: 4),
+                        styleMeta(context)),
+                const SizedBox(height: kEsp4),
                 Wrap(
                   spacing: 5,
                   runSpacing: 2,
@@ -462,8 +462,8 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                 const SizedBox(height: 10),
                 Text('Maîtrise',
                     style:
-                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
-                const SizedBox(height: 4),
+                        styleMeta(context)),
+                const SizedBox(height: kEsp4),
                 Row(
                   children: [
                     // Tap sur la pastille i = maitrise i+1 ; tap sur la
@@ -488,13 +488,13 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                           ),
                         ),
                       ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: kEsp8),
                     Text(_labelMaitrise(c.maitrise),
                         style: TextStyle(
                             fontSize: 12, color: couleurSecondaire(context))),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: kEsp12),
                 // La porte d'entree MANUELLE de la repetition espacee : sans
                 // EDT rempli, c'etait impossible d'y entrer.
                 OutlinedButton.icon(
@@ -512,7 +512,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                             'C\'est parti 🔁 Rappel demain, puis à intervalles croissants.')));
                   },
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: kEsp8),
                 Align(
                   alignment: Alignment.centerRight,
                   child: FilledButton(

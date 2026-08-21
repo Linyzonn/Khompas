@@ -28,24 +28,12 @@ class _ErreursScreenState extends State<ErreursScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Cahier d\'erreurs')),
       body: m.erreurs.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('📕', style: TextStyle(fontSize: 48)),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Après chaque khôlle, DS ou TD raté : note l\'erreur ici (20 s), puis refais-la un autre soir jusqu\'à la maîtriser.\n\nLes erreurs non refaites remontent dans ton plan du soir avant une épreuve de la matière.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: couleurSecondaire(context)),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : ListView(
+          ? etatVide(
+            context,
+            emoji: '📕',
+            message: 'Après chaque khôlle, DS ou TD raté : note l\'erreur ici (20 s), puis refais-la un autre soir jusqu\'à la maîtriser.\n\nLes erreurs non refaites remontent dans ton plan du soir avant une épreuve de la matière.',
+          )
+          : listeCentree(context,
               padding: const EdgeInsets.only(bottom: 90),
               children: [
                 for (final mat in matieres) _section(mat),
@@ -89,7 +77,7 @@ class _ErreursScreenState extends State<ErreursScreen> {
         aRefaire == 0
             ? 'Tout est refait 🎉'
             : '$aRefaire à refaire${ligneStats.isEmpty ? '' : ' · $ligneStats'}',
-        style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+        style: styleMeta(context),
       ),
       children: [
         for (final e in liste) _tuile(e, color),
@@ -206,8 +194,8 @@ Future<bool> ajouterErreurDialog(BuildContext context,
                     hintText: 'ex. Oubli du cas λ = 0 dans la diagonalisation',
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text('Type', style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
+                const SizedBox(height: kEsp12),
+                Text('Type', style: styleMeta(context)),
                 Wrap(
                   spacing: 6,
                   children: [
@@ -219,8 +207,8 @@ Future<bool> ajouterErreurDialog(BuildContext context,
                       ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text('Vue en…', style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
+                const SizedBox(height: kEsp8),
+                Text('Vue en…', style: styleMeta(context)),
                 Wrap(
                   spacing: 6,
                   children: [
@@ -233,7 +221,7 @@ Future<bool> ajouterErreurDialog(BuildContext context,
                   ],
                 ),
                 if (chapitres.isNotEmpty) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: kEsp8),
                   DropdownButton<String?>(
                     value: chapitreId,
                     isExpanded: true,

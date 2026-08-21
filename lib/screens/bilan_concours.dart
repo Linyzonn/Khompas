@@ -29,28 +29,16 @@ class _BilanConcoursScreenState extends State<BilanConcoursScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Bilan de concours')),
       body: m.resultatsConcours.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('🎯', style: TextStyle(fontSize: 48)),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Saisis tes notes de l\'an dernier, épreuve par épreuve '
-                      '(et les barres si tu les connais).\n\nL\'app calcule où '
-                      'tu as vraiment perdu des points et te propose de '
-                      'régler tes priorités de matières dessus — le cœur '
-                      'd\'une 5/2 efficace.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: couleurSecondaire(context)),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : ListView(
+          ? etatVide(
+            context,
+            emoji: '🎯',
+            message: 'Saisis tes notes de l\'an dernier, épreuve par épreuve '
+              '(et les barres si tu les connais).\n\nL\'app calcule où '
+              'tu as vraiment perdu des points et te propose de '
+              'régler tes priorités de matières dessus — le cœur '
+              'd\'une 5/2 efficace.',
+          )
+          : listeCentree(context,
               padding: const EdgeInsets.only(bottom: 90),
               children: [
                 _syntheseDeficits(context),
@@ -74,24 +62,24 @@ class _BilanConcoursScreenState extends State<BilanConcoursScreen> {
       ..sort((a, b) => b.value.compareTo(a.value));
     final maxDef = tri.first.value <= 0 ? 1.0 : tri.first.value;
     return Card(
-      margin: const EdgeInsets.all(12),
+      margin: const EdgeInsets.all(kEsp12),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(kRayonCarte),
         side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(kEsp12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Où tu perds des points',
                 style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             Text(
               'Déficit pondéré = coefficient × points sous la barre '
               '(ou sous ta médiane si la barre n\'est pas saisie).',
-              style: TextStyle(fontSize: 11.5, color: couleurSecondaire(context)),
+              style: styleMeta(context),
             ),
             const SizedBox(height: 10),
             for (final e in tri)
@@ -118,7 +106,7 @@ class _BilanConcoursScreenState extends State<BilanConcoursScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: kEsp8),
                     Text(
                       e.value <= 0
                           ? 'OK'
@@ -157,7 +145,7 @@ class _BilanConcoursScreenState extends State<BilanConcoursScreen> {
       title:
           Text(concours, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text('${liste.length} épreuve(s)',
-          style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
+          style: styleMeta(context)),
       children: [for (final r in liste) _tuile(r)],
     );
   }

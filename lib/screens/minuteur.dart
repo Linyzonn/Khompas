@@ -161,20 +161,20 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Minuteur')),
       body: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(kEsp24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (termine) ...[
               const Center(child: Text('🎉', style: TextStyle(fontSize: 56))),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               const Center(
                 child: Text('Session terminée — séances enregistrées !',
                     style:
                         TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: kEsp24),
               FilledButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Retour'),
@@ -197,7 +197,7 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
                             fontSize: 13, color: couleurSecondaire(context))),
                   ),
                 ),
-              const SizedBox(height: 24),
+              const SizedBox(height: kEsp24),
               Center(
                 child: Text(
                   '${(r ~/ 60).toString().padLeft(2, '0')}:${(r % 60).toString().padLeft(2, '0')}',
@@ -208,13 +208,13 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
                       fontFeatures: const [FontFeature.tabularFigures()]),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               LinearProgressIndicator(
                 value: 1 - r / total,
                 color: couleur,
                 minHeight: 6,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: kEsp24),
               Row(
                 children: [
                   Expanded(
@@ -224,7 +224,7 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
                       onPressed: _pauseOuReprise,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: kEsp12),
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.skip_next),
@@ -235,11 +235,11 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               Text(
                 'L\'écran reste allumé pendant la session.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+                style: styleMeta(context),
               ),
             ],
           ],

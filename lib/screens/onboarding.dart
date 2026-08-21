@@ -168,9 +168,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   List<Widget> _entete(BuildContext context, String emoji, String titre,
       String sousTitre) {
     return [
-      const SizedBox(height: 16),
+      const SizedBox(height: kEsp16),
       Center(child: Text(emoji, style: const TextStyle(fontSize: 44))),
-      const SizedBox(height: 8),
+      const SizedBox(height: kEsp8),
       Center(
         child: Text(titre,
             style: Theme.of(context)
@@ -194,7 +194,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget _etapeFil(BuildContext context) {
     final m = AppModel.instance;
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(kEsp24),
       children: [
         ..._entete(context, '🧭', 'Trois étapes et tout roule',
             'Chaque étape se saute et se refait plus tard — mais avec les trois, le plan du soir devient vraiment intelligent.'),
@@ -222,7 +222,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 '5 minutes sur la grille — le plan du soir saura ce que tu as vu chaque jour.',
             fait: m.routines.isNotEmpty,
             action: () => _ouvrir(() => const EdtScreen())),
-        const SizedBox(height: 16),
+        const SizedBox(height: kEsp16),
         FilledButton(
           onPressed: () => AppModel.instance.setOnboarded(),
           child: const Text('C\'est parti !'),
@@ -236,7 +236,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget _etapeEte52(BuildContext context) {
     final m = AppModel.instance;
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(kEsp24),
       children: [
         ..._entete(context, '☀️', 'Ton été de 5/2',
             'L\'été d\'une 5/2 se joue maintenant : trois étapes pour transformer les vacances en tremplin.'),
@@ -290,7 +290,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 _assurerPlageEte();
               }
             }),
-        const SizedBox(height: 16),
+        const SizedBox(height: kEsp16),
         FilledButton(
           onPressed: () => AppModel.instance.setOnboarded(),
           child: const Text('C\'est parti !'),
@@ -311,7 +311,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget _etapeEteSup(BuildContext context) {
     final m = AppModel.instance;
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(kEsp24),
       children: [
         ..._entete(context, '☀️', 'Bien commencer, dès les vacances',
             'Deux choses utiles avant même la rentrée — le reste attendra septembre.'),
@@ -346,7 +346,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 _assurerPlageEte();
               }
             }),
-        const SizedBox(height: 8),
+        const SizedBox(height: kEsp8),
         Text(
           'Le fil de rentrée (colloscope, emploi du temps) t\'attendra en septembre — tu le retrouveras sur le tableau de bord.',
           textAlign: TextAlign.center,
@@ -356,7 +356,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           onPressed: () => setState(() => montrerFilRentree = true),
           child: const Text('Le préparer quand même'),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: kEsp8),
         FilledButton(
           onPressed: () => AppModel.instance.setOnboarded(),
           child: const Text('C\'est parti !'),
@@ -400,9 +400,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               shrinkWrap: true,
               padding: const EdgeInsets.all(kEsp24),
               children: [
-            const SizedBox(height: 24),
+            const SizedBox(height: kEsp24),
             const Center(child: Text('🧭', style: TextStyle(fontSize: 56))),
-            const SizedBox(height: 8),
+            const SizedBox(height: kEsp8),
             Center(
               child: Text('Khompas',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -423,7 +423,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ],
               onChanged: (v) => setState(() => filiere = v ?? filiere),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: kEsp12),
             TextField(
               controller: groupeCtl,
               keyboardType: TextInputType.number,
@@ -440,7 +440,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               value: cinqDemi,
               onChanged: (v) => setState(() => cinqDemi = v),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: kEsp16),
             if (busy) const Center(child: CircularProgressIndicator()),
             if (!busy && serveurActif) ...[
               FilledButton.icon(
@@ -448,20 +448,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 label: const Text('Créer mon compte'),
                 onPressed: _creerCompte,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: kEsp4),
               Text(
                 'Gratuit et anonyme : une simple clé secrète. Tes données sont '
                 'sauvegardées en ligne et synchronisées entre ton téléphone et ton PC.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+                style: styleMeta(context),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               OutlinedButton.icon(
                 icon: const Icon(Icons.key),
                 label: const Text('J\'ai déjà une clé de compte'),
                 onPressed: _dejaUneCle,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: kEsp8),
             ],
             if (!busy)
               TextButton(

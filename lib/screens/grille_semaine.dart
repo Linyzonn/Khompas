@@ -358,7 +358,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                   ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             // ---- La grille ----
             Expanded(
               child: SingleChildScrollView(

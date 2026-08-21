@@ -200,7 +200,7 @@ class VueSemaineColonnes extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text('—',
-                  style: TextStyle(color: couleurSecondaire(context), fontSize: 12)),
+                  style: styleMeta(context)),
             ),
           // Chaque element = un petit bloc teinte a liseret colore (bien
           // plus lisible que des lignes de texte nues).

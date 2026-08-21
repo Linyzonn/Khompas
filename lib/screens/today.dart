@@ -87,7 +87,7 @@ class _TodayScreenState extends State<TodayScreen> {
       context,
       (context) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(kEsp16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -98,12 +98,12 @@ class _TodayScreenState extends State<TodayScreen> {
                     : '$total moments de ta journée à récap ?',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: kEsp4),
               Text(
                 '10 secondes par créneau : ce qui a été fait nourrit ton plan du soir.',
-                style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+                style: styleMeta(context),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: kEsp8),
               for (final c in kholles)
                 ListTile(
                   dense: true,
@@ -161,14 +161,14 @@ class _TodayScreenState extends State<TodayScreen> {
       context,
       (context) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(kEsp16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Khôlle ${c.matiere} — comment ça s\'est passé ?',
                   style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               Wrap(
                 spacing: 8,
                 runSpacing: 6,
@@ -195,7 +195,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               TextField(
                 controller: tombeCtl,
                 maxLines: 2,
@@ -208,7 +208,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               Align(
                 alignment: Alignment.centerRight,
                 child: FilledButton(
@@ -590,7 +590,7 @@ class _TodayScreenState extends State<TodayScreen> {
         if (contraintes.maxWidth >= 900) {
           // ---- Cockpit large : gauche / CENTRE / droite + semaine dessous ----
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(kEsp16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -613,12 +613,12 @@ class _TodayScreenState extends State<TodayScreen> {
         }
         // ---- Telephone : session du soir d'abord, blocs ensuite ----
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(kEsp16),
           children: [
             ...alertes,
             entete,
             centre,
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             ...gauche,
             ...droite,
             vueSemaine,
@@ -700,11 +700,11 @@ class _TodayScreenState extends State<TodayScreen> {
             style: TextStyle(fontSize: 12.5, color: couleurSecondaire(context)),
           ),
           if (c.programme.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             Text('📋 ${c.programme}',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
+                style: styleMeta(context)),
           ] else
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -892,7 +892,7 @@ class _TodayScreenState extends State<TodayScreen> {
             commences == 0
                 ? 'Ajoute tes chapitres pour lancer la rotation.'
                 : '$jamaisRevus/$commences chapitres jamais revus — le plan du soir les fait tourner.',
-            style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+            style: styleMeta(context),
           ),
         ],
       ),
@@ -912,7 +912,7 @@ class _TodayScreenState extends State<TodayScreen> {
           if (prochain == null)
             Text(
               '${m.oraux.length} épreuve(s) en rotation — les dates se rempliront après l\'admissibilité.',
-              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+              style: styleMeta(context),
             )
           else ...[
             Text(
@@ -923,7 +923,7 @@ class _TodayScreenState extends State<TodayScreen> {
             Text(
               '${prochain.concours} — ${prochain.epreuve}, ${frDateCourte(prochain.date!)}'
               '${prochain.lieu.isEmpty ? '' : '\n📍 ${prochain.lieu}'}',
-              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+              style: styleMeta(context),
             ),
           ],
         ],
@@ -1035,7 +1035,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           if (total == 0)
             Text('Coche tes sessions du soir pour compter.',
-                style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
+                style: styleMeta(context)),
           for (final e in parMatiere.take(4)) ...[
             const SizedBox(height: 6),
             Row(
@@ -1096,7 +1096,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 height: 8,
                 decoration:
                     BoxDecoration(color: color, shape: BoxShape.circle)),
-            const SizedBox(width: 8),
+            const SizedBox(width: kEsp8),
             Expanded(
               child: Text(titre,
                   maxLines: 1,
@@ -1168,7 +1168,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 'aujourd\'hui reviendra tout seul.',
                 style: TextStyle(color: couleurSecondaire(context)),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: kEsp12),
               OutlinedButton.icon(
                 icon: const Icon(Icons.undo, size: 18),
                 label: const Text('Finalement, je peux travailler'),
@@ -1190,7 +1190,7 @@ class _TodayScreenState extends State<TodayScreen> {
         side: BorderSide(color: scheme.primary.withValues(alpha: 0.35), width: 1.5),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(kEsp16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1198,7 +1198,7 @@ class _TodayScreenState extends State<TodayScreen> {
               children: [
                 Icon(jourLibre ? Icons.wb_sunny : Icons.nightlight,
                     size: 20, color: scheme.primary),
-                const SizedBox(width: 8),
+                const SizedBox(width: kEsp8),
                 Text(jourLibre ? 'Aujourd\'hui, tu as…' : 'Ce soir, tu as…',
                     style: Theme.of(context)
                         .textTheme
@@ -1230,7 +1230,7 @@ class _TodayScreenState extends State<TodayScreen> {
                       color: scheme.primary),
                 ),
               ),
-            const SizedBox(height: 12),
+            const SizedBox(height: kEsp12),
             Wrap(
               spacing: 8,
               runSpacing: 4,
@@ -1250,14 +1250,14 @@ class _TodayScreenState extends State<TodayScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: kEsp8),
             Wrap(
               spacing: 6,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text('Méthode : ',
                     style:
-                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
+                        styleMeta(context)),
                 for (final me in const [
                   ('checklist', '✅ Checklist'),
                   ('pomo25', '🍅 25/5'),
@@ -1272,7 +1272,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: kEsp12),
             if (plafonne)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -1300,7 +1300,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
                   'Déjà travaillé cette semaine : ${_labelMin(minSem['']!)} 💪',
-                  style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+                  style: styleMeta(context),
                 ),
               ),
             Align(
@@ -1375,7 +1375,7 @@ class _TodayScreenState extends State<TodayScreen> {
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: kEsp8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1426,7 +1426,7 @@ class _TodayScreenState extends State<TodayScreen> {
       context,
       (context) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(kEsp16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1471,10 +1471,10 @@ class _TodayScreenState extends State<TodayScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: kEsp8),
               Text(
                 'Cours → tu choisiras le chapitre vu (et s\'il est fini ou encore en cours).',
-                style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
+                style: styleMeta(context),
               ),
               const Divider(height: 20),
               Text('On vous a donné du travail ?',
@@ -1551,14 +1551,14 @@ class _TodayScreenState extends State<TodayScreen> {
       context,
       (context) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(kEsp16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Quel chapitre a été vu en ${r.matiere} ?',
                   style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
+              const SizedBox(height: kEsp8),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 320),
                 child: ListView(
@@ -1701,14 +1701,14 @@ class _TodayScreenState extends State<TodayScreen> {
                       builder: (_) => MinuteurScreen(blocs: blocs)),
                 ),
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: kEsp8),
       for (final b in blocs)
         b.pause
             ? Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text('   ☕ Pause ${b.minutes} min',
                     style:
-                        TextStyle(fontSize: 12, color: couleurSecondaire(context))),
+                        styleMeta(context)),
               )
             : Card(
                 elevation: 0,

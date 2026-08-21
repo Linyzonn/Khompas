@@ -126,7 +126,7 @@ class _PlanningPageState extends State<PlanningPage> {
       body: listeCentree(context, children: [
           Text('Mon emploi du temps',
               style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
+          const SizedBox(height: kEsp4),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.grid_on),
@@ -167,17 +167,17 @@ class _PlanningPageState extends State<PlanningPage> {
                         const CalendrierScreen(ouvrirVacances: true))).then(
                 (_) => setState(() {})),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: kEsp24),
           Text('Temps de trajet',
               style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
+          const SizedBox(height: kEsp4),
           Text(
             'Métro, bus, RER ? Le tableau de bord te proposera tes cartes '
             '(voc d\'anglais, citations de français) à réviser pendant le '
             'trajet — le travail utile qui ne demande ni table ni papier.',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           Wrap(
             spacing: 6,
             children: [
@@ -210,15 +210,15 @@ class _PlanningPageState extends State<PlanningPage> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: kEsp24),
           Text('Priorité des matières',
               style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
+          const SizedBox(height: kEsp4),
           Text(
             'Pondère le plan de travail (coefficients aux concours, matière à rattraper…).',
-            style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+            style: styleMeta(context),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: kEsp8),
           if (m.matieres.isEmpty)
             Text('Les matières apparaîtront après ton premier import.',
                 style: TextStyle(color: couleurSecondaire(context))),
@@ -244,15 +244,15 @@ class _PlanningPageState extends State<PlanningPage> {
               ),
             ),
           if (m.matieres.length >= 2) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: kEsp24),
             Text('Fusionner deux matières',
                 style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
+            const SizedBox(height: kEsp4),
             Text(
               'Un doublon qui résiste (« LV1 » et « Anglais », un khôlleur qui écrit autrement…) ? Tout ce qui est dans la première passera dans la seconde — khôlles, notes, chapitres, heures.',
-              style: TextStyle(color: couleurSecondaire(context), fontSize: 12),
+              style: styleMeta(context),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: kEsp8),
             OutlinedButton.icon(
               icon: const Icon(Icons.merge_type),
               label: const Text('Fusionner…'),
