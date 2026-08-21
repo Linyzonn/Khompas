@@ -34,9 +34,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
     final now = DateTime.now();
     return Scaffold(
       appBar: AppBar(title: const Text('Calendrier')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      body: listeCentree(context, children: [
           Text('Roulement des semaines (A/B)',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
@@ -102,7 +100,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
           const SizedBox(height: 8),
           if (m.sansCours.isEmpty)
             Text('Aucune période pour le moment.',
-                style: TextStyle(color: Colors.grey.shade400)),
+                style: TextStyle(color: couleurSecondaire(context))),
           for (final p in m.sansCours)
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -149,7 +147,7 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
           const SizedBox(height: 8),
           if (m.joursOff.isEmpty)
             Text('Aucun jour off prévu.',
-                style: TextStyle(color: Colors.grey.shade400)),
+                style: TextStyle(color: couleurSecondaire(context))),
           for (final j in m.joursOff)
             ListTile(
               contentPadding: EdgeInsets.zero,

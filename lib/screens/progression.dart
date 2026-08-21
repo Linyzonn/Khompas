@@ -41,9 +41,7 @@ class ProgressionScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Ma progression')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      body: listeCentree(context, children: [
           // ---- Heures par semaine ----
           Text('Heures de travail — 12 semaines',
               style: Theme.of(context).textTheme.titleMedium),
@@ -124,13 +122,13 @@ class ProgressionScreen extends StatelessWidget {
                   ),
                   Expanded(
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(kRayonJauge),
                       child: LinearProgressIndicator(
                         value: minutes / maxMatiere,
                         minHeight: 8,
                         color: Color(subjectColor(mat)),
                         backgroundColor:
-                            Colors.grey.withValues(alpha: 0.15),
+                            Theme.of(context).colorScheme.surfaceContainerHighest,
                       ),
                     ),
                   ),
@@ -223,12 +221,12 @@ class ProgressionScreen extends StatelessWidget {
           ),
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(kRayonJauge),
               child: LinearProgressIndicator(
                 value: tous.isEmpty ? 0 : consolides / tous.length,
                 minHeight: 8,
                 color: Color(subjectColor(mat)),
-                backgroundColor: Colors.grey.withValues(alpha: 0.15),
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
               ),
             ),
           ),
@@ -269,6 +267,6 @@ class ProgressionScreen extends StatelessWidget {
     final delta = recente - ancienne;
     if (delta.abs() < 0.3) return couleurSecondaire(context);
     // Jamais de rouge : une baisse s'affiche en orange doux, pas en alarme.
-    return delta > 0 ? Colors.green.shade600 : Colors.orange.shade700;
+    return delta > 0 ? context.tokens.succes : context.tokens.attention;
   }
 }

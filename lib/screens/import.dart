@@ -459,7 +459,7 @@ class _ImportScreenState extends State<ImportScreen> {
                 itemBuilder: (context, i) => Stack(
                   children: [
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(kRayonPetit),
                       child: pieces[i].pdf
                           ? Container(
                               height: 110,
@@ -473,7 +473,7 @@ class _ImportScreenState extends State<ImportScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(Icons.picture_as_pdf,
-                                      size: 36, color: Colors.red.shade400),
+                                      size: 36, color: context.tokens.urgent),
                                   const SizedBox(height: 6),
                                   const Text('PDF',
                                       style: TextStyle(

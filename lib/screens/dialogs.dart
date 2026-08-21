@@ -16,7 +16,7 @@ Future<T?> feuilleAdaptative<T>(
       context: context,
       builder: (context) => Dialog(
         shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(kRayonCarte)),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
           child: builder(context),

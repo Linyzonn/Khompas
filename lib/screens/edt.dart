@@ -190,7 +190,7 @@ class _EdtScreenState extends State<EdtScreen> {
     final h = (r.dureeMin / 60 * _cellH).clamp(18.0, 600.0);
     final demi = r.semaines != 0;
     final couleur = r.matiere.isEmpty
-        ? Colors.blueGrey
+        ? context.tokens.repos
         : Color(subjectColor(r.matiere));
     return Positioned(
       top: top,
@@ -203,7 +203,7 @@ class _EdtScreenState extends State<EdtScreen> {
           padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
             color: couleur.withValues(alpha: 0.85),
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(kRayonJauge),
           ),
           child: Text(
             '${r.titre}${r.semaines == 1 ? ' (A)' : r.semaines == 2 ? ' (B)' : ''}',
@@ -439,7 +439,7 @@ class _EdtScreenState extends State<EdtScreen> {
             TextButton(
               onPressed: () => Navigator.pop(context, 'suppr'),
               child:
-                  const Text('Supprimer', style: TextStyle(color: Colors.red)),
+                  Text('Supprimer', style: TextStyle(color: context.tokens.urgent)),
             ),
             TextButton(
                 onPressed: () => Navigator.pop(context),

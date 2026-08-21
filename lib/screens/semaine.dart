@@ -71,7 +71,7 @@ class VueSemaineColonnes extends StatelessWidget {
         items.add((
           r.debutMin,
           '${r.debutMin ~/ 60}h ${r.titre}',
-          r.matiere.isEmpty ? Colors.blueGrey : Color(subjectColor(r.matiere)),
+          r.matiere.isEmpty ? context.tokens.repos : Color(subjectColor(r.matiere)),
           false,
         ));
       }
@@ -80,7 +80,7 @@ class VueSemaineColonnes extends StatelessWidget {
       items.add((
         e.debutMin,
         '⭐ ${e.debutMin ~/ 60}h ${e.titre}',
-        e.matiere.isEmpty ? Colors.blueGrey : Color(subjectColor(e.matiere)),
+        e.matiere.isEmpty ? context.tokens.repos : Color(subjectColor(e.matiere)),
         false,
       ));
     }
@@ -143,16 +143,16 @@ class VueSemaineColonnes extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
       constraints: BoxConstraints(minHeight: hauteurMin),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(kRayonCarte),
         color: estAujourdhui
             ? scheme.primary.withValues(alpha: 0.07)
             : plage != null
-                ? Colors.grey.withValues(alpha: 0.10)
-                : Colors.grey.withValues(alpha: 0.04),
+                ? Theme.of(context).colorScheme.surfaceContainerHighest
+                : Theme.of(context).colorScheme.surfaceContainerLow,
         border: Border.all(
           color: estAujourdhui
               ? scheme.primary.withValues(alpha: 0.55)
-              : Colors.grey.withValues(alpha: 0.18),
+              : Theme.of(context).colorScheme.outlineVariant,
         ),
       ),
       child: Column(
@@ -171,7 +171,7 @@ class VueSemaineColonnes extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                       color: estAujourdhui
                           ? scheme.primary
-                          : Colors.grey.shade700),
+                          : couleurSecondaire(context)),
                 ),
               ),
               if (estAujourdhui)
@@ -180,7 +180,7 @@ class VueSemaineColonnes extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                   decoration: BoxDecoration(
                     color: scheme.primary,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(kRayonPetit),
                   ),
                   child: const Text('auj.',
                       style: TextStyle(
@@ -200,7 +200,7 @@ class VueSemaineColonnes extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text('—',
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                  style: TextStyle(color: couleurSecondaire(context), fontSize: 12)),
             ),
           // Chaque element = un petit bloc teinte a liseret colore (bien
           // plus lisible que des lignes de texte nues).
@@ -211,7 +211,7 @@ class VueSemaineColonnes extends StatelessWidget {
               width: double.infinity,
               decoration: BoxDecoration(
                 color: it.$3.withValues(alpha: it.$4 ? 0.16 : 0.09),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(kRayonPetit),
                 border: Border(
                     left: BorderSide(color: it.$3, width: 3)),
               ),

@@ -203,6 +203,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'fab-agenda',
         onPressed: () => _menuAjout(context),
         child: const Icon(Icons.add),
       ),
@@ -218,7 +219,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
       elevation: 0,
       color: scheme.primary.withValues(alpha: 0.07),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(kRayonCarte),
         side: BorderSide(color: scheme.primary.withValues(alpha: 0.4)),
       ),
       child: Padding(
@@ -231,7 +232,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
             const SizedBox(height: 4),
             Text(
               'Une photo (ou le code de ta classe) et toutes tes khôlles arrivent ici, avec salle, heure et khôlleur.',
-              style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+              style: TextStyle(fontSize: 12.5, color: couleurSecondaire(context)),
             ),
             const SizedBox(height: 10),
             FilledButton.icon(
@@ -268,8 +269,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
       elevation: 0,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(kRayonCarte),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),

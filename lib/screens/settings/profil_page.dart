@@ -197,9 +197,7 @@ class _ProfilPageState extends State<ProfilPage> {
     final m = AppModel.instance;
     return Scaffold(
       appBar: AppBar(title: const Text('Profil & scolarité')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      body: listeCentree(context, children: [
           Text('Mon profil', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(

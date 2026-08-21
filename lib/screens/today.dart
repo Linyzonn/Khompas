@@ -381,13 +381,13 @@ class _TodayScreenState extends State<TodayScreen> {
     final alertes = <Widget>[
       if (m.chargementEchoue)
         _banniere(
-          Colors.red,
+          context.tokens.urgent,
           Icons.error_outline,
           'Tes données n\'ont pas pu être lues au démarrage — rien n\'est écrasé, une copie de secours a été conservée. Tente « Récupérer la copie de secours » (Réglages → Données & avancé) ou récupère ton compte.',
         ),
       if (m.enregistrementsIgnores > 0)
         _banniere(
-          Colors.orange,
+          context.tokens.attention,
           Icons.report_problem_outlined,
           '${m.enregistrementsIgnores} élément(s) illisible(s) ignoré(s) au chargement — tout le reste est intact, et une copie de secours complète existe (Réglages → Données & avancé).',
         ),
@@ -399,7 +399,7 @@ class _TodayScreenState extends State<TodayScreen> {
           m.cleCreeLe != null &&
           now.difference(m.cleCreeLe!).inDays >= 7)
         _banniereAction(
-          Colors.indigo,
+          context.tokens.info,
           Icons.key,
           'Ta clé de compte a une semaine — l\'as-tu vraiment notée quelque part (notes, mail à toi-même…) ? Sans elle, impossible de récupérer tes données si tu changes d\'appareil.',
           'La voir',
@@ -414,7 +414,7 @@ class _TodayScreenState extends State<TodayScreen> {
       // que le compte est a jour.
       if (m.compteCle.isNotEmpty && m.pushEchecs >= 3)
         _banniereAction(
-          Colors.red,
+          context.tokens.urgent,
           Icons.cloud_off,
           'La synchronisation du compte échoue depuis ${m.pushEchecs} envois — tes dernières modifications ne sont PAS sauvegardées en ligne'
           '${m.pushDerniereErreur.isEmpty ? '.' : ' (${m.pushDerniereErreur})'}',
@@ -440,7 +440,7 @@ class _TodayScreenState extends State<TodayScreen> {
       // recent gagne, les suppressions respectees) — rien ne s'ecrase.
       if (m.syncConflit)
         _banniereAction(
-          Colors.orange,
+          context.tokens.attention,
           Icons.sync_problem,
           'Ton autre appareil a aussi travaillé de son côté. Fusionne les deux : rien ne s\'écrase, chaque modification garde la version la plus récente.',
           'Fusionner',
@@ -462,7 +462,7 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
       if (m.compteEnAvance && !m.syncConflit)
         _banniereAction(
-          Colors.orange,
+          context.tokens.attention,
           Icons.cloud_sync,
           'Ton compte a des données plus récentes (poussées par ton autre appareil). Fusionne-les avant de modifier ici — rien ne s\'écrase.',
           'Fusionner',
@@ -487,7 +487,7 @@ class _TodayScreenState extends State<TodayScreen> {
           m.serverUrl.isNotEmpty &&
           (m.colles.isNotEmpty || m.chapitres.isNotEmpty))
         _banniereAction(
-          Colors.indigo,
+          context.tokens.info,
           Icons.cloud_off,
           'Sur navigateur, un simple « effacer les données de navigation » supprime tout. Un compte gratuit (2 taps, sans email) met ton semestre à l\'abri et synchronise avec ton téléphone.',
           'Créer',
@@ -498,7 +498,7 @@ class _TodayScreenState extends State<TodayScreen> {
           !m.dateConcours!.isAfter(now) &&
           !m.modeOraux)
         _banniereAction(
-          Colors.deepPurple,
+          Theme.of(context).colorScheme.primary,
           Icons.school,
           'Tes écrits sont passés 🎉 La suite se joue à l\'oral — active le mode oraux : le plan du soir bascule en préparation d\'épreuves, tout à voix haute.',
           'Mode oraux',
@@ -507,7 +507,7 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
       if (sansProgramme != null)
         _banniereAction(
-          Colors.teal,
+          context.tokens.succes,
           Icons.assignment_outlined,
           'Ta khôlle de ${sansProgramme.matiere} est ${frJour(sansProgramme.start)} et n\'a pas de programme — colle-le ici (5 s), il servira aussi à ton plan du soir${m.codeClasse.isEmpty ? '' : ' et à toute ta classe'}.',
           'Coller',
@@ -515,7 +515,7 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
       if (kholleAnglais != null && vocColle.isNotEmpty)
         _banniereAction(
-          Colors.indigo,
+          context.tokens.info,
           Icons.translate,
           'Khôlle de ${kholleAnglais.matiere} ${frJour(kholleAnglais.start)} — '
           '${kholleAnglais.listesVoc.isNotEmpty ? 'les ${vocColle.length} mots de « ${kholleAnglais.listesVoc.join(' », « ')} »' : 'tes ${vocColle.length} mots « de colle » ⭐'}'
@@ -535,7 +535,7 @@ class _TodayScreenState extends State<TodayScreen> {
           m.cinqDemi &&
           m.chapitres.any((c) => c.etape > 0 && c.prochaineRevision == null))
         _banniereAction(
-          Colors.amber,
+          context.tokens.attention,
           Icons.wb_sunny_outlined,
           'Ta réactivation d\'été n\'est pas planifiée — répartis la révision de tes chapitres sur les jours de vacances restants.',
           'Planifier',
@@ -543,7 +543,7 @@ class _TodayScreenState extends State<TodayScreen> {
         )
       else if (m.estEte() && m.chapitres.isEmpty)
         _banniereAction(
-          Colors.amber,
+          context.tokens.attention,
           Icons.wb_sunny_outlined,
           'Profite des vacances : importe le programme officiel de ta filière — le plan d\'été étalera tes révisions.',
           'Importer',
@@ -556,7 +556,7 @@ class _TodayScreenState extends State<TodayScreen> {
       // livres sont a relire chaque ete.
       else if (m.estEte() && m.oeuvres.isEmpty)
         _banniereAction(
-          Colors.amber,
+          context.tokens.attention,
           Icons.menu_book_outlined,
           'L\'été est LE moment de lire les œuvres de français — ajoute les 3 livres de l\'année, le plan programmera les séances.',
           'Ajouter',
@@ -639,126 +639,36 @@ class _TodayScreenState extends State<TodayScreen> {
 
   /// Banniere avec un bouton d'action a droite.
   Widget _banniereAction(Color couleur, IconData icone, String texte,
-      String labelBouton, VoidCallback onTap) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      color: couleur.withValues(alpha: 0.08),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: couleur.withValues(alpha: 0.5)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Icon(icone, size: 20, color: couleur),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(texte,
-                  style: const TextStyle(fontSize: 13, height: 1.3)),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonal(
-              onPressed: onTap,
-              child: Text(labelBouton, style: const TextStyle(fontSize: 12.5)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+          String labelBouton, VoidCallback onTap) =>
+      banniereKhompas(context,
+          couleur: couleur,
+          icone: icone,
+          texte: texte,
+          labelAction: labelBouton,
+          action: onTap);
 
-  Widget _banniere(Color couleur, IconData icone, String texte) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      color: couleur.withValues(alpha: 0.08),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: couleur.withValues(alpha: 0.5)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icone, size: 20, color: couleur),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(texte,
-                  style: const TextStyle(fontSize: 13, height: 1.3)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _banniere(Color couleur, IconData icone, String texte) =>
+      banniereKhompas(context,
+          couleur: couleur, icone: icone, texte: texte);
 
   // ---------- Carte a barre d'accent ----------
 
+  /// Delegue a la brique partagee (theme.dart) : meme allure partout.
   Widget _carte({
     required Color accent,
     required IconData icone,
     required String titre,
     required Widget enfant,
-  }) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 5, color: accent),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(icone, size: 15, color: accent),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            titre.toUpperCase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 11,
-                                letterSpacing: 0.5,
-                                fontWeight: FontWeight.w700,
-                                color: accent),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    enfant,
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  }) =>
+      carteKhompas(context,
+          accent: accent, icone: icone, titre: titre, enfant: enfant);
 
   // ---------- Blocs lateraux ----------
 
   Widget _blocProchaine(Colle? c) {
     if (c == null) {
       return _carte(
-        accent: Colors.grey,
+        accent: context.tokens.repos,
         icone: Icons.record_voice_over,
         titre: 'Prochaine khôlle',
         enfant: Text('Aucune à venir — importe ton colloscope.',
@@ -787,14 +697,14 @@ class _TodayScreenState extends State<TodayScreen> {
             '${frDate(c.start)} · ${frHeure(c.start)}'
             '${c.salle.isEmpty ? '' : ' · salle ${c.salle}'}'
             '${c.kholleur.isEmpty ? '' : '\n${c.kholleur}'}',
-            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+            style: TextStyle(fontSize: 12.5, color: couleurSecondaire(context)),
           ),
           if (c.programme.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text('📋 ${c.programme}',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+                style: TextStyle(fontSize: 12, color: couleurSecondaire(context))),
           ] else
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -820,7 +730,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final total = citations.length + voc.length;
     final trajet = m.trajetMinutes > 0;
     return _carte(
-      accent: Colors.indigo,
+      accent: context.tokens.info,
       icone: trajet ? Icons.directions_bus_filled_outlined : Icons.style,
       titre: trajet ? 'Pendant ton trajet' : 'Cartes à revoir',
       enfant: Column(
@@ -870,7 +780,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final demain = DateTime(now.year, now.month, now.day + 1, 19);
     final s = suggere(m, minutes, maintenant: demain).take(3).toList();
     return _carte(
-      accent: Colors.deepPurple,
+      accent: Theme.of(context).colorScheme.primary,
       icone: Icons.skip_next_outlined,
       titre: 'Et demain ?',
       enfant: Column(
@@ -907,7 +817,7 @@ class _TodayScreenState extends State<TodayScreen> {
 
   Widget _blocARendre(List<Devoir> aRendre, DateTime now) {
     return _carte(
-      accent: Colors.orange,
+      accent: context.tokens.attention,
       icone: Icons.assignment_turned_in_outlined,
       titre: 'À rendre',
       enfant: aRendre.isEmpty
@@ -933,7 +843,7 @@ class _TodayScreenState extends State<TodayScreen> {
   Widget _blocSemaine(
       List<Colle> semaineColles, List<Ds> semaineDs, DateTime now) {
     return _carte(
-      accent: Colors.indigo,
+      accent: context.tokens.info,
       icone: Icons.calendar_view_week_outlined,
       titre: 'Cette semaine',
       enfant: (semaineColles.isEmpty && semaineDs.isEmpty)
@@ -969,7 +879,7 @@ class _TodayScreenState extends State<TodayScreen> {
         .where((c) => c.etape > 0 && c.dernierRevu == null)
         .length;
     return _carte(
-      accent: Colors.deepPurple,
+      accent: Theme.of(context).colorScheme.primary,
       icone: Icons.flag,
       titre: 'Concours',
       enfant: Column(
@@ -982,7 +892,7 @@ class _TodayScreenState extends State<TodayScreen> {
             commences == 0
                 ? 'Ajoute tes chapitres pour lancer la rotation.'
                 : '$jamaisRevus/$commences chapitres jamais revus — le plan du soir les fait tourner.',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
           ),
         ],
       ),
@@ -993,7 +903,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final prochain = m.prochainOral();
     final now = DateTime.now();
     return _carte(
-      accent: Colors.deepPurple,
+      accent: Theme.of(context).colorScheme.primary,
       icone: Icons.school,
       titre: 'Oraux',
       enfant: Column(
@@ -1002,7 +912,7 @@ class _TodayScreenState extends State<TodayScreen> {
           if (prochain == null)
             Text(
               '${m.oraux.length} épreuve(s) en rotation — les dates se rempliront après l\'admissibilité.',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
             )
           else ...[
             Text(
@@ -1013,7 +923,7 @@ class _TodayScreenState extends State<TodayScreen> {
             Text(
               '${prochain.concours} — ${prochain.epreuve}, ${frDateCourte(prochain.date!)}'
               '${prochain.lieu.isEmpty ? '' : '\n📍 ${prochain.lieu}'}',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
             ),
           ],
         ],
@@ -1030,7 +940,7 @@ class _TodayScreenState extends State<TodayScreen> {
       for (final e in evtsJour) (e.debutMin, _ligneEvenement(e)),
     ]..sort((a, b) => a.$1.compareTo(b.$1));
     return _carte(
-      accent: Colors.amber.shade700,
+      accent: context.tokens.attention,
       icone: Icons.wb_sunny_outlined,
       titre: 'Ta journée',
       enfant: (plage != null && lignes.isEmpty)
@@ -1057,7 +967,7 @@ class _TodayScreenState extends State<TodayScreen> {
 
   Widget _ligneEvenement(Evenement e) {
     final couleur = e.matiere.isEmpty
-        ? Colors.blueGrey
+        ? context.tokens.repos
         : Color(subjectColor(e.matiere));
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
@@ -1098,7 +1008,7 @@ class _TodayScreenState extends State<TodayScreen> {
     // un samedi soir ne montrait plus que le week-end — on veut voir la
     // SUITE, pas la semaine ecoulee.
     return _carte(
-      accent: Colors.blueGrey,
+      accent: context.tokens.repos,
       icone: Icons.view_week_outlined,
       titre: 'Mes 7 prochains jours',
       enfant: VueSemaineColonnes(
@@ -1114,7 +1024,7 @@ class _TodayScreenState extends State<TodayScreen> {
       ..sort((a, b) => b.value.compareTo(a.value));
     final maxV = parMatiere.isEmpty ? 1 : parMatiere.first.value;
     return _carte(
-      accent: Colors.teal,
+      accent: context.tokens.succes,
       icone: Icons.timer_outlined,
       titre: 'Travail cette semaine',
       enfant: Column(
@@ -1139,12 +1049,12 @@ class _TodayScreenState extends State<TodayScreen> {
                 ),
                 Expanded(
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
+                    borderRadius: BorderRadius.circular(kRayonJauge),
                     child: LinearProgressIndicator(
                       value: e.value / maxV,
                       minHeight: 6,
                       color: Color(subjectColor(e.key)),
-                      backgroundColor: Colors.grey.withValues(alpha: 0.15),
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                     ),
                   ),
                 ),
@@ -1239,7 +1149,7 @@ class _TodayScreenState extends State<TodayScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(kRayonCarte),
           side: BorderSide(
               color: scheme.primary.withValues(alpha: 0.35), width: 1.5),
         ),
@@ -1276,7 +1186,7 @@ class _TodayScreenState extends State<TodayScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(kRayonCarte),
         side: BorderSide(color: scheme.primary.withValues(alpha: 0.35), width: 1.5),
       ),
       child: Padding(
@@ -1460,7 +1370,7 @@ class _TodayScreenState extends State<TodayScreen> {
             height: 8,
             decoration: BoxDecoration(
               color: r.matiere.isEmpty
-                  ? Colors.blueGrey
+                  ? context.tokens.repos
                   : Color(subjectColor(r.matiere)),
               shape: BoxShape.circle,
             ),
@@ -1501,8 +1411,8 @@ class _TodayScreenState extends State<TodayScreen> {
                 : IconButton(
                     tooltip: 'Modifier le bilan',
                     visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.check_circle,
-                        color: Colors.green, size: 18),
+                    icon: Icon(Icons.check_circle,
+                        color: context.tokens.succes, size: 18),
                     onPressed: () => _bilanSheet(r),
                   ),
         ],
@@ -1571,7 +1481,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700)),
+                      color: couleurSecondaire(context))),
               const SizedBox(height: 6),
               ActionChip(
                 avatar: const Text('📥', style: TextStyle(fontSize: 14)),
@@ -1803,8 +1713,8 @@ class _TodayScreenState extends State<TodayScreen> {
             : Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
+                  borderRadius: BorderRadius.circular(kRayonPetit),
+                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
                 ),
                 child: ListTile(
                   dense: true,
@@ -1836,8 +1746,8 @@ class _TodayScreenState extends State<TodayScreen> {
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(kRayonPetit),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: ListTile(
         leading: CircleAvatar(

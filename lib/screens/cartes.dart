@@ -388,7 +388,7 @@ class _VocabScreenState extends State<VocabScreen> {
                         icon: Icon(
                             v.pourColle ? Icons.star : Icons.star_border,
                             size: 20,
-                            color: v.pourColle ? Colors.amber : null),
+                            color: v.pourColle ? context.tokens.attention : null),
                         onPressed: () {
                           v.pourColle = !v.pourColle;
                           m.updateMotVocab(v);
@@ -610,12 +610,12 @@ class _RevisionCartesScreenState extends State<RevisionCartesScreen> {
               child: Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(kRayonCarte),
                   side:
-                      BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                      BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
                 ),
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(kRayonCarte),
                   onTap: montreVerso
                       ? null
                       : () => setState(() => montreVerso = true),
@@ -720,10 +720,10 @@ class _RevisionCartesScreenState extends State<RevisionCartesScreen> {
       if (montreVerso) ...[
         const Divider(height: 28),
         Text(v.anglais,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: Colors.teal)),
+                color: context.tokens.succes)),
         if (v.remarque.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(v.remarque,

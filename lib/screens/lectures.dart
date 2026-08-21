@@ -92,8 +92,8 @@ class _LecturesScreenState extends State<LecturesScreen> {
       margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(kRayonCarte),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
@@ -133,7 +133,7 @@ class _LecturesScreenState extends State<LecturesScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 4, right: 8),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(kRayonJauge),
                     child: LinearProgressIndicator(
                         value: avancement, minHeight: 7),
                   ),

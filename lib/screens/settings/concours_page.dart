@@ -136,9 +136,7 @@ class _ConcoursPageState extends State<ConcoursPage> {
     final m = AppModel.instance;
     return Scaffold(
       appBar: AppBar(title: const Text('Concours & oraux')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      body: listeCentree(context, children: [
           Text('Concours', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           if (m.dateConcours == null) ...[

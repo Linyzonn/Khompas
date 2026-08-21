@@ -92,10 +92,11 @@ class GradesScreen extends StatelessWidget {
     return Icons.trending_flat;
   }
 
-  Color _tendColor(double ecart) {
-    if (ecart >= 0.5) return Colors.green;
-    if (ecart <= -0.5) return Colors.redAccent;
-    return Colors.grey;
+  Color _tendColor(BuildContext context, double ecart) {
+    if (ecart >= 0.5) return context.tokens.succes;
+    // Une baisse n'est PAS une alerte rouge : l'app ne culpabilise pas.
+    if (ecart <= -0.5) return context.tokens.attention;
+    return couleurSecondaire(context);
   }
 
   String _tendLabel(double ecart) {
@@ -146,7 +147,7 @@ class GradesScreen extends StatelessWidget {
           if (t != null)
             Padding(
               padding: const EdgeInsets.only(left: 6),
-              child: Icon(_tendIcon(t.$1), size: 18, color: _tendColor(t.$1)),
+              child: Icon(_tendIcon(t.$1), size: 18, color: _tendColor(context, t.$1)),
             ),
           IconButton(
             tooltip: 'Objectif de moyenne (facultatif)',
@@ -154,7 +155,7 @@ class GradesScreen extends StatelessWidget {
             icon: Icon(
               obj == null ? Icons.flag_outlined : Icons.flag,
               size: 18,
-              color: obj == null ? Colors.grey : color,
+              color: obj == null ? couleurSecondaire(context) : color,
             ),
             onPressed: () => _objectifDialog(context, mat, avgGlobal),
           ),
@@ -172,7 +173,7 @@ class GradesScreen extends StatelessWidget {
             child: Text(
               '${_tendLabel(t.$1)} : ${t.$2.toStringAsFixed(1)}/20 sur les 3 dernières notes, '
               'contre ${t.$3.toStringAsFixed(1)}/20 en moyenne générale.',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
             ),
           ),
         if (obj != null)
@@ -180,7 +181,7 @@ class GradesScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
             child: Text(
               _ligneObjectif(obj, avgGlobal),
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              style: TextStyle(fontSize: 12, color: couleurSecondaire(context)),
             ),
           ),
         if (collesPassees.isEmpty && dsMat.isEmpty)
@@ -280,7 +281,7 @@ class GradesScreen extends StatelessWidget {
               avg == null
                   ? 'Facultatif. Un objectif réaliste motive ; un objectif inatteignable démoralise.'
                   : 'Facultatif. Suggestion réaliste : ta moyenne actuelle (${_fmt(avg)}) + 0,5. Un objectif inatteignable démoralise plus qu\'il ne motive.',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              style: TextStyle(fontSize: 13, color: couleurSecondaire(context)),
             ),
             const SizedBox(height: 10),
             TextField(

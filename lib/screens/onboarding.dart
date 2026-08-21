@@ -122,11 +122,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(kRayonCarte),
         side: BorderSide(
             color: fait
-                ? Colors.green.withValues(alpha: 0.6)
-                : Colors.grey.withValues(alpha: 0.3)),
+                ? context.tokens.succes.withValues(alpha: 0.6)
+                : Theme.of(context).colorScheme.outlineVariant),
       ),
       child: ListTile(
         leading:
@@ -378,13 +378,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           : m.cinqDemi
               ? _etapeEte52(context)
               : _etapeEteSup(context);
-      return Scaffold(body: SafeArea(child: corps));
+      // Meme largeur bornee que l'etape 0 : la coherence se voit surtout
+      // sur PC, ou une liste pleine largeur part a la derive.
+      return Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: corps,
+            ),
+          ),
+        ),
+      );
     }
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.all(kEsp24),
+              children: [
             const SizedBox(height: 24),
             const Center(child: Text('🧭', style: TextStyle(fontSize: 56))),
             const SizedBox(height: 8),
@@ -397,7 +412,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: Text('Le compagnon de ta prépa',
                   style: TextStyle(color: couleurSecondaire(context))),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: kEsp24),
             DropdownButtonFormField<String>(
               initialValue: filiere,
               decoration: const InputDecoration(
@@ -451,14 +466,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             if (!busy)
               TextButton(
                 onPressed: _sansCompte,
+                style: TextButton.styleFrom(
+                    foregroundColor: couleurSecondaire(context)),
                 child: const Text(
                   kIsWeb
-                      ? 'Continuer sans compte (⚠ déconseillé sur navigateur : un nettoyage des données du navigateur efface tout)'
+                      ? 'Continuer sans compte (déconseillé sur navigateur : effacer les données du navigateur effacerait tout)'
                       : 'Continuer sans compte (local seulement)',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-          ],
+                  style: TextStyle(fontSize: 12.5),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );

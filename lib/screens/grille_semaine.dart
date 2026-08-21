@@ -55,7 +55,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
       final blocs = <_Bloc>[];
       final jour = <(String, Color)>[];
       final plage = m.plageSansCours(d);
-      if (plage != null) jour.add(('🏖 ${plage.titre}', Colors.blueGrey));
+      if (plage != null) jour.add(('🏖 ${plage.titre}', context.tokens.repos));
       if (plage == null) {
         for (final r in m.routinesLe(d)) {
           blocs.add(_Bloc(
@@ -63,7 +63,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
             r.dureeMin,
             r.titre,
             r.matiere.isEmpty
-                ? Colors.blueGrey
+                ? context.tokens.repos
                 : Color(subjectColor(r.matiere)),
             false,
           ));
@@ -74,7 +74,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
           e.debutMin,
           e.dureeMin,
           '⭐ ${e.titre}',
-          e.matiere.isEmpty ? Colors.blueGrey : Color(subjectColor(e.matiere)),
+          e.matiere.isEmpty ? context.tokens.repos : Color(subjectColor(e.matiere)),
           false,
         ));
       }
@@ -194,7 +194,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                           : null,
                       border: Border(
                           left: BorderSide(
-                              color: Colors.grey.withValues(alpha: 0.18))),
+                              color: Theme.of(context).colorScheme.outlineVariant)),
                     ),
                   ),
                 ),
@@ -222,7 +222,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                                 .couleur
                                 .withValues(alpha: blocs[b].important ? 0.30 : 0.16),
                             Theme.of(context).canvasColor),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(kRayonPetit),
                         border: Border(
                             left: BorderSide(
                                 color: blocs[b].couleur, width: 3)),
@@ -251,7 +251,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                         1,
                     left: 0,
                     right: 0,
-                    child: Container(height: 2, color: Colors.redAccent),
+                    child: Container(height: 2, color: context.tokens.urgent),
                   ),
                   Positioned(
                     top: (now.hour * 60 + now.minute - minH * 60) / 60 * hph -
@@ -260,8 +260,8 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                     child: Container(
                       width: 8,
                       height: 8,
-                      decoration: const BoxDecoration(
-                          color: Colors.redAccent, shape: BoxShape.circle),
+                      decoration: BoxDecoration(
+                          color: context.tokens.urgent, shape: BoxShape.circle),
                     ),
                   ),
                 ],
@@ -303,7 +303,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                                         fontWeight: FontWeight.w800,
                                         color: estAujourdhui
                                             ? scheme.primary
-                                            : Colors.grey.shade700),
+                                            : couleurSecondaire(context)),
                                   ),
                                 ),
                                 if (estAujourdhui)
@@ -312,7 +312,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                                         horizontal: 6, vertical: 1),
                                     decoration: BoxDecoration(
                                       color: scheme.primary,
-                                      borderRadius: BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(kRayonPetit),
                                     ),
                                     child: const Text('auj.',
                                         style: TextStyle(
@@ -337,7 +337,7 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
                                           decoration: BoxDecoration(
                                             color: j.$2.withValues(alpha: 0.16),
                                             borderRadius:
-                                                BorderRadius.circular(6),
+                                                BorderRadius.circular(kRayonPetit),
                                           ),
                                           child: Text(j.$1,
                                               maxLines: 1,

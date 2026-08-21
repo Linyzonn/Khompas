@@ -77,8 +77,8 @@ class _BilanConcoursScreenState extends State<BilanConcoursScreen> {
       margin: const EdgeInsets.all(12),
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(kRayonCarte),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -108,13 +108,13 @@ class _BilanConcoursScreenState extends State<BilanConcoursScreen> {
                     ),
                     Expanded(
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(kRayonJauge),
                         child: LinearProgressIndicator(
                           value: (e.value / maxDef).clamp(0.0, 1.0),
                           minHeight: 8,
                           color: Color(subjectColor(e.key)),
                           backgroundColor:
-                              Colors.grey.withValues(alpha: 0.15),
+                              Theme.of(context).colorScheme.surfaceContainerHighest,
                         ),
                       ),
                     ),
@@ -183,7 +183,7 @@ class _BilanConcoursScreenState extends State<BilanConcoursScreen> {
         '${sousBarre ? '  ⚠ sous la barre' : ''}',
         style: TextStyle(
             fontSize: 12,
-            color: sousBarre ? Colors.orange.shade800 : couleurSecondaire(context)),
+            color: sousBarre ? context.tokens.attention : couleurSecondaire(context)),
       ),
       onTap: () => _ajouter(existant: r),
       trailing: IconButton(

@@ -13,6 +13,7 @@ import 'screens/onboarding.dart';
 import 'screens/settings.dart';
 import 'screens/today.dart';
 import 'store.dart';
+import 'theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -58,17 +59,11 @@ class KhompasApp extends StatelessWidget {
     return MaterialApp(
       title: 'Khompas',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6B5CEB)),
-      ),
+      // Fondations visuelles centralisees (theme.dart / DESIGN.md).
+      theme: themeKhompas(Brightness.light),
       // Une app dont le coeur d'usage est "le soir avant de dormir" suit le
       // theme sombre du systeme (coherent avec le discours sommeil).
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF6B5CEB), brightness: Brightness.dark),
-      ),
+      darkTheme: themeKhompas(Brightness.dark),
       themeMode: ThemeMode.system,
       locale: const Locale('fr'),
       supportedLocales: const [Locale('fr')],

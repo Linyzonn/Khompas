@@ -196,9 +196,7 @@ class _ComptePageState extends State<ComptePage> {
     final m = AppModel.instance;
     return Scaffold(
       appBar: AppBar(title: const Text('Compte & synchronisation')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      body: listeCentree(context, children: [
           if (m.serverUrl.isEmpty)
             Text(
               'Renseigne d\'abord l\'URL du serveur (Réglages → Données & avancé) pour activer les comptes.',

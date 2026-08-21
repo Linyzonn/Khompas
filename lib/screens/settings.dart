@@ -43,9 +43,9 @@ class SettingsScreen extends StatelessWidget {
         final m = AppModel.instance;
         return Scaffold(
           appBar: AppBar(title: const Text('Réglages')),
-          body: ListView(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            children: [
+          body: listeCentree(context,
+              padding: const EdgeInsets.symmetric(vertical: kEsp8),
+              children: [
               _tuile(
                 context,
                 icone: Icons.person_outline,

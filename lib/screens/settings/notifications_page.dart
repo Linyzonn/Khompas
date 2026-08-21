@@ -37,9 +37,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return Scaffold(
       appBar: AppBar(
           title: const Text(kIsWeb ? 'Sommeil' : 'Notifications & sommeil')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      body: listeCentree(context, children: [
           if (!kIsWeb) ...[
             Text('Notifications',
                 style: Theme.of(context).textTheme.titleMedium),

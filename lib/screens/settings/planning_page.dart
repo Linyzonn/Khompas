@@ -123,9 +123,7 @@ class _PlanningPageState extends State<PlanningPage> {
     final m = AppModel.instance;
     return Scaffold(
       appBar: AppBar(title: const Text('Planning & matières')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      body: listeCentree(context, children: [
           Text('Mon emploi du temps',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),

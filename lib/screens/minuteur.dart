@@ -152,9 +152,9 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
   @override
   Widget build(BuildContext context) {
     final couleur = termine
-        ? Colors.green
+        ? context.tokens.succes
         : bloc.pause
-            ? Colors.teal
+            ? context.tokens.succes
             : Color(subjectColor(bloc.matiere));
     final total = termine ? 1 : bloc.minutes * 60;
     final r = restant;

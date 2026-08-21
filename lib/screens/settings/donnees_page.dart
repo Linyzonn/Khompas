@@ -316,9 +316,7 @@ class _DonneesPageState extends State<DonneesPage> {
     final m = AppModel.instance;
     return Scaffold(
       appBar: AppBar(title: const Text('Données & avancé')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      body: listeCentree(context, children: [
           Text('Mes données', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           Text(

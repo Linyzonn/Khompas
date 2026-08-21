@@ -38,11 +38,11 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(kRayonCarte),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(kRayonCarte),
         onTap: () async {
           await ouvrir();
           if (mounted) setState(() {});
@@ -103,29 +103,20 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
 
     if (m.chapitres.isEmpty) {
       return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  'Charge les chapitres du programme officiel de ta filière '
-                  '(prepa.org), puis fais-les vivre : vu en cours → revu → '
-                  'exos → DS. Le plan du soir s\'appuie dessus.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 14),
-                FilledButton.icon(
-                  icon: const Icon(Icons.menu_book),
-                  label: const Text('Importer le programme officiel'),
-                  onPressed: () => _importer(context),
-                ),
-              ],
-            ),
+        body: etatVide(
+          context,
+          emoji: '📚',
+          message: 'Charge les chapitres du programme officiel de ta filière '
+              '(prepa.org), puis fais-les vivre : vu en cours → revu → exos '
+              '→ DS. Le plan du soir s\'appuie dessus.',
+          action: FilledButton.icon(
+            icon: const Icon(Icons.menu_book),
+            label: const Text('Importer le programme officiel'),
+            onPressed: () => _importer(context),
           ),
         ),
         floatingActionButton: FloatingActionButton(
+          heroTag: 'fab-chapitres-vide',
           onPressed: () => _ajouter(context),
           child: const Icon(Icons.add),
         ),
@@ -201,7 +192,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                       prefixIcon: const Icon(Icons.search, size: 20),
                       isDense: true,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(kRayonPetit)),
                       contentPadding:
                           const EdgeInsets.symmetric(vertical: 8),
                     ),
@@ -244,6 +235,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'fab-chapitres',
         onPressed: () => _ajouter(context),
         child: const Icon(Icons.add),
       ),
@@ -279,12 +271,12 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
             Expanded(
               flex: 2,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
+                borderRadius: BorderRadius.circular(kRayonJauge),
                 child: LinearProgressIndicator(
                   value: tous.isEmpty ? 0 : revus / tous.length,
                   minHeight: 5,
                   color: color,
-                  backgroundColor: Colors.grey.withValues(alpha: 0.15),
+                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                 ),
               ),
             ),
@@ -319,27 +311,29 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
     );
   }
 
-  static const _couleursEtape = [
-    Colors.blueGrey,
-    Colors.indigo,
-    Colors.teal,
-    Colors.orange,
-    Colors.green,
-  ];
+  /// Couleur par etape du workflow (pas vu -> DS passe) : elle vient du
+  /// theme, donc elle suit le mode clair/sombre.
+  List<Color> _couleursEtape(BuildContext context) => [
+        context.tokens.repos,
+        context.tokens.info,
+        context.tokens.succes,
+        context.tokens.attention,
+        context.tokens.succes,
+      ];
 
   Widget _carteChapitre(BuildContext context, Chapitre c, Color color) {
     final due = c.prochaineRevision != null &&
         !c.prochaineRevision!
             .isAfter(DateTime.now().add(const Duration(hours: 12)));
-    final couleurEtape = _couleursEtape[c.etape.clamp(0, 4)];
+    final couleurEtape = _couleursEtape(context)[c.etape.clamp(0, 4)];
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(kRayonPetit),
       onTap: () => _editerChapitre(c),
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.withValues(alpha: 0.25)),
+          borderRadius: BorderRadius.circular(kRayonPetit),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -360,7 +354,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                       horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
                     color: couleurEtape.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(kRayonPetit),
                   ),
                   child: Text(
                     kEtapesChapitre[c.etape.clamp(0, 4)],
@@ -388,7 +382,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                           size: 9,
                           color: i < c.maitrise
                               ? _couleurMaitrise(c.maitrise)
-                              : Colors.grey.withValues(alpha: 0.5),
+                              : Theme.of(context).colorScheme.outlineVariant,
                         ),
                       ),
                   ],
@@ -490,7 +484,7 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                             size: 20,
                             color: i < c.maitrise
                                 ? _couleurMaitrise(c.maitrise)
-                                : Colors.grey,
+                                : couleurSecondaire(context),
                           ),
                         ),
                       ),
@@ -536,10 +530,10 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
   }
 
   Color _couleurMaitrise(int n) {
-    if (n <= 1) return Colors.red;
-    if (n == 2) return Colors.orange;
-    if (n == 3) return Colors.lightGreen;
-    return Colors.green;
+    if (n <= 1) return context.tokens.urgent;
+    if (n == 2) return context.tokens.attention;
+    if (n == 3) return context.tokens.succes;
+    return context.tokens.succes;
   }
 
   String _labelMaitrise(int n) {
