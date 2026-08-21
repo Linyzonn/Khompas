@@ -28,3 +28,6 @@ Thumbs.db
 
 # Archives de travail (jamais dans le depot)
 *.zip
+
+# Rapports de crash du tool Flutter (jamais dans le depot)
+flutter_*.log

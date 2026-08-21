@@ -192,7 +192,16 @@ ThemeData themeKhompas(Brightness luminosite) {
         borderRadius: BorderRadius.circular(kRayonPetit),
         side: bordure,
       ),
-      labelStyle: const TextStyle(fontSize: 12.5),
+      // La COULEUR du label doit etre explicite : sans elle, Material
+      // applique un gris qui devient illisible en theme sombre (les chips
+      // de duree « 45 min », « 1 h »... disparaissaient sur le fond).
+      // secondaryLabelStyle = chip SELECTIONNE (ChoiceChip).
+      labelStyle: TextStyle(fontSize: 12.5, color: couleurs.onSurface),
+      secondaryLabelStyle:
+          TextStyle(fontSize: 12.5, color: couleurs.onSecondaryContainer),
+      backgroundColor: couleurs.surface,
+      selectedColor: couleurs.secondaryContainer,
+      checkmarkColor: couleurs.onSecondaryContainer,
       padding: const EdgeInsets.symmetric(horizontal: kEsp8, vertical: kEsp4),
     ),
     listTileTheme: const ListTileThemeData(
