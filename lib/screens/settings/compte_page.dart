@@ -16,6 +16,24 @@ class ComptePage extends StatefulWidget {
 }
 
 class _ComptePageState extends State<ComptePage> {
+  // Les operations de compte partent sur le reseau (jusqu'a 45 s de
+  // timeout) : sans indicateur, l'utilisateur tape dans le vide et
+  // relance l'action plusieurs fois. Ce drapeau barre les boutons ET
+  // affiche une barre de progression.
+  bool occupe = false;
+
+  /// Enveloppe une operation reseau : barre l'interface, la libere quoi
+  /// qu'il arrive (succes comme echec).
+  Future<void> _avecAttente(Future<void> Function() operation) async {
+    if (occupe) return;
+    setState(() => occupe = true);
+    try {
+      await operation();
+    } finally {
+      if (mounted) setState(() => occupe = false);
+    }
+  }
+
   void _snack(String msg, {int secondes = 4}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       duration: Duration(seconds: secondes),
@@ -197,6 +215,11 @@ class _ComptePageState extends State<ComptePage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Compte & synchronisation')),
       body: listeCentree(context, children: [
+          if (occupe)
+            const Padding(
+              padding: EdgeInsets.only(bottom: kEsp12),
+              child: LinearProgressIndicator(),
+            ),
           if (m.serverUrl.isEmpty)
             Text(
               'Renseigne d\'abord l\'URL du serveur (Réglages → Données & avancé) pour activer les comptes.',
@@ -216,7 +239,7 @@ class _ComptePageState extends State<ComptePage> {
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.cloud_done),
                     label: const Text('Créer un compte'),
-                    onPressed: _creerCompte,
+                    onPressed: occupe ? null : () => _avecAttente(_creerCompte),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -224,7 +247,7 @@ class _ComptePageState extends State<ComptePage> {
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.key),
                     label: const Text('J\'ai une clé'),
-                    onPressed: _connecterCompte,
+                    onPressed: occupe ? null : () => _avecAttente(_connecterCompte),
                   ),
                 ),
               ],
@@ -255,7 +278,7 @@ class _ComptePageState extends State<ComptePage> {
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.cloud_upload),
                     label: const Text('Envoyer'),
-                    onPressed: _pousser,
+                    onPressed: occupe ? null : () => _avecAttente(_pousser),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -263,7 +286,7 @@ class _ComptePageState extends State<ComptePage> {
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.cloud_download),
                     label: const Text('Récupérer'),
-                    onPressed: _tirer,
+                    onPressed: occupe ? null : () => _avecAttente(_tirer),
                   ),
                 ),
               ],
@@ -272,7 +295,7 @@ class _ComptePageState extends State<ComptePage> {
             FilledButton.tonalIcon(
               icon: const Icon(Icons.merge),
               label: const Text('Fusionner avec le compte'),
-              onPressed: _fusionner,
+              onPressed: occupe ? null : () => _avecAttente(_fusionner),
             ),
             Text(
               'La fusion garde le meilleur des deux côtés : union par '
@@ -294,16 +317,16 @@ class _ComptePageState extends State<ComptePage> {
             OutlinedButton.icon(
               icon: const Icon(Icons.link),
               label: const Text('Mon lien d\'agenda'),
-              onPressed: _lienAgenda,
+              onPressed: occupe ? null : () => _avecAttente(_lienAgenda),
             ),
             TextButton(
-              onPressed: _dissocier,
+              onPressed: occupe ? null : () => _avecAttente(_dissocier),
               child: const Text('Dissocier cet appareil'),
             ),
             TextButton(
               style: TextButton.styleFrom(
                   foregroundColor: Theme.of(context).colorScheme.error),
-              onPressed: _supprimerCompte,
+              onPressed: occupe ? null : () => _avecAttente(_supprimerCompte),
               child: const Text('Supprimer mon compte du serveur'),
             ),
           ],

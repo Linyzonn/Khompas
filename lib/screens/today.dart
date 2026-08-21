@@ -32,6 +32,10 @@ class TodayScreen extends StatefulWidget {
 
 class _TodayScreenState extends State<TodayScreen> {
   int minutes = 120;
+  // Les alertes sont triees par gravite. Au-dela de deux, elles repoussent
+  // le plan du soir hors de l'ecran sur un telephone : les suivantes se
+  // deplient a la demande.
+  bool toutesAlertes = false;
 
   // Une proposition de recap par JOUR (et pas par lancement : sur la
   // version web PC, l'onglet reste ouvert des jours).
@@ -565,6 +569,34 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
     ];
 
+    // Deux alertes visibles au plus (les plus graves d'abord).
+    final alertesVisibles = <Widget>[
+      ...alertes.take(toutesAlertes ? alertes.length : 2),
+      if (alertes.length > 2)
+        Padding(
+          padding: const EdgeInsets.only(bottom: kEsp12),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                  foregroundColor: couleurSecondaire(context),
+                  visualDensity: VisualDensity.compact),
+              icon: Icon(
+                  toutesAlertes ? Icons.expand_less : Icons.expand_more,
+                  size: 18),
+              label: Text(
+                toutesAlertes
+                    ? 'Masquer les autres alertes'
+                    : '${alertes.length - 2} autre(s) alerte(s)',
+                style: const TextStyle(fontSize: 12.5),
+              ),
+              onPressed: () =>
+                  setState(() => toutesAlertes = !toutesAlertes),
+            ),
+          ),
+        ),
+    ];
+
     final gauche = <Widget>[
       _blocProchaine(prochaine),
       _blocARendre(aRendre, now),
@@ -594,7 +626,7 @@ class _TodayScreenState extends State<TodayScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ...alertes,
+                ...alertesVisibles,
                 entete,
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -615,7 +647,7 @@ class _TodayScreenState extends State<TodayScreen> {
         return ListView(
           padding: const EdgeInsets.all(kEsp16),
           children: [
-            ...alertes,
+            ...alertesVisibles,
             entete,
             centre,
             const SizedBox(height: kEsp4),

@@ -22,6 +22,22 @@ class DonneesPage extends StatefulWidget {
 }
 
 class _DonneesPageState extends State<DonneesPage> {
+  // Sauvegarde, restauration, reparation de copie de secours, suppression
+  // de classe : des operations disque/reseau qui peuvent durer. Sans
+  // indicateur, l'utilisateur relance et peut declencher deux fois une
+  // action destructrice.
+  bool occupe = false;
+
+  Future<void> _avecAttente(Future<void> Function() operation) async {
+    if (occupe) return;
+    setState(() => occupe = true);
+    try {
+      await operation();
+    } finally {
+      if (mounted) setState(() => occupe = false);
+    }
+  }
+
   late final TextEditingController serverCtl;
   late final TextEditingController keyCtl;
   // Une copie de secours (.corrompu) existe-t-elle sur cet appareil ?
@@ -317,6 +333,11 @@ class _DonneesPageState extends State<DonneesPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Données & avancé')),
       body: listeCentree(context, children: [
+          if (occupe)
+            const Padding(
+              padding: EdgeInsets.only(bottom: kEsp12),
+              child: LinearProgressIndicator(),
+            ),
           Text('Mes données', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: kEsp4),
           Text(
@@ -334,7 +355,7 @@ class _DonneesPageState extends State<DonneesPage> {
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.upload_file),
                   label: const Text('Sauvegarder'),
-                  onPressed: _sauvegarder,
+                  onPressed: occupe ? null : () => _avecAttente(_sauvegarder),
                 ),
               ),
               const SizedBox(width: 10),
@@ -342,7 +363,7 @@ class _DonneesPageState extends State<DonneesPage> {
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.settings_backup_restore),
                   label: const Text('Restaurer'),
-                  onPressed: _restaurer,
+                  onPressed: occupe ? null : () => _avecAttente(_restaurer),
                 ),
               ),
             ],
@@ -366,7 +387,7 @@ class _DonneesPageState extends State<DonneesPage> {
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.healing_outlined),
                     label: const Text('Récupérer'),
-                    onPressed: _restaurerSecours,
+                    onPressed: occupe ? null : () => _avecAttente(_restaurerSecours),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -374,7 +395,7 @@ class _DonneesPageState extends State<DonneesPage> {
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.ios_share),
                     label: const Text('Exporter brute'),
-                    onPressed: _exporterSecours,
+                    onPressed: occupe ? null : () => _avecAttente(_exporterSecours),
                   ),
                 ),
               ],
@@ -397,7 +418,7 @@ class _DonneesPageState extends State<DonneesPage> {
               side: BorderSide(color: Theme.of(context).colorScheme.error),
             ),
             label: const Text('Tout effacer et repartir de zéro…'),
-            onPressed: _remettreAZero,
+            onPressed: occupe ? null : () => _avecAttente(_remettreAZero),
           ),
           const SizedBox(height: kEsp24),
           Text('Serveur Khompas & extraction IA',
@@ -436,7 +457,7 @@ class _DonneesPageState extends State<DonneesPage> {
             OutlinedButton.icon(
               icon: const Icon(Icons.delete_forever, size: 18),
               label: Text('Supprimer ma classe ${m.codeClasse} du serveur'),
-              onPressed: _supprimerClasse,
+              onPressed: occupe ? null : () => _avecAttente(_supprimerClasse),
             ),
             Text(
               'Photos du colloscope, extractions et programmes partagés compris. (Les photos expirent de toute façon après ~4 mois.)',

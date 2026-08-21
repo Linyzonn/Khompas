@@ -109,16 +109,24 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
                     style:
                         TextStyle(fontSize: 11, color: couleurSecondaire(context))),
                 for (var i = 1; i <= 5; i++)
-                  GestureDetector(
+                  // InkWell (et pas GestureDetector) : un tap doit se VOIR.
+                  // La cible passe aussi a 32 px de large — un emoji de
+                  // 16 px etait sous le seuil de confort tactile.
+                  InkWell(
+                    borderRadius: BorderRadius.circular(kRayonJauge),
                     onTap: () {
                       a.ressenti = i;
                       m.updateAnnale(a);
                       setState(() {});
                     },
-                    child: Opacity(
-                      opacity: a.ressenti == i ? 1 : 0.35,
-                      child: Text(_emojis[i - 1],
-                          style: const TextStyle(fontSize: 16)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: kEsp4, vertical: kEsp8),
+                      child: Opacity(
+                        opacity: a.ressenti == i ? 1 : 0.35,
+                        child: Text(_emojis[i - 1],
+                            style: const TextStyle(fontSize: 18)),
+                      ),
                     ),
                   ),
               ],

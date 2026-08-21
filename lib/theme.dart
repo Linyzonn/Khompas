@@ -314,6 +314,10 @@ Widget carteKhompas(
 }
 
 /// Banniere d'alerte du tableau de bord. [labelAction] la rend cliquable.
+/// Sur ETROIT (< 480 px), le bouton passe SOUS le texte : cote a cote, il
+/// ne laissait qu'une colonne de ~180 px et le message s'etalait sur 6
+/// lignes — trois bannieres mangeaient alors la moitie d'un ecran de
+/// telephone avant le plan du soir.
 Widget banniereKhompas(
   BuildContext context, {
   required Color couleur,
@@ -330,24 +334,44 @@ Widget banniereKhompas(
     ),
     child: Padding(
       padding: const EdgeInsets.all(kEsp12),
-      child: Row(
-        crossAxisAlignment: labelAction == null
-            ? CrossAxisAlignment.start
-            : CrossAxisAlignment.center,
-        children: [
-          Icon(icone, size: 20, color: couleur),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(texte, style: Theme.of(context).textTheme.bodySmall),
-          ),
-          if (labelAction != null) ...[
-            const SizedBox(width: kEsp8),
-            FilledButton.tonal(
-              onPressed: action,
-              child: Text(labelAction, style: const TextStyle(fontSize: 12.5)),
-            ),
-          ],
-        ],
+      child: LayoutBuilder(
+        builder: (context, contraintes) {
+          final etroit = contraintes.maxWidth < 480;
+          final message = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icone, size: 20, color: couleur),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(texte,
+                    style: Theme.of(context).textTheme.bodySmall),
+              ),
+            ],
+          );
+          if (labelAction == null) return message;
+          final bouton = FilledButton.tonal(
+            onPressed: action,
+            child: Text(labelAction, style: const TextStyle(fontSize: 12.5)),
+          );
+          if (etroit) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                message,
+                const SizedBox(height: kEsp8),
+                Align(alignment: Alignment.centerRight, child: bouton),
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: message),
+              const SizedBox(width: kEsp8),
+              bouton,
+            ],
+          );
+        },
       ),
     ),
   );
