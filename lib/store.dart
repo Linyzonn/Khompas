@@ -236,6 +236,9 @@ class AppModel extends ChangeNotifier {
           final newCitations = lit(j['citations'], Citation.fromJson);
           final newVocab = lit(j['vocab'], MotVocab.fromJson);
           final newTrajet = ((j['trajetMinutes'] ?? 0) as num).toInt();
+          final newFaits = ((j['faitsDuJour'] ?? []) as List)
+              .map((e) => e.toString())
+              .toSet();
           final newMajEnr = _litDates(j['majEnregistrements']);
           final newSuppr = _litDates(j['suppressions']);
           final newJoursOff = ((j['joursOff'] ?? []) as List)
@@ -274,6 +277,7 @@ class AppModel extends ChangeNotifier {
           citations = newCitations;
           vocab = newVocab;
           trajetMinutes = newTrajet;
+          faitsDuJour = newFaits;
           majEnregistrements = newMajEnr;
           suppressions = newSuppr;
           joursOff = newJoursOff;
@@ -511,6 +515,7 @@ class AppModel extends ChangeNotifier {
         'citations': citations.map((c) => c.toJson()).toList(),
         'vocab': vocab.map((v) => v.toJson()).toList(),
         'trajetMinutes': trajetMinutes,
+        'faitsDuJour': faitsDuJour.toList(),
         'joursOff': joursOff.map((d) => d.toIso8601String()).toList(),
         'modeOraux': modeOraux,
         'refSemaineA': refSemaineA?.toIso8601String(),
@@ -923,6 +928,7 @@ class AppModel extends ChangeNotifier {
     citations = [];
     vocab = [];
     trajetMinutes = 0;
+    faitsDuJour = {};
     joursOff = [];
     zoneVacances = '';
     modeOraux = false;
@@ -1239,6 +1245,9 @@ class AppModel extends ChangeNotifier {
       citations = newCitations;
       vocab = newVocab;
       trajetMinutes = newTrajet;
+      faitsDuJour = ((decoded['faitsDuJour'] ?? []) as List)
+          .map((e) => e.toString())
+          .toSet();
       majEnregistrements = _litDates(decoded['majEnregistrements']);
       suppressions = _litDates(decoded['suppressions']);
       joursOff = newJoursOff;
@@ -1920,6 +1929,32 @@ class AppModel extends ChangeNotifier {
     v.prochaineRevision = prochaine;
     v.dernierRevu = now;
     _stamp(v.id);
+    _touch();
+  }
+
+  // Suggestions cochees AUJOURD'HUI qui ne portent ni chapitre ni oeuvre
+  // (« Français — cartes », « prépare ta khôlle ») : sans cette trace,
+  // elles revenaient dans le plan aussitot cochees.
+  // Cle = 'AAAA-MM-JJ|matiere' : la RAISON affichee change en cours de
+  // journee (« demain » -> « AUJOURD'HUI »), pas la matiere.
+  Set<String> faitsDuJour = {};
+
+  static String _cleFait(DateTime jour, String matiere) =>
+      '${_minuitDe(jour).toIso8601String().substring(0, 10)}|$matiere';
+
+  /// Cette matiere a-t-elle deja eu son bloc coche aujourd'hui ?
+  bool estFait(String matiere, {DateTime? maintenant}) =>
+      faitsDuJour.contains(_cleFait(maintenant ?? DateTime.now(), matiere));
+
+  void marquerFait(String matiere, {DateTime? maintenant}) {
+    final now = maintenant ?? DateTime.now();
+    faitsDuJour.add(_cleFait(now, matiere));
+    // Menage : on ne garde que les 3 derniers jours.
+    final limite = _minuitDe(now).subtract(const Duration(days: 3));
+    faitsDuJour.removeWhere((cle) {
+      final d = DateTime.tryParse(cle.split('|').first);
+      return d == null || d.isBefore(limite);
+    });
     _touch();
   }
 

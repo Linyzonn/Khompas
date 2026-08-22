@@ -6,6 +6,7 @@ import '../engine.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import '../khode.dart';
 import 'cartes.dart';
 import 'dialogs.dart';
 import 'erreurs.dart';
@@ -1323,7 +1324,24 @@ class _TodayScreenState extends State<TodayScreen> {
                 style: TextStyle(color: couleurSecondaire(context)),
               )
             else if (m.methodeTravail == 'checklist')
-              ...[for (final s in suggestions) _suggestionCard(context, s)]
+              // AnimatedSwitcher : la carte cochee s'efface en fondu au
+              // lieu de disparaitre sec — le geste est confirme visuellement.
+              ...[
+                for (final s in suggestions)
+                  AnimatedSwitcher(
+                    duration: kAnimMoyenne,
+                    switchInCurve: Curves.easeOut,
+                    switchOutCurve: Curves.easeOut,
+                    transitionBuilder: (enfant, animation) => SizeTransition(
+                      sizeFactor: animation,
+                      child: FadeTransition(opacity: animation, child: enfant),
+                    ),
+                    child: KeyedSubtree(
+                      key: ValueKey('${s.matiere}|${s.titre}'),
+                      child: _suggestionCard(context, s),
+                    ),
+                  ),
+              ]
             else
               ..._planPomodoro(context, suggestions),
             if ((minSem[''] ?? 0) > 0)
@@ -1769,6 +1787,13 @@ class _TodayScreenState extends State<TodayScreen> {
     ];
   }
 
+  /// Matiere d'INFORMATIQUE (ITC/info commune) : c'est le domaine que
+  /// Khode entraine. On teste le nom normalise, pas une liste figee.
+  bool _estInfo(String matiere) {
+    final m = matiere.toLowerCase();
+    return m.contains('info') || m.contains('itc') || m.contains('python');
+  }
+
   // ---------- Cartes du plan checklist ----------
 
   Widget _suggestionCard(BuildContext context, Suggestion s) {
@@ -1806,6 +1831,31 @@ class _TodayScreenState extends State<TodayScreen> {
                       color: couleurSecondaire(context)),
                 ),
               ),
+            // Passerelle vers KHODE : n'apparait que si l'app est
+            // reellement installee sur cet appareil (protocole khode://
+            // detecte au demarrage) — jamais de bouton mort.
+            if (Khode.disponible && _estInfo(s.matiere))
+              Padding(
+                padding: const EdgeInsets.only(top: kEsp4),
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    minimumSize: const Size(0, 34),
+                  ),
+                  icon: const Icon(Icons.terminal, size: 15),
+                  label: const Text('S’entraîner dans Khode',
+                      style: TextStyle(fontSize: 12)),
+                  onPressed: () async {
+                    final ok = await Khode.ouvrir(theme: s.titre);
+                    if (!ok && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text(
+                              'Khode n’a pas pu s’ouvrir — il a peut-être été désinstallé.')));
+                      setState(() {});
+                    }
+                  },
+                ),
+              ),
           ],
         ),
         trailing: IconButton(
@@ -1824,6 +1874,10 @@ class _TodayScreenState extends State<TodayScreen> {
             }
             final m = AppModel.instance;
             m.addSeance(s.matiere, s.minutes);
+            // Trace du JOUR : sans elle, un bloc sans chapitre (« Français
+            // — cartes », « prépare ta khôlle ») revenait dans le plan
+            // aussitot coche.
+            m.marquerFait(s.matiere);
             if (s.chapitreId != null) {
               final i = m.chapitres.indexWhere((c) => c.id == s.chapitreId);
               if (i >= 0) {
@@ -1868,6 +1922,7 @@ class _TodayScreenState extends State<TodayScreen> {
   Future<void> _finirLecture(Suggestion s) async {
     final m = AppModel.instance;
     m.addSeance(s.matiere, s.minutes);
+    m.marquerFait(s.matiere);
     final i = m.oeuvres.indexWhere((o) => o.id == s.oeuvreId);
     if (i < 0) return;
     final o = m.oeuvres[i];
@@ -1917,6 +1972,7 @@ class _TodayScreenState extends State<TodayScreen> {
     if (verdict == null) return;
     m.evaluerRevision(s.chapitreId!, verdict);
     m.addSeance(s.matiere, s.minutes);
+    m.marquerFait(s.matiere);
     final i = m.chapitres.indexWhere((c) => c.id == s.chapitreId);
     final jours = i >= 0 ? m.chapitres[i].intervalleJours : 1;
     if (!mounted) return;

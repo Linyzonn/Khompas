@@ -181,6 +181,10 @@ class Ds {
   // Petite interro de cours (pas un vrai DS) : le plan fait RELIRE LE COURS
   // les jours d'avant (consigne dediee), coeff faible par defaut.
   bool interro;
+  /// Chapitres AU PROGRAMME de ce DS (quand le prof l'annonce) : le plan du
+  /// soir les fait remonter avant l'epreuve, au lieu de proposer la matiere
+  /// en general.
+  List<String> chapitreIds;
 
   Ds({
     String? id,
@@ -191,7 +195,9 @@ class Ds {
     this.coeff = 1,
     this.moyenneClasse,
     this.interro = false,
-  }) : id = id ?? _newId();
+    List<String>? chapitreIds,
+  })  : chapitreIds = chapitreIds ?? [],
+        id = id ?? _newId();
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -202,6 +208,7 @@ class Ds {
         'coeff': coeff,
         'moyenneClasse': moyenneClasse,
         'interro': interro,
+        'chapitreIds': chapitreIds,
       };
 
   static Ds fromJson(Map<String, dynamic> j) => Ds(
@@ -213,6 +220,9 @@ class Ds {
         coeff: ((j['coeff'] ?? 1) as num).toDouble(),
         moyenneClasse: (j['moyenneClasse'] as num?)?.toDouble(),
         interro: (j['interro'] ?? false) as bool,
+        chapitreIds: ((j['chapitreIds'] ?? []) as List)
+            .map((e) => e.toString())
+            .toList(),
       );
 }
 
@@ -387,6 +397,11 @@ class Devoir {
   DateTime dateDonne;
   bool rendu;
   String remarque;
+  /// Charge de travail ANNONCEE par le prof, en minutes (0 = inconnue).
+  /// « Ces exos, comptez 6 h » : sans elle, le plan proposait un bloc de
+  /// 60 min sans anticiper — un devoir de 6 h doit s'ETALER sur les jours
+  /// qui restent, sinon il tombe entier la veille.
+  int dureeEstimeeMin;
 
   Devoir({
     String? id,
@@ -396,6 +411,7 @@ class Devoir {
     DateTime? dateDonne,
     this.rendu = false,
     this.remarque = '',
+    this.dureeEstimeeMin = 0,
   })  : dateDonne = dateDonne ?? DateTime.now(),
         id = id ?? _newId();
 
@@ -407,6 +423,7 @@ class Devoir {
         'dateDonne': dateDonne.toIso8601String(),
         'rendu': rendu,
         'remarque': remarque,
+        'dureeEstimeeMin': dureeEstimeeMin,
       };
 
   static Devoir fromJson(Map<String, dynamic> j) => Devoir(
@@ -422,6 +439,7 @@ class Devoir {
                 .subtract(const Duration(days: 7)),
         rendu: (j['rendu'] ?? false) as bool,
         remarque: (j['remarque'] ?? '') as String,
+        dureeEstimeeMin: ((j['dureeEstimeeMin'] ?? 0) as num).toInt(),
       );
 }
 

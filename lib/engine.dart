@@ -140,8 +140,12 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
         DateTime(now.year, now.month, now.day).difference(c.prochaineRevision!).inDays;
     // La dette de revisions est AFFICHEE (transparence) au lieu de rester
     // cachee derriere le plafond du soir.
-    final enAttente =
-        dus.length > capRappels ? ' · ${dus.length} chapitres en attente' : '';
+    // Un compteur brut (« 70 chapitres en attente ») pese sans aider : on
+    // ne peut pas les faire ce soir. On ne le montre qu'au-dela d'une
+    // dette notable, et formule comme une file qui avance.
+    final enAttente = dus.length > capRappels + 10
+        ? ' · ${dus.length - capRappels} autres suivront'
+        : '';
     out.add(Suggestion(
       c.matiere,
       'Rappel 🔁 ${c.nom}',
@@ -440,6 +444,11 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     raisons[mat] = raison;
   }
 
+  // Une matiere DEJA TRAITEE aujourd'hui (suggestion cochee sans chapitre :
+  // « Français — cartes », « prépare ta khôlle ») ne doit pas revenir dans
+  // le plan cinq minutes apres : elle sort du classement.
+  scores.removeWhere((mat, _) => m.estFait(mat, maintenant: now));
+
   if (scores.isEmpty || budget < 15) return out;
 
   // ---- Repartition du budget restant sur les meilleures matieres ----
@@ -489,6 +498,16 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     } else if (e != null && e.programme.trim().isNotEmpty) {
       quoi = 'Programme : ${e.programme.trim()}';
       typeConsigne = e.genre;
+    } else if (e != null &&
+        e.genre != 'dm' &&
+        _chapitresDuDs(m, mat, now).isNotEmpty) {
+      // Le prof a annonce le programme du DS : on travaille CES chapitres,
+      // pas la matiere en general.
+      final auProgramme = _chapitresDuDs(m, mat, now);
+      quoi = 'Au programme du DS : '
+          '${auProgramme.take(2).map((c) => c.nom).join(', ')}';
+      typeConsigne = e.genre;
+      if (auProgramme.length == 1) chapitreId = auProgramme.first.id;
     } else if (matiereLitteraire(mat)) {
       // Langues & francais : pas de chapitres a « revoir ». Le travail
       // impose (DM, programme de colle) est deja servi par les branches du
@@ -587,6 +606,59 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     }
   }
   return out;
+}
+
+/// « 360 » -> « 6 h », « 90 » -> « 1 h 30 ».
+String _labelHeures(int minutes) {
+  final h = minutes ~/ 60;
+  final min = minutes % 60;
+  if (h == 0) return '$min min';
+  return min == 0 ? '$h h' : '$h h $min';
+}
+
+/// Minutes a consacrer AUJOURD'HUI a [d] : la charge annoncee par le prof
+/// (dureeEstimeeMin) repartie sur les jours restants — un « comptez 6 h »
+/// devient 6 seances d'une heure, pas un mur la veille. Sans charge
+/// annoncee, on retombe sur un bloc standard.
+/// [reste] borne le resultat au budget disponible du jour.
+int minutesPourDevoir(Devoir d, DateTime maintenant, int reste) {
+  final aujourdHui =
+      DateTime(maintenant.year, maintenant.month, maintenant.day);
+  final echeance = DateTime(d.dateRendu.year, d.dateRendu.month, d.dateRendu.day);
+  final joursRestants = echeance.difference(aujourdHui).inDays;
+  if (d.dureeEstimeeMin <= 0) {
+    return reste >= 60 ? 60 : reste;
+  }
+  // Le jour de l'echeance (ou en retard) : tout ce qui reste, sans etaler.
+  final parJour = joursRestants <= 0
+      ? d.dureeEstimeeMin
+      : (d.dureeEstimeeMin / (joursRestants + 1)).ceil();
+  // Arrondi au quart d'heure, entre 30 min et 120 min par seance.
+  final cale = ((parJour + 14) ~/ 15) * 15;
+  final borne = cale.clamp(30, 120);
+  return borne > reste ? reste : borne;
+}
+
+/// Chapitres annonces au programme du prochain DS de [mat] (≤ 10 jours).
+/// Vide si le prof n'a rien annonce — le plan retombe alors sur son
+/// comportement habituel.
+List<Chapitre> _chapitresDuDs(AppModel m, String mat, DateTime now) {
+  final aujourdHui = DateTime(now.year, now.month, now.day);
+  Ds? prochain;
+  for (final d in m.ds) {
+    if (d.matiere != mat || d.chapitreIds.isEmpty) continue;
+    final jour = DateTime(d.date.year, d.date.month, d.date.day);
+    if (jour.isBefore(aujourdHui)) continue;
+    if (jour.difference(aujourdHui).inDays > 10) continue;
+    if (prochain == null || d.date.isBefore(prochain.date)) prochain = d;
+  }
+  if (prochain == null) return [];
+  // Les moins maitrises d'abord : c'est la que le DS se joue.
+  final l = m.chapitres
+      .where((c) => prochain!.chapitreIds.contains(c.id))
+      .toList()
+    ..sort((a, b) => a.maitrise.compareTo(b.maitrise));
+  return l;
 }
 
 String _nomFragile(Chapitre c) =>
@@ -866,8 +938,12 @@ List<Suggestion> _suggereEte(
   final capRappels = (minutesDispo ~/ 45).clamp(2, 6);
   for (final c in dus.take(capRappels)) {
     if (reste < 15) break;
-    final enAttente =
-        dus.length > capRappels ? ' · ${dus.length} chapitres en attente' : '';
+    // Un compteur brut (« 70 chapitres en attente ») pese sans aider : on
+    // ne peut pas les faire ce soir. On ne le montre qu'au-dela d'une
+    // dette notable, et formule comme une file qui avance.
+    final enAttente = dus.length > capRappels + 10
+        ? ' · ${dus.length - capRappels} autres suivront'
+        : '';
     out.add(Suggestion(
       c.matiere,
       'Rappel 🔁 ${c.nom}',
@@ -880,23 +956,32 @@ List<Suggestion> _suggereEte(
     reste -= 15;
   }
 
-  // ---- 2. DM de vacances saisis (rare mais possible pour un 3/2).
+  // ---- 2. DEVOIRS DE VACANCES (et de rentree) : le filtre « a 10 jours »
+  // les rendait invisibles tout l'ete — des exos donnes en juillet pour le
+  // 1er septembre n'apparaissaient jamais, puis tombaient d'un coup. On
+  // les prend TOUS, etales sur les jours restants d'apres la charge
+  // annoncee par le prof.
   for (final d in m.devoirsARendre()) {
-    if (reste < 60) break;
+    if (reste < 30) break;
     final dj = DateTime(d.dateRendu.year, d.dateRendu.month, d.dateRendu.day)
         .difference(aujourdHui)
         .inDays;
-    if (dj > 10) continue;
+    final mins = minutesPourDevoir(d, now, reste);
+    final charge = d.dureeEstimeeMin > 0
+        ? ' · ${_labelHeures(d.dureeEstimeeMin)} annoncées, ${dj > 0 ? 'réparties sur $dj j' : 'aujourd’hui'}'
+        : '';
     out.add(Suggestion(
       d.matiere,
       '📥 Avance ${d.titre}${d.remarque.isEmpty ? '' : ' (${d.remarque})'}',
-      dj < 0 ? '${d.titre} EN RETARD' : 'À rendre ${frDateCourte(d.dateRendu)}',
-      60,
+      dj < 0
+          ? '${d.titre} EN RETARD'
+          : 'À rendre ${frDateCourte(d.dateRendu)}$charge',
+      mins,
       devoirId: d.id,
       consigne: consigneDe(d.matiere, 'dm'),
     ));
-    reste -= 60;
-    break; // un seul par jour
+    reste -= mins;
+    break; // un seul par jour : l'etalement fait le reste
   }
 
   // ---- 3. Annale en douceur : ~1 par semaine glissante, correction

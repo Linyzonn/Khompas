@@ -20,6 +20,9 @@ dependencies:
   share_plus: ^10.0.0
   shared_preferences: ^2.3.0
   timezone: ^0.11.0
+  # Ouverture du protocole khode:// (passerelle vers l'app Khode quand elle
+  # est installee sur l'appareil) et des liens externes.
+  url_launcher: ^6.3.0
   wakelock_plus: ^1.2.8
 
 dev_dependencies:

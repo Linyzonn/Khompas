@@ -474,6 +474,7 @@ Future<Devoir?> editDevoirDialog(BuildContext context,
       TextEditingController(text: initial?.matiere ?? matiere ?? '');
   final titreCtl = TextEditingController(text: initial?.titre ?? 'DM');
   final remCtl = TextEditingController(text: initial?.remarque ?? '');
+  var duree = initial?.dureeEstimeeMin ?? 0;
   var date = initial?.dateRendu ?? DateTime.now().add(const Duration(days: 7));
 
   return showDialog<Devoir>(
@@ -543,6 +544,32 @@ Future<Devoir?> editDevoirDialog(BuildContext context,
                 maxLines: 2,
                 minLines: 1,
               ),
+              const SizedBox(height: kEsp12),
+              // Charge ANNONCEE par le prof : « comptez 6 h ». Le plan du
+              // soir la repartit sur les jours restants au lieu de
+              // proposer un bloc d'une heure sans anticiper.
+              Text('Temps annoncé par le prof',
+                  style: TextStyle(
+                      fontSize: 13, color: couleurSecondaire(context))),
+              const SizedBox(height: kEsp4),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final (mn, label) in const [
+                    (0, 'Non précisé'),
+                    (60, '1 h'),
+                    (120, '2 h'),
+                    (180, '3 h'),
+                    (360, '6 h'),
+                    (600, '10 h'),
+                  ])
+                    ChoiceChip(
+                      label: Text(label),
+                      selected: duree == mn,
+                      onSelected: (_) => setState(() => duree = mn),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
@@ -559,7 +586,8 @@ Future<Devoir?> editDevoirDialog(BuildContext context,
                 ..titre =
                     titreCtl.text.trim().isEmpty ? 'DM' : titreCtl.text.trim()
                 ..dateRendu = DateTime(date.year, date.month, date.day)
-                ..remarque = remCtl.text.trim();
+                ..remarque = remCtl.text.trim()
+                ..dureeEstimeeMin = duree;
               Navigator.pop(context, d);
             },
             child: const Text('Enregistrer'),

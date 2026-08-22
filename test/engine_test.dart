@@ -1545,4 +1545,91 @@ Voici le résultat demandé :
     expect(m.trajetMinutes, 45);
     expect(m.ds.first.interro, isTrue);
   });
+
+  // ---------- v0.21 : retours d'usage reel ----------
+
+  test('devoir de vacances : visible tout l’été et ÉTALÉ sur les jours '
+      'restants', () {
+    final now = DateTime(2026, 8, 4, 10);
+    m.sansCours.add(PlageSansCours(
+        titre: 'Été',
+        debut: DateTime(2026, 7, 1),
+        fin: DateTime(2026, 8, 31),
+        type: 'ete'));
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
+    // Exos donnes pour la rentree : 6 h annoncees, a rendre dans 28 jours.
+    // AVANT : invisibles (le plan d'ete ignorait tout devoir a > 10 jours).
+    m.devoirs.add(Devoir(
+      matiere: 'Maths',
+      titre: 'Exos de rentrée',
+      dateRendu: DateTime(2026, 9, 1),
+      dateDonne: DateTime(2026, 7, 5),
+      dureeEstimeeMin: 360,
+    ));
+    final s = suggere(m, 240, maintenant: now);
+    final bloc = s.where((x) => x.titre.contains('Exos de rentrée')).toList();
+    expect(bloc, isNotEmpty, reason: 'le devoir de rentrée doit être visible');
+    // 6 h sur 29 jours -> une seance courte, jamais le mur des 6 h.
+    expect(bloc.first.minutes, lessThanOrEqualTo(60));
+    expect(bloc.first.raison, contains('6 h annoncées'));
+  });
+
+  test('minutesPourDevoir : la charge annoncée x', () {
+    final now = DateTime(2026, 9, 1, 18);
+    final loin = Devoir(
+        matiere: 'Maths',
+        dateRendu: DateTime(2026, 9, 11),
+        dureeEstimeeMin: 600);
+    final proche = Devoir(
+        matiere: 'Maths',
+        dateRendu: DateTime(2026, 9, 2),
+        dureeEstimeeMin: 600);
+    // 10 h sur 11 jours -> ~1 h par jour ; sur 2 jours -> le plafond.
+    expect(minutesPourDevoir(loin, now, 240), lessThan(90));
+    expect(minutesPourDevoir(proche, now, 240),
+        greaterThan(minutesPourDevoir(loin, now, 240)));
+    // Sans charge annoncee : bloc standard d'une heure.
+    final sansCharge =
+        Devoir(matiere: 'Maths', dateRendu: DateTime(2026, 9, 11));
+    expect(minutesPourDevoir(sansCharge, now, 240), 60);
+  });
+
+  test('DS avec programme annoncé : ce sont CES chapitres qui remontent', () {
+    final now = DateTime(2026, 10, 5, 18);
+    final vise =
+        Chapitre(matiere: 'Maths', nom: 'Séries entières', etape: 1, maitrise: 1);
+    final autre =
+        Chapitre(matiere: 'Maths', nom: 'Topologie', etape: 1, maitrise: 3);
+    m.chapitres.addAll([vise, autre]);
+    m.ds.add(Ds(
+        matiere: 'Maths',
+        titre: 'DS 3',
+        date: DateTime(2026, 10, 9),
+        chapitreIds: [vise.id]));
+    final s = suggere(m, 120, maintenant: now);
+    final maths = s.where((x) => x.matiere == 'Maths').toList();
+    expect(maths, isNotEmpty);
+    expect(maths.first.titre, contains('Au programme du DS'));
+    expect(maths.first.titre, contains('Séries entières'));
+  });
+
+  test('matière déjà faite aujourd’hui : elle ne revient pas dans le plan',
+      () {
+    final now = DateTime(2026, 10, 5, 18);
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
+    m.chapitres.add(
+        Chapitre(matiere: 'Physique', nom: 'Optique', etape: 1, maitrise: 2));
+    expect(suggere(m, 120, maintenant: now).any((x) => x.matiere == 'Maths'),
+        isTrue);
+    m.marquerFait('Maths', maintenant: now);
+    expect(suggere(m, 120, maintenant: now).any((x) => x.matiere == 'Maths'),
+        isFalse);
+    // Le lendemain, la matiere revient normalement.
+    expect(
+        suggere(m, 120, maintenant: DateTime(2026, 10, 6, 18))
+            .any((x) => x.matiere == 'Maths'),
+        isTrue);
+  });
 }

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'khode.dart';
 import 'notifs.dart';
 import 'screens/agenda.dart';
 import 'screens/chapters.dart';
@@ -18,6 +19,9 @@ import 'theme.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   AppModel.instance.load();
+  // Khode installe sur cet appareil ? La reponse conditionne l'affichage
+  // du raccourci dans le plan du soir (jamais de bouton mort).
+  Khode.detecter();
   // save() est debounce (400 ms) : quand l'app passe en arriere-plan, on
   // FORCE l'ecriture en attente — les derniers gestes (verdict de carte,
   // note saisie juste avant de ranger le telephone) ne doivent jamais
