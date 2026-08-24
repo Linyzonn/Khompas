@@ -338,6 +338,7 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
   var date = initial?.date ?? DateTime.now().add(const Duration(days: 3));
   var coeff = initial?.coeff ?? 1.0;
   var interro = initial?.interro ?? false;
+  final chapitreIds = Set<String>.from(initial?.chapitreIds ?? const <String>[]);
   final moyClasseCtl = TextEditingController(
       text: initial?.moyenneClasse?.toString() ?? '');
 
@@ -346,13 +347,17 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
     builder: (context) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
         title: Text(initial == null ? 'Nouveau DS' : 'Modifier le DS'),
-        content: Column(
+        // Scrollable : la liste des chapitres au programme peut etre longue.
+        content: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TextField(
               controller: matiereCtl,
               decoration: const InputDecoration(labelText: 'Matière'),
+              // Les chips de chapitres suivent la matiere saisie.
+              onChanged: (_) => setState(() {}),
             ),
             if (m.matieres.isNotEmpty)
               Padding(
@@ -424,6 +429,44 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
                 ),
               ],
             ),
+            // ---- Chapitres au programme (si le prof l'annonce) ----
+            // Le plan du soir fera travailler CES chapitres avant l'epreuve
+            // (les moins maitrises d'abord) au lieu de la matiere en general.
+            const SizedBox(height: kEsp12),
+            Text('Chapitres au programme (si annoncé)',
+                style: TextStyle(
+                    fontSize: 13, color: couleurSecondaire(context))),
+            const SizedBox(height: kEsp4),
+            Builder(builder: (context) {
+              final duSujet = m.chapitres
+                  .where(
+                      (c) => c.matiere == normaliseMatiere(matiereCtl.text))
+                  .toList();
+              if (duSujet.isEmpty) {
+                return Text(
+                  matiereCtl.text.trim().isEmpty
+                      ? 'Choisis la matière : ses chapitres apparaîtront ici.'
+                      : 'Aucun chapitre saisi dans cette matière pour l’instant.',
+                  style: TextStyle(
+                      fontSize: 11.5, color: couleurSecondaire(context)),
+                );
+              }
+              return Wrap(
+                spacing: 6,
+                runSpacing: 2,
+                children: [
+                  for (final c in duSujet)
+                    FilterChip(
+                      label: Text(c.nom),
+                      selected: chapitreIds.contains(c.id),
+                      onSelected: (v) => setState(() => v
+                          ? chapitreIds.add(c.id)
+                          : chapitreIds.remove(c.id)),
+                    ),
+                ],
+              );
+            }),
+            const SizedBox(height: kEsp8),
             TextField(
               controller: moyClasseCtl,
               keyboardType:
@@ -436,6 +479,7 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
               ),
             ),
           ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
@@ -451,6 +495,11 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
                 ..date = DateTime(date.year, date.month, date.day)
                 ..coeff = coeff
                 ..interro = interro
+                ..chapitreIds = chapitreIds
+                    .where((id) => m.chapitres.any((c) =>
+                        c.id == id &&
+                        c.matiere == normaliseMatiere(matiereCtl.text)))
+                    .toList()
                 ..moyenneClasse =
                     (moyClasse != null && moyClasse > 0 && moyClasse <= 20)
                         ? moyClasse

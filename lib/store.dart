@@ -95,6 +95,14 @@ class AppModel extends ChangeNotifier {
   Map<String, double> objectifs = {};
   // Date des ecrits : non nulle = MODE REVISIONS CONCOURS actif.
   DateTime? dateConcours;
+  // ---------- EPL/S (ENAC, pilote de ligne) ----------
+  // Concours prepare EN PLUS de la prepa : 3 QCM de 2 h coeff 1 — maths sur
+  // le programme de PCSI, physique sur celui de MPSI, anglais (eliminatoire
+  // sous 8) — puis selections psychotechniques PSY 1/PSY 2 qui demandent de
+  // l'entrainement regulier. Quand le mode est actif, le plan du soir
+  // ajoute un bloc quotidien en rotation (engine.suggestionEplS).
+  bool eplS = false;
+  DateTime? dateEplS;
   String filiere = 'PCSI';
   int groupe = 1;
   // Code de partage du colloscope de ma classe (serveur Khompas).
@@ -223,6 +231,10 @@ class AppModel extends ChangeNotifier {
           final newDateConcours = j['dateConcours'] == null
               ? null
               : DateTime.tryParse(j['dateConcours'] as String);
+          final newEplS = (j['eplS'] ?? false) as bool;
+          final newDateEplS = j['dateEplS'] == null
+              ? null
+              : DateTime.tryParse(j['dateEplS'] as String);
           final newBilans = lit(j['bilans'], Bilan.fromJson);
           final newEvenements = lit(j['evenements'], Evenement.fromJson);
           final newSansCours = lit(j['sansCours'], PlageSansCours.fromJson);
@@ -265,6 +277,8 @@ class AppModel extends ChangeNotifier {
           seances = newSeances;
           objectifs = newObjectifs;
           dateConcours = newDateConcours;
+          eplS = newEplS;
+          dateEplS = newDateEplS;
           bilans = newBilans;
           evenements = newEvenements;
           sansCours = newSansCours;
@@ -502,6 +516,8 @@ class AppModel extends ChangeNotifier {
         'seances': seances.map((s) => s.toJson()).toList(),
         'objectifs': objectifs,
         'dateConcours': dateConcours?.toIso8601String(),
+        'eplS': eplS,
+        'dateEplS': dateEplS?.toIso8601String(),
         'bilans': bilans.map((b) => b.toJson()).toList(),
         'evenements': evenements.map((e) => e.toJson()).toList(),
         'sansCours': sansCours.map((p) => p.toJson()).toList(),
@@ -937,6 +953,8 @@ class AppModel extends ChangeNotifier {
     heureLimiteMin = null;
     objectifs = {};
     dateConcours = null;
+    eplS = false;
+    dateEplS = null;
     prios = {};
     filiere = 'PCSI';
     groupe = 1;
@@ -1177,6 +1195,10 @@ class AppModel extends ChangeNotifier {
       final newDateConcours = decoded['dateConcours'] == null
           ? null
           : DateTime.tryParse(decoded['dateConcours'] as String);
+      final newEplS = (decoded['eplS'] ?? false) as bool;
+      final newDateEplS = decoded['dateEplS'] == null
+          ? null
+          : DateTime.tryParse(decoded['dateEplS'] as String);
       final newBilans = ((decoded['bilans'] ?? []) as List)
           .map((e) => Bilan.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -1233,6 +1255,8 @@ class AppModel extends ChangeNotifier {
       seances = newSeances;
       objectifs = newObjectifs;
       dateConcours = newDateConcours;
+      eplS = newEplS;
+      dateEplS = newDateEplS;
       bilans = newBilans;
       evenements = newEvenements;
       sansCours = newSansCours;
@@ -1657,6 +1681,14 @@ class AppModel extends ChangeNotifier {
 
   void setDateConcours(DateTime? d) {
     dateConcours = d;
+    _touch();
+  }
+
+  /// EPL/S (ENAC) : active/coupe le bloc d'entrainement quotidien du plan
+  /// du soir ; [date] = date des ecrits quand elle est connue.
+  void setEplS(bool actif, {DateTime? date}) {
+    eplS = actif;
+    dateEplS = date;
     _touch();
   }
 

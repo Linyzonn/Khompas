@@ -261,6 +261,46 @@ class _ConcoursPageState extends State<ConcoursPage> {
               trailing: const Icon(Icons.chevron_right),
               onTap: _jalonsTipeDialog,
             ),
+          const SizedBox(height: kEsp16),
+          Text('EPL/S — pilote de ligne (ENAC)',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: kEsp4),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Je prépare l’EPL/S'),
+            subtitle: const Text(
+                'Concours à part : 3 QCM de 2 h coeff 1 — maths sur le programme de PCSI, physique sur celui de MPSI, anglais (éliminatoire sous 8) — puis sélections psychotechniques PSY 1 et PSY 2. Le plan du soir ajoute un bloc d’entraînement quotidien en rotation.',
+                style: TextStyle(fontSize: 12)),
+            value: m.eplS,
+            onChanged: (v) {
+              m.setEplS(v, date: m.dateEplS);
+              setState(() {});
+            },
+          ),
+          if (m.eplS)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.flight_takeoff),
+              title: Text(m.dateEplS == null
+                  ? 'Fixer la date des écrits EPL/S'
+                  : 'Écrits EPL/S le ${frDateCourte(m.dateEplS!)}'),
+              subtitle: const Text(
+                  'Avec la date : compte à rebours, et les séries s’allongent sur le dernier mois. Les tests psy se gagnent à l’habitude — ne les découvre pas le jour J.',
+                  style: TextStyle(fontSize: 12)),
+              onTap: () async {
+                final d = await showDatePicker(
+                  context: context,
+                  initialDate: m.dateEplS ??
+                      DateTime.now().add(const Duration(days: 120)),
+                  firstDate: DateTime(2023),
+                  lastDate: DateTime(2032),
+                );
+                if (d != null) {
+                  m.setEplS(true, date: d);
+                  setState(() {});
+                }
+              },
+            ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.record_voice_over_outlined),

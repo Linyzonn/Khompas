@@ -5,6 +5,10 @@ import 'package:flutter/material.dart';
 /// lisible en 30 secondes le soir, la couleur porte une INFORMATION et
 /// jamais une decoration.
 ///
+/// DA 2026 (board « DA Khompas ») : primaire BLEU D'ENCRE #3B54C0, fond de
+/// page teinte a ~2 % par la primaire, cartes blanches, barre d'accent 4 px,
+/// icones Material a la place des emojis.
+///
 /// Tout le style vit ici : aucun ecran ne doit ecrire `Colors.grey.shade700`
 /// ni choisir un rayon au hasard. Deux sources autorisees :
 ///   - `Theme.of(context).colorScheme` pour le socle Material 3 ;
@@ -20,21 +24,25 @@ const double kEsp24 = 24;
 const double kEsp32 = 32;
 
 // ---------- Formes ----------
-// L'app melangeait 7 rayons differents (3, 4, 6, 8, 10, 12, 16) : deux
-// suffisent, et la coherence se voit immediatement.
 const double kRayonPetit = 10; // chips, blocs compacts, boutons
 const double kRayonCarte = 14; // cartes, dialogues, feuilles
 const double kRayonJauge = 999; // barres de progression : pilule
 
 // ---------- Mouvement ----------
-// Court : un retour tactile, pas un spectacle. Rien ne bouge sans
-// changement d'etat.
 const Duration kAnimCourte = Duration(milliseconds: 150);
 const Duration kAnimMoyenne = Duration(milliseconds: 250);
 
-/// Couleurs SEMANTIQUES : chacune dit quelque chose. Elles vivent dans le
-/// theme (et pas en constantes globales) pour avoir une variante claire ET
-/// sombre — c'est exactement ce que les `Colors.orange` en dur cassaient.
+// ---------- Primaire (DA « bleu d'encre ») ----------
+const Color kPrimaire = Color(0xFF3B54C0);
+
+/// Fond de page : la primaire a ~2 % sur blanc (clair) / une nuit teintee
+/// bleu (sombre). Les cartes restent surface pure : la hierarchie vient du
+/// contraste carte/fond, plus des bordures seules.
+const Color kFondClair = Color(0xFFF5F6FA);
+const Color kFondSombre = Color(0xFF14161E);
+const Color kSurfaceSombre = Color(0xFF1C1F2A); // cartes en sombre
+
+/// Couleurs SEMANTIQUES : chacune dit quelque chose.
 @immutable
 class KhompasTokens extends ThemeExtension<KhompasTokens> {
   /// Metadonnees, aides, textes de second plan.
@@ -65,8 +73,6 @@ class KhompasTokens extends ThemeExtension<KhompasTokens> {
     required this.repos,
   });
 
-  /// Teintes desaturees : sur un ecran dense, des couleurs pures fatiguent
-  /// et hurlent toutes en meme temps.
   static const clair = KhompasTokens(
     texteSecondaire: Color(0xFF5B5B66),
     urgent: Color(0xFFC1442E),
@@ -76,8 +82,6 @@ class KhompasTokens extends ThemeExtension<KhompasTokens> {
     repos: Color(0xFF5A6B7C),
   );
 
-  /// En sombre, les memes roles montent en luminosite et baissent en
-  /// saturation : un rouge pur sur fond noir vibre et devient illisible.
   static const sombre = KhompasTokens(
     texteSecondaire: Color(0xFFB4B4C0),
     urgent: Color(0xFFFF9A85),
@@ -120,35 +124,38 @@ class KhompasTokens extends ThemeExtension<KhompasTokens> {
 }
 
 extension TokensContext on BuildContext {
-  /// Raccourci : `context.tokens.urgent` au lieu de la formule complete.
   KhompasTokens get tokens =>
       Theme.of(this).extension<KhompasTokens>() ?? KhompasTokens.clair;
 
   ColorScheme get couleurs => Theme.of(this).colorScheme;
 }
 
-/// Couleur de texte SECONDAIRE qui suit le theme. Conservee (utilisee dans
-/// tout le code) — elle delegue desormais au token dedie.
 Color couleurSecondaire(BuildContext context) => context.tokens.texteSecondaire;
 
-/// Le theme complet, clair ou sombre. Toutes les decisions de forme sont
-/// prises ICI une fois pour toutes : les ecrans heritent.
+/// Le theme complet, clair ou sombre.
 ThemeData themeKhompas(Brightness luminosite) {
   final sombre = luminosite == Brightness.dark;
   final couleurs = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF6B5CEB),
+    // DA 2026 : bleu d'encre. `primary` est force pour que les actions et
+    // le « ce soir » gardent EXACTEMENT la teinte de la charte (fromSeed
+    // seul la delave).
+    seedColor: kPrimaire,
     brightness: luminosite,
+  ).copyWith(
+    primary: sombre ? const Color(0xFFAAB9F2) : kPrimaire,
+    surface: sombre ? kSurfaceSombre : Colors.white,
   );
   final tokens = sombre ? KhompasTokens.sombre : KhompasTokens.clair;
   final bordure = BorderSide(color: couleurs.outlineVariant);
+  final fond = sombre ? kFondSombre : kFondClair;
 
   return ThemeData(
     useMaterial3: true,
     colorScheme: couleurs,
     extensions: [tokens],
-    // Elevation 0 PARTOUT : la separation se fait par une bordure nette,
-    // pas par une ombre — en sombre, les ombres Material donnent un halo
-    // grisatre qui salit l'ecran.
+    // Fond de page teinte par la primaire (~2 %), cartes blanches : c'est
+    // le contraste carte/fond qui structure l'ecran, la bordure precise.
+    scaffoldBackgroundColor: fond,
     cardTheme: CardThemeData(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: kEsp12),
@@ -164,8 +171,6 @@ ThemeData themeKhompas(Brightness luminosite) {
         borderRadius: BorderRadius.circular(kRayonCarte),
       ),
     ),
-    // Hierarchie par le POIDS et la TAILLE, pas par la fantaisie : une
-    // seule famille (celle du systeme), trois niveaux visibles au plus.
     textTheme: const TextTheme(
       headlineMedium: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
       headlineSmall: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
@@ -180,7 +185,9 @@ ThemeData themeKhompas(Brightness luminosite) {
       centerTitle: false,
       elevation: 0,
       scrolledUnderElevation: 0,
-      backgroundColor: couleurs.surface,
+      // L'app bar vit sur le FOND teinte, pas sur une surface blanche :
+      // le titre appartient a la page, pas a une barre.
+      backgroundColor: fond,
       titleTextStyle: TextStyle(
         fontSize: 22,
         fontWeight: FontWeight.w700,
@@ -192,10 +199,6 @@ ThemeData themeKhompas(Brightness luminosite) {
         borderRadius: BorderRadius.circular(kRayonPetit),
         side: bordure,
       ),
-      // La COULEUR du label doit etre explicite : sans elle, Material
-      // applique un gris qui devient illisible en theme sombre (les chips
-      // de duree « 45 min », « 1 h »... disparaissaient sur le fond).
-      // secondaryLabelStyle = chip SELECTIONNE (ChoiceChip).
       labelStyle: TextStyle(fontSize: 12.5, color: couleurs.onSurface),
       secondaryLabelStyle:
           TextStyle(fontSize: 12.5, color: couleurs.onSecondaryContainer),
@@ -206,7 +209,6 @@ ThemeData themeKhompas(Brightness luminosite) {
     ),
     listTileTheme: const ListTileThemeData(
       minVerticalPadding: kEsp8,
-      // Cible tactile confortable : 44 px minimum (accessibilite).
       minTileHeight: 44,
     ),
     dividerTheme: DividerThemeData(
@@ -253,11 +255,9 @@ ThemeData themeKhompas(Brightness luminosite) {
 }
 
 // ---------- Briques partagees ----------
-// Elles vivaient en double (privees dans today.dart) : centralisees ici,
-// elles donnent la MEME allure a tous les ecrans.
 
 /// Carte du cockpit : barre d'accent laterale teintee (le detail signature
-/// de Khompas) + titre en petites capitales + contenu.
+/// de Khompas, AFFINEE a 4 px par la DA 2026) + titre en petites capitales.
 Widget carteKhompas(
   BuildContext context, {
   required Color accent,
@@ -266,12 +266,9 @@ Widget carteKhompas(
   required Widget enfant,
   VoidCallback? onTap,
 }) {
-  // Bordure gauche teintee plutot qu'un Row + IntrinsicHeight : ce dernier
-  // imposait une hauteur calculee qui debordait d'1 px des qu'un texte
-  // passait a la ligne (rayures jaunes « BOTTOM OVERFLOWED »).
   final corps = Container(
     decoration: BoxDecoration(
-      border: Border(left: BorderSide(color: accent, width: 5)),
+      border: Border(left: BorderSide(color: accent, width: 4)),
     ),
     padding: const EdgeInsets.all(kEsp12),
     width: double.infinity,
@@ -314,10 +311,6 @@ Widget carteKhompas(
 }
 
 /// Banniere d'alerte du tableau de bord. [labelAction] la rend cliquable.
-/// Sur ETROIT (< 480 px), le bouton passe SOUS le texte : cote a cote, il
-/// ne laissait qu'une colonne de ~180 px et le message s'etalait sur 6
-/// lignes — trois bannieres mangeaient alors la moitie d'un ecran de
-/// telephone avant le plan du soir.
 Widget banniereKhompas(
   BuildContext context, {
   required Color couleur,
@@ -377,9 +370,7 @@ Widget banniereKhompas(
   );
 }
 
-/// Liste d'ecran CENTREE et bornee en largeur : sur PC, une liste pleine
-/// largeur eloigne les chevrons du texte de 60 cm et allonge les lignes
-/// bien au-dela du confort de lecture (~90 caracteres).
+/// Liste d'ecran CENTREE et bornee en largeur.
 Widget listeCentree(
   BuildContext context, {
   required List<Widget> children,
@@ -414,9 +405,12 @@ TextStyle styleChiffre(BuildContext context, {double taille = 22}) => TextStyle(
     );
 
 /// Etat VIDE standard : jamais « Aucune donnee », toujours quoi faire.
+/// DA 2026 : ICONE Material a la place de l'emoji. `emoji` reste accepte
+/// en secours le temps de migrer les appels ; `icone` gagne s'il est fourni.
 Widget etatVide(
   BuildContext context, {
-  required String emoji,
+  IconData? icone,
+  String? emoji,
   required String message,
   Widget? action,
 }) {
@@ -426,7 +420,10 @@ Widget etatVide(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 44)),
+          if (icone != null)
+            Icon(icone, size: 44, color: couleurSecondaire(context))
+          else
+            Text(emoji ?? '·', style: const TextStyle(fontSize: 44)),
           const SizedBox(height: kEsp12),
           Text(
             message,

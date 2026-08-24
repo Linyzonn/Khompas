@@ -115,6 +115,61 @@ List<Chapitre> rappelsDus(AppModel m, {DateTime? maintenant}) {
     ..sort((a, b) => a.prochaineRevision!.compareTo(b.prochaineRevision!));
 }
 
+/// Bloc d'entrainement EPL/S (ENAC) du jour — null si le mode est coupe,
+/// deja coche aujourd'hui, ou budget trop court.
+///
+/// Le concours : 3 QCM de 2 h coeff 1 (maths sur le programme de PCSI,
+/// physique sur celui de MPSI, anglais — ELIMINATOIRE sous 8), puis les
+/// selections psychotechniques PSY 1/PSY 2. Tout se joue sur les
+/// AUTOMATISMES et l'habitude : une rotation courte et QUOTIDIENNE bat les
+/// gros blocs de veille d'epreuve — exactement la logique de la repetition
+/// espacee, appliquee a un format d'epreuve.
+Suggestion? suggestionEplS(AppModel m, DateTime now, int reste) {
+  if (!m.eplS || reste < 20) return null;
+  if (m.estFait('EPL/S', maintenant: now)) return null;
+  final aujourdHui = DateTime(now.year, now.month, now.day);
+  var echeance = '';
+  var minutes = 20;
+  if (m.dateEplS != null) {
+    final dj = DateTime(m.dateEplS!.year, m.dateEplS!.month, m.dateEplS!.day)
+        .difference(aujourdHui)
+        .inDays;
+    // Un mois apres les ecrits, le bloc s'eteint tout seul.
+    if (dj < -30) return null;
+    if (dj >= 0) {
+      echeance = ' · écrits dans $dj j';
+      // Derniere ligne droite : les series s'allongent.
+      if (dj <= 30) minutes = 30;
+    }
+  }
+  const rotation = [
+    (
+      'QCM maths — programme de sup (PCSI)',
+      'Les QCM se gagnent à la vitesse',
+      'Série chrono, sans rédaction : automatismes de calcul. Toute question ratée va au cahier d’erreurs — c’est ta banque de révision EPL/S.',
+    ),
+    (
+      'QCM physique — programme de sup (MPSI)',
+      'Ordres de grandeur et formules directes',
+      'Série chrono. Récite les formules du chapitre AVANT de commencer : l’épreuve ne laisse pas le temps de les retrouver.',
+    ),
+    (
+      'Anglais — vocabulaire et structures',
+      'Éliminatoire sous 8 : la régularité paie',
+      'Tes cartes de voc + un article à trous. Note chaque structure inconnue : le QCM d’anglais recycle toujours les mêmes pièges.',
+    ),
+    (
+      'Tests psychotechniques (PSY 1)',
+      'C’est l’habitude qui fait la différence',
+      'Une série en conditions réelles : logique, mémoire, spatial. Chronomètre-toi — le jour J, la vitesse compte autant que la justesse.',
+    ),
+  ];
+  final (titre, raison, consigne) =
+      rotation[aujourdHui.difference(kAncreRotation).inDays % 4];
+  return Suggestion('EPL/S', titre, raison + echeance, minutes,
+      consigne: consigne);
+}
+
 List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
   final horizon = now.add(const Duration(days: 10));
   final out = <Suggestion>[];
@@ -216,6 +271,13 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
         budget -= budget >= 150 ? 90 : 60;
       }
     }
+  }
+
+  // ---- EPL/S (ENAC) : le bloc d'entrainement du jour ----
+  final blocEplS = suggestionEplS(m, now, budget);
+  if (blocEplS != null) {
+    out.add(blocEplS);
+    budget -= blocEplS.minutes;
   }
 
   // ---- 2 bis. Cahier d'erreurs : kholle/DS dans ≤ 2 jours dans une
@@ -673,6 +735,14 @@ List<Suggestion> _suggereRevisions(
   final out = <Suggestion>[];
   var reste = minutesDispo;
 
+  // EPL/S : les ecrits ENAC tombent dans la meme periode que les concours
+  // CPGE — l'entrainement quotidien ne s'arrete pas pendant les revisions.
+  final blocEplS = suggestionEplS(m, now, reste);
+  if (blocEplS != null) {
+    out.add(blocEplS);
+    reste -= blocEplS.minutes;
+  }
+
   // Un DS / concours blanc dans les 2 jours garde la priorite absolue.
   final aujourdHui = DateTime(now.year, now.month, now.day);
   Ds? prochainDs;
@@ -982,6 +1052,14 @@ List<Suggestion> _suggereEte(
     ));
     reste -= mins;
     break; // un seul par jour : l'etalement fait le reste
+  }
+
+  // ---- EPL/S (ENAC) : l'entrainement continue pendant l'ete — c'est
+  // meme le meilleur moment pour prendre l'habitude des tests psy.
+  final blocEplS = suggestionEplS(m, now, reste);
+  if (blocEplS != null) {
+    out.add(blocEplS);
+    reste -= blocEplS.minutes;
   }
 
   // ---- 3. Annale en douceur : ~1 par semaine glissante, correction

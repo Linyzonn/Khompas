@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../engine.dart';
 import '../models.dart';
@@ -24,6 +25,48 @@ import 'settings/compte_page.dart';
 ///   heures) ;
 /// - telephone : session du soir d'abord, blocs ensuite.
 /// Cartes nettes a barre d'accent coloree (pas de fonds delaves).
+/// Modules de la colonne de droite du cockpit : ordre + coupes, persistes
+/// localement (preference d'AFFICHAGE par appareil, hors snapshot compte).
+/// 'demain' est special : il vit SOUS le plan du soir, pas dans la colonne.
+const kModulesCockpit = [
+  'kholle',
+  'arendre',
+  'semaine',
+  'concours',
+  'journee',
+  'cartes',
+  'heures',
+  'demain',
+];
+
+class PrefsModulesCockpit {
+  static List<String> ordre = List.of(kModulesCockpit);
+  static Set<String> coupes = {};
+  static bool _charge = false;
+
+  static Future<void> charger() async {
+    if (_charge) return;
+    _charge = true;
+    final p = await SharedPreferences.getInstance();
+    final o = p.getStringList('cockpitOrdre');
+    if (o != null) {
+      // Robuste aux versions : ids inconnus ignores, nouveaux ids ajoutes
+      // a la fin (une mise a jour n'efface pas la personnalisation).
+      ordre = [
+        ...o.where(kModulesCockpit.contains),
+        ...kModulesCockpit.where((id) => !o.contains(id)),
+      ];
+    }
+    coupes = (p.getStringList('cockpitCoupes') ?? []).toSet();
+  }
+
+  static Future<void> sauver() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList('cockpitOrdre', ordre);
+    await p.setStringList('cockpitCoupes', coupes.toList());
+  }
+}
+
 class TodayScreen extends StatefulWidget {
   const TodayScreen({super.key});
 
@@ -48,6 +91,9 @@ class _TodayScreenState extends State<TodayScreen> {
     // L'onglet vit dans un IndexedStack : il doit ecouter le modele
     // lui-meme pour que chips et blocs se rafraichissent immediatement.
     AppModel.instance.addListener(_surModele);
+    PrefsModulesCockpit.charger().then((_) {
+      if (mounted) setState(() {});
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _proposerRecap());
   }
 
@@ -112,7 +158,7 @@ class _TodayScreenState extends State<TodayScreen> {
               for (final c in kholles)
                 ListTile(
                   dense: true,
-                  leading: const Text('🎤', style: TextStyle(fontSize: 18)),
+                  leading: const Icon(Icons.record_voice_over_outlined, size: 20),
                   title: Text('Khôlle ${c.matiere}'),
                   subtitle: Text(
                       '${frHeure(c.start)}${c.kholleur.isEmpty ? '' : ' · ${c.kholleur}'}',
@@ -193,7 +239,7 @@ class _TodayScreenState extends State<TodayScreen> {
                     },
                   ),
                   ActionChip(
-                    avatar: const Text('📕', style: TextStyle(fontSize: 14)),
+                    avatar: const Icon(Icons.menu_book_outlined, size: 16),
                     label: const Text('Noter une erreur'),
                     onPressed: () =>
                         ajouterErreurDialog(context, matiere: c.matiere),
@@ -209,7 +255,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   labelText: 'Ce qui est tombé (facultatif)',
                   hintText: 'ex. question de cours Cauchy-Lipschitz + exo séries entières',
                   helperText:
-                      'Ce qui tombe en colle annonce souvent le DS 😉',
+                      'Ce qui tombe en colle annonce souvent le DS',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -296,8 +342,8 @@ class _TodayScreenState extends State<TodayScreen> {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(
                     content: Text(partager && m.codeClasse.isNotEmpty
-                        ? 'Programme enregistré et partagé avec ta classe ✅'
-                        : 'Programme enregistré ✅')));
+                        ? 'Programme enregistré et partagé avec ta classe'
+                        : 'Programme enregistré')));
               },
               child: const Text('Enregistrer'),
             ),
@@ -345,14 +391,27 @@ class _TodayScreenState extends State<TodayScreen> {
     final plage = m.plageSansCours(now);
 
     final entete = Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        '${frDate(now)[0].toUpperCase()}${frDate(now).substring(1)}'
-        '${m.refSemaineA != null ? ' · semaine ${m.semaineEstA(now) ? 'A' : 'B'}' : ''}',
-        style: Theme.of(context)
-            .textTheme
-            .titleSmall
-            ?.copyWith(color: couleurSecondaire(context)),
+      padding: const EdgeInsets.only(bottom: kEsp12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${frDate(now)[0].toUpperCase()}${frDate(now).substring(1)}'
+              '${m.refSemaineA != null ? ' · semaine ${m.semaineEstA(now) ? 'A' : 'B'}' : ''}',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: couleurSecondaire(context)),
+            ),
+          ),
+          OutlinedButton.icon(
+            style:
+                OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+            icon: const Icon(Icons.tune, size: 15),
+            label: const Text('Personnaliser', style: TextStyle(fontSize: 12)),
+            onPressed: _personnaliserModules,
+          ),
+        ],
       ),
     );
 
@@ -429,7 +488,7 @@ class _TodayScreenState extends State<TodayScreen> {
               await m.pousserCompte();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Synchronisation réussie ✅')));
+                    content: Text('Synchronisation réussie')));
               }
             } catch (e) {
               if (context.mounted) {
@@ -454,7 +513,7 @@ class _TodayScreenState extends State<TodayScreen> {
               final resume = await m.fusionnerAvecCompte();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Fusionné ✅ ($resume)')));
+                    SnackBar(content: Text('Fusionné ($resume)')));
               }
             } catch (e) {
               if (context.mounted) {
@@ -476,7 +535,7 @@ class _TodayScreenState extends State<TodayScreen> {
               final resume = await m.fusionnerAvecCompte();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Fusionné ✅ ($resume)')));
+                    SnackBar(content: Text('Fusionné ($resume)')));
               }
             } catch (e) {
               if (context.mounted) {
@@ -505,7 +564,7 @@ class _TodayScreenState extends State<TodayScreen> {
         _banniereAction(
           Theme.of(context).colorScheme.primary,
           Icons.school,
-          'Tes écrits sont passés 🎉 La suite se joue à l\'oral — active le mode oraux : le plan du soir bascule en préparation d\'épreuves, tout à voix haute.',
+          'Tes écrits sont passés. La suite se joue à l\'oral — active le mode oraux : le plan du soir bascule en préparation d\'épreuves, tout à voix haute.',
           'Mode oraux',
           () => Navigator.push(context,
               MaterialPageRoute(builder: (_) => const OrauxScreen())),
@@ -598,22 +657,44 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
     ];
 
-    final gauche = <Widget>[
-      _blocProchaine(prochaine),
-      _blocARendre(aRendre, now),
-      _blocSemaine(semaineColles, semaineDs, now),
+    // Un id de module -> son widget, ou null s'il n'a rien a montrer.
+    // 'concours' n'existe qu'en mode concours (date definie) ou oraux.
+    Widget? module(String id) {
+      switch (id) {
+        case 'kholle':
+          return _blocProchaine(prochaine);
+        case 'arendre':
+          return _blocARendre(aRendre, now);
+        case 'semaine':
+          return _blocSemaine(semaineColles, semaineDs, now);
+        case 'concours':
+          if (m.modeOraux && m.oraux.isNotEmpty) return _blocOraux(m);
+          if (m.dateConcours != null && m.dateConcours!.isAfter(now)) {
+            return _blocConcours(m);
+          }
+          return null;
+        case 'journee':
+          return _blocJournee(edtJour, evtsJour, plage);
+        case 'cartes':
+          return (m.citationsDues().isNotEmpty || m.vocabDus().isNotEmpty)
+              ? _blocCartes(m)
+              : null;
+        case 'heures':
+          return _blocHeures(minSem);
+        case 'demain':
+          return _blocDemain(m, now);
+      }
+      return null;
+    }
+
+    final modulesDroite = <Widget>[
+      for (final id in PrefsModulesCockpit.ordre)
+        if (id != 'demain' && !PrefsModulesCockpit.coupes.contains(id))
+          if (module(id) != null) module(id)!,
     ];
-    final droite = <Widget>[
-      if (m.modeOraux && m.oraux.isNotEmpty)
-        _blocOraux(m)
-      else if (m.dateConcours != null && m.dateConcours!.isAfter(now))
-        _blocConcours(m),
-      _blocJournee(edtJour, evtsJour, plage),
-      if (m.citationsDues().isNotEmpty || m.vocabDus().isNotEmpty)
-        _blocCartes(m),
-      _blocDemain(m, now),
-      _blocHeures(minSem),
-    ];
+    final blocDemain = PrefsModulesCockpit.coupes.contains('demain')
+        ? null
+        : _blocDemain(m, now);
     final centre = _heroSoir(context, suggestions, minSem, budget);
 
     return LayoutBuilder(
@@ -629,17 +710,39 @@ class _TodayScreenState extends State<TodayScreen> {
               children: [
                 ...alertesVisibles,
                 entete,
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(width: 280, child: Column(children: gauche)),
-                    const SizedBox(width: 14),
-                    Expanded(child: centre),
-                    const SizedBox(width: 14),
-                    SizedBox(width: 300, child: Column(children: droite)),
-                  ],
+                // ---- Cockpit 2 colonnes AEREES : le plan du soir domine
+                // (gauche, ~60 %), le contexte est regroupe a droite ;
+                // la vue semaine reste en pleine largeur dessous. ----
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1180),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 16,
+                              child: Column(
+                                children: [
+                                  centre,
+                                  if (blocDemain != null) blocDemain,
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: kEsp16),
+                            Expanded(
+                              flex: 10,
+                              child: Column(children: modulesDroite),
+                            ),
+                          ],
+                        ),
+                        vueSemaine,
+                      ],
+                    ),
+                  ),
                 ),
-                vueSemaine,
               ],
             ),
           );
@@ -652,13 +755,135 @@ class _TodayScreenState extends State<TodayScreen> {
             entete,
             centre,
             const SizedBox(height: kEsp4),
-            ...gauche,
-            ...droite,
+            if (blocDemain != null) blocDemain,
+            ...modulesDroite,
             vueSemaine,
           ],
         );
       },
     );
+  }
+
+  static const _infosModules = <String, (IconData, String, String?)>{
+    'kholle': (Icons.record_voice_over, 'Prochaine khôlle', null),
+    'arendre': (Icons.assignment_turned_in_outlined, 'À rendre', null),
+    'semaine': (Icons.calendar_view_week_outlined, 'Cette semaine', null),
+    'concours': (
+      Icons.flag,
+      'Concours / Oraux',
+      'Visible uniquement quand une date de concours est définie'
+    ),
+    'journee': (Icons.wb_sunny_outlined, 'Ta journée', null),
+    'cartes': (
+      Icons.style,
+      'Cartes à revoir / trajet',
+      'Visible uniquement quand des cartes sont dues'
+    ),
+    'heures': (Icons.timer_outlined, 'Travail cette semaine', null),
+    'demain': (
+      Icons.skip_next_outlined,
+      'Et demain ?',
+      'S’affiche sous le plan du soir'
+    ),
+  };
+
+  /// Le cockpit n'a pas le meme sens pour tout le monde : un 5/2 veut son
+  /// compte a rebours concours en tete, un sup ses kholles. On laisse
+  /// reordonner et couper — le plan du soir et la vue semaine, eux, restent
+  /// toujours la (c'est le coeur de l'app).
+  Future<void> _personnaliserModules() async {
+    await feuilleAdaptative<void>(
+      context,
+      (context) => StatefulBuilder(
+        builder: (context, setSheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(kEsp16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.tune,
+                        size: 20, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: kEsp8),
+                    Text('Personnaliser les modules',
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ],
+                ),
+                const SizedBox(height: kEsp4),
+                Text(
+                  'Glisse pour réordonner, coupe ce que tu n’utilises pas. '
+                  'Le plan du soir et la vue semaine restent toujours visibles.',
+                  style: styleMeta(context),
+                ),
+                const SizedBox(height: kEsp8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 380),
+                  child: ReorderableListView.builder(
+                    shrinkWrap: true,
+                    buildDefaultDragHandles: true,
+                    itemCount: PrefsModulesCockpit.ordre.length,
+                    onReorderItem: (from, to) {
+                      setSheet(() {
+                        final id = PrefsModulesCockpit.ordre.removeAt(from);
+                        PrefsModulesCockpit.ordre.insert(to, id);
+                      });
+                      PrefsModulesCockpit.sauver();
+                    },
+                    itemBuilder: (context, i) {
+                      final id = PrefsModulesCockpit.ordre[i];
+                      final info = _infosModules[id]!;
+                      final actif = !PrefsModulesCockpit.coupes.contains(id);
+                      return SwitchListTile(
+                        key: ValueKey(id),
+                        dense: true,
+                        secondary: Icon(info.$1, size: 20),
+                        title: Text(info.$2,
+                            style: const TextStyle(
+                                fontSize: 13.5, fontWeight: FontWeight.w600)),
+                        subtitle: info.$3 == null
+                            ? null
+                            : Text(info.$3!,
+                                style: const TextStyle(fontSize: 11)),
+                        value: actif,
+                        onChanged: (v) {
+                          setSheet(() {
+                            v
+                                ? PrefsModulesCockpit.coupes.remove(id)
+                                : PrefsModulesCockpit.coupes.add(id);
+                          });
+                          PrefsModulesCockpit.sauver();
+                        },
+                      );
+                    },
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        PrefsModulesCockpit.ordre = List.of(kModulesCockpit);
+                        PrefsModulesCockpit.coupes = {};
+                        PrefsModulesCockpit.sauver();
+                        Navigator.pop(context);
+                      },
+                      child: const Text('Réinitialiser'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Terminé'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   /// Minutes reellement disponibles ce soir : la duree choisie, plafonnee
@@ -734,7 +959,7 @@ class _TodayScreenState extends State<TodayScreen> {
           ),
           if (c.programme.isNotEmpty) ...[
             const SizedBox(height: kEsp4),
-            Text('📋 ${c.programme}',
+            Text('Programme : ${c.programme}',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: styleMeta(context)),
@@ -853,7 +1078,7 @@ class _TodayScreenState extends State<TodayScreen> {
       icone: Icons.assignment_turned_in_outlined,
       titre: 'À rendre',
       enfant: aRendre.isEmpty
-          ? Text('Rien en attente 🎉',
+          ? Text('Rien en attente',
               style: TextStyle(fontSize: 13, color: couleurSecondaire(context)))
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -862,7 +1087,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 2),
                     child: Text(
-                      '${d.dateRendu.isBefore(DateTime(now.year, now.month, now.day)) ? '⚠ ' : ''}'
+                      '${d.dateRendu.isBefore(DateTime(now.year, now.month, now.day)) ? 'En retard · ' : ''}'
                       '${d.titre} ${d.matiere} — ${frDateCourte(d.dateRendu)}',
                       style: const TextStyle(fontSize: 13),
                     ),
@@ -879,7 +1104,7 @@ class _TodayScreenState extends State<TodayScreen> {
       icone: Icons.calendar_view_week_outlined,
       titre: 'Cette semaine',
       enfant: (semaineColles.isEmpty && semaineDs.isEmpty)
-          ? Text('Rien au programme 🎉',
+          ? Text('Rien au programme',
               style: TextStyle(fontSize: 13, color: couleurSecondaire(context)))
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -954,7 +1179,7 @@ class _TodayScreenState extends State<TodayScreen> {
             ),
             Text(
               '${prochain.concours} — ${prochain.epreuve}, ${frDateCourte(prochain.date!)}'
-              '${prochain.lieu.isEmpty ? '' : '\n📍 ${prochain.lieu}'}',
+              '${prochain.lieu.isEmpty ? '' : '\n${prochain.lieu}'}',
               style: styleMeta(context),
             ),
           ],
@@ -976,8 +1201,9 @@ class _TodayScreenState extends State<TodayScreen> {
       icone: Icons.wb_sunny_outlined,
       titre: 'Ta journée',
       enfant: (plage != null && lignes.isEmpty)
-          ? Text('🏖 ${plage.titre} — pas de cours.',
-              style: const TextStyle(fontSize: 13))
+          ? _iconeTexte(Icons.beach_access_outlined,
+              '${plage.titre} — pas de cours.',
+              const TextStyle(fontSize: 13))
           : lignes.isEmpty
               ? Text(
                   'Rien à l\'emploi du temps. (Réglages → Mon emploi du temps.)',
@@ -988,8 +1214,9 @@ class _TodayScreenState extends State<TodayScreen> {
                     if (plage != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: Text('🏖 ${plage.titre} — pas de cours.',
-                            style: const TextStyle(fontSize: 12.5)),
+                        child: _iconeTexte(Icons.beach_access_outlined,
+                            '${plage.titre} — pas de cours.',
+                            const TextStyle(fontSize: 12.5)),
                       ),
                     for (final l in lignes) l.$2,
                   ],
@@ -1190,9 +1417,14 @@ class _TodayScreenState extends State<TodayScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('🏖 Journée off',
-                  style:
-                      TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Row(children: [
+                Icon(Icons.beach_access_outlined,
+                    size: 22, color: scheme.primary),
+                const SizedBox(width: kEsp8),
+                const Text('Journée off',
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              ]),
               const SizedBox(height: 6),
               Text(
                 'Profite — aujourd\'hui rien n\'est prévu, et c\'est voulu. '
@@ -1241,11 +1473,12 @@ class _TodayScreenState extends State<TodayScreen> {
             if (ete)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text(
+                child: _iconeTexte(
+                  Icons.wb_sunny_outlined,
                   now.weekday == DateTime.sunday
-                      ? '☀️ Été · dimanche = repos — un seul bloc léger, et seulement si tu en as envie.'
-                      : '☀️ Été · réactivation du programme — régularité douce, pas de marathon.',
-                  style: TextStyle(
+                      ? 'Été · dimanche = repos — un seul bloc léger, et seulement si tu en as envie.'
+                      : 'Été · réactivation du programme — régularité douce, pas de marathon.',
+                  TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
                       color: scheme.primary),
@@ -1254,9 +1487,10 @@ class _TodayScreenState extends State<TodayScreen> {
             if (dsPasseAujourdhui)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  '🎉 DS passé aujourd\'hui — sois indulgent avec toi-même, une soirée courte suffit largement.',
-                  style: TextStyle(
+                child: _iconeTexte(
+                  Icons.celebration_outlined,
+                  'DS passé aujourd\'hui — sois indulgent avec toi-même, une soirée courte suffit largement.',
+                  TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
                       color: scheme.primary),
@@ -1291,12 +1525,13 @@ class _TodayScreenState extends State<TodayScreen> {
                     style:
                         styleMeta(context)),
                 for (final me in const [
-                  ('checklist', '✅ Checklist'),
-                  ('pomo25', '🍅 25/5'),
-                  ('pomo50', '🍅 50/10'),
-                  ('pomoAuto', '🍅 Auto'),
+                  ('checklist', 'Checklist', Icons.checklist),
+                  ('pomo25', '25/5', Icons.timer_outlined),
+                  ('pomo50', '50/10', Icons.timer_outlined),
+                  ('pomoAuto', 'Auto', Icons.autorenew),
                 ])
                   ChoiceChip(
+                    avatar: Icon(me.$3, size: 15),
                     label: Text(me.$2),
                     visualDensity: VisualDensity.compact,
                     selected: m.methodeTravail == me.$1,
@@ -1308,11 +1543,12 @@ class _TodayScreenState extends State<TodayScreen> {
             if (plafonne)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
+                child: _iconeTexte(
+                  Icons.bedtime_outlined,
                   budget >= 15
-                      ? '🌙 Plan ajusté pour finir avant $labelLim — le sommeil consolide ce que tu viens d\'apprendre.'
-                      : '🌙 Il est presque $labelLim : dormir maintenant fera plus pour tes notes qu\'une heure de travail en plus. À demain !',
-                  style: TextStyle(
+                      ? 'Plan ajusté pour finir avant $labelLim — le sommeil consolide ce que tu viens d\'apprendre.'
+                      : 'Il est presque $labelLim : dormir maintenant fera plus pour tes notes qu\'une heure de travail en plus. À demain !',
+                  TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
                       color: scheme.primary),
@@ -1348,7 +1584,7 @@ class _TodayScreenState extends State<TodayScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  'Déjà travaillé cette semaine : ${_labelMin(minSem['']!)} 💪',
+                  'Déjà travaillé cette semaine : ${_labelMin(minSem['']!)}',
                   style: styleMeta(context),
                 ),
               ),
@@ -1533,7 +1769,7 @@ class _TodayScreenState extends State<TodayScreen> {
                       color: couleurSecondaire(context))),
               const SizedBox(height: 6),
               ActionChip(
-                avatar: const Text('📥', style: TextStyle(fontSize: 14)),
+                avatar: const Icon(Icons.move_to_inbox_outlined, size: 16),
                 label: const Text('DM / exos à faire pour un prochain cours'),
                 onPressed: () async {
                   final d = await editDevoirDialog(context,
@@ -1543,7 +1779,7 @@ class _TodayScreenState extends State<TodayScreen> {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                           content: Text(
-                              '${d.titre} ${d.matiere} ajouté — rappelé sur le tableau de bord ✅')));
+                              '${d.titre} ${d.matiere} ajouté — rappelé sur le tableau de bord')));
                     }
                   }
                 },
@@ -1571,11 +1807,11 @@ class _TodayScreenState extends State<TodayScreen> {
         actions: [
           OutlinedButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('⏳ En plein dedans'),
+            child: const Text('En plein dedans'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('✅ Fini'),
+            child: const Text('Fini'),
           ),
         ],
       ),
@@ -1618,7 +1854,7 @@ class _TodayScreenState extends State<TodayScreen> {
                         dense: true,
                         title: Text(c.nom),
                         subtitle: c.entame && c.etape == 0
-                            ? const Text('⏳ le prof est en plein dedans',
+                            ? const Text('le prof est en plein dedans',
                                 style: TextStyle(fontSize: 11))
                             : null,
                         onTap: () {
@@ -1741,7 +1977,7 @@ class _TodayScreenState extends State<TodayScreen> {
       FilledButton.icon(
         icon: const Icon(Icons.play_arrow),
         label: Text(
-            'Lancer le minuteur (${blocs.where((b) => !b.pause).length} 🍅)'),
+            'Lancer le minuteur (${blocs.where((b) => !b.pause).length} blocs)'),
         onPressed: blocs.isEmpty
             ? null
             : () => Navigator.push(
@@ -1755,9 +1991,11 @@ class _TodayScreenState extends State<TodayScreen> {
         b.pause
             ? Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text('   ☕ Pause ${b.minutes} min',
-                    style:
-                        styleMeta(context)),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: _iconeTexte(Icons.coffee_outlined,
+                      'Pause ${b.minutes} min', styleMeta(context)),
+                ),
               )
             : Card(
                 elevation: 0,
@@ -1823,9 +2061,10 @@ class _TodayScreenState extends State<TodayScreen> {
             if (s.consigne.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 3),
-                child: Text(
-                  '💡 ${s.consigne}',
-                  style: TextStyle(
+                child: _iconeTexte(
+                  Icons.lightbulb_outline,
+                  s.consigne,
+                  TextStyle(
                       fontSize: 11.5,
                       fontStyle: FontStyle.italic,
                       color: couleurSecondaire(context)),
@@ -1899,7 +2138,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 : m.devoirs.indexWhere((d) => d.id == s.devoirId);
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(
-                  'Séance ${s.matiere} enregistrée (+${_labelMin(s.minutes)}) ✅'),
+                  'Séance ${s.matiere} enregistrée (+${_labelMin(s.minutes)})'),
               action: iDev >= 0 && !m.devoirs[iDev].rendu
                   ? SnackBarAction(
                       label: 'Rendu ?',
@@ -1958,8 +2197,8 @@ class _TodayScreenState extends State<TodayScreen> {
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(o.finie
-          ? '« ${o.titre} » finie 🎉 Séance enregistrée.'
-          : 'Séance de lecture enregistrée ✅'),
+          ? '« ${o.titre} » finie. Séance enregistrée.'
+          : 'Séance de lecture enregistrée'),
     ));
   }
 
@@ -1978,7 +2217,25 @@ class _TodayScreenState extends State<TodayScreen> {
     if (!mounted) return;
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Revu ✅ Prochaine révision dans $jours j.'),
+      content: Text('Revu. Prochaine révision dans $jours j.'),
     ));
   }
+}
+
+/// Ligne icône + texte : le repère visuel « pro » qui remplace l'emoji
+/// (DA 2026 : icônes Material, jamais d'emoji). L'icône prend la couleur
+/// du style du texte.
+Widget _iconeTexte(IconData icone, String texte, TextStyle style) {
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Padding(
+        padding: const EdgeInsets.only(top: 1),
+        child: Icon(icone,
+            size: (style.fontSize ?? 13) + 3, color: style.color),
+      ),
+      const SizedBox(width: 6),
+      Expanded(child: Text(texte, style: style)),
+    ],
+  );
 }

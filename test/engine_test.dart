@@ -33,6 +33,9 @@ void reset(AppModel m) {
   m.joursOff = [];
   m.zoneVacances = '';
   m.modeOraux = false;
+  m.eplS = false;
+  m.dateEplS = null;
+  m.faitsDuJour = {};
   m.refSemaineA = null;
   m.dateConcours = null;
   m.prios = {};
@@ -1631,5 +1634,81 @@ Voici le résultat demandé :
         suggere(m, 120, maintenant: DateTime(2026, 10, 6, 18))
             .any((x) => x.matiere == 'Maths'),
         isTrue);
+  });
+
+  test('EPL/S : un bloc par jour, rotation sur les 4 épreuves, coché il '
+      'disparaît', () {
+    // Lundi 5 octobre 2026 et les 3 jours suivants (aucun dimanche).
+    m.eplS = true;
+    final s1 = suggere(m, 120, maintenant: DateTime(2026, 10, 5, 18))
+        .where((x) => x.matiere == 'EPL/S')
+        .toList();
+    expect(s1, hasLength(1));
+    // 4 jours d'affilée couvrent les 4 épreuves (maths, physique, anglais,
+    // psychotechnique) : la rotation ne se répète pas avant.
+    final titres = <String>{
+      for (var j = 0; j < 4; j++)
+        suggere(m, 120, maintenant: DateTime(2026, 10, 5 + j, 18))
+            .firstWhere((x) => x.matiere == 'EPL/S')
+            .titre
+    };
+    expect(titres, hasLength(4));
+    // Coché aujourd'hui -> le bloc ne revient pas dans la soirée.
+    m.marquerFait('EPL/S', maintenant: DateTime(2026, 10, 5, 18));
+    expect(
+        suggere(m, 120, maintenant: DateTime(2026, 10, 5, 19))
+            .any((x) => x.matiere == 'EPL/S'),
+        isFalse);
+    // Compte à rebours des la date connue, series allongees a J-30.
+    m.dateEplS = DateTime(2026, 10, 30);
+    final proche = suggere(m, 120, maintenant: DateTime(2026, 10, 6, 18))
+        .firstWhere((x) => x.matiere == 'EPL/S');
+    expect(proche.raison, contains('écrits dans 24 j'));
+    expect(proche.minutes, 30);
+    // Un mois apres les ecrits, le bloc s'eteint tout seul.
+    expect(
+        suggere(m, 120, maintenant: DateTime(2026, 12, 15, 18))
+            .any((x) => x.matiere == 'EPL/S'),
+        isFalse);
+    // Mode coupe -> rien.
+    m.eplS = false;
+    expect(
+        suggere(m, 120, maintenant: DateTime(2026, 10, 7, 18))
+            .any((x) => x.matiere == 'EPL/S'),
+        isFalse);
+  });
+
+  test('EPL/S : le bloc tourne aussi en mode été et en mode révisions', () {
+    m.eplS = true;
+    m.dateEplS = null; // autonome : ne pas heriter de la date du test precedent
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
+    // Été.
+    m.sansCours.add(PlageSansCours(
+        titre: 'Été',
+        debut: DateTime(2026, 7, 1),
+        fin: DateTime(2026, 8, 31),
+        type: 'ete'));
+    expect(
+        suggere(m, 180, maintenant: DateTime(2026, 8, 4, 10))
+            .any((x) => x.matiere == 'EPL/S'),
+        isTrue,
+        reason: 'été');
+    // Révisions concours (< 90 j des écrits CPGE).
+    m.sansCours.clear();
+    m.dateConcours = DateTime(2027, 4, 20);
+    expect(
+        suggere(m, 180, maintenant: DateTime(2027, 3, 1, 18))
+            .any((x) => x.matiere == 'EPL/S'),
+        isTrue,
+        reason: 'révisions');
+  });
+
+  test('EPL/S : survit au round-trip de sauvegarde', () {
+    m.eplS = true;
+    m.dateEplS = DateTime(2027, 4, 26);
+    final j = m.exportJsonCompact();
+    expect(j, contains('"eplS":true'));
+    expect(j, contains('2027-04-26'));
   });
 }
