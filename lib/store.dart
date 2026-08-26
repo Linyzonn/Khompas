@@ -2187,6 +2187,22 @@ class AppModel extends ChangeNotifier {
     final i = chapitres.indexWhere((c) => c.id == chapitreId);
     if (i < 0) return;
     final c = chapitres[i];
+    // La memoire a TENU pendant tout le retard : reussir un chapitre 30 j
+    // apres sa date due prouve un intervalle de 30 j, pas de 2. Sans ce
+    // credit, un rappel longtemps en attente repartait au plancher et
+    // revenait 2 j plus tard — la file des retards se re-remplissait
+    // aussitot videe (l'eleve irregulier restait fige a 93 dus, intervalle
+    // moyen 2 j apres 4 mois).
+    if (verdict != 'difficile' && c.prochaineRevision != null) {
+      final nowV = maintenant ?? DateTime.now();
+      final retardTenu = DateTime(nowV.year, nowV.month, nowV.day)
+          .difference(DateTime(c.prochaineRevision!.year,
+              c.prochaineRevision!.month, c.prochaineRevision!.day))
+          .inDays;
+      if (retardTenu >= 7 && retardTenu > c.intervalleJours) {
+        c.intervalleJours = retardTenu;
+      }
+    }
     switch (verdict) {
       case 'difficile':
         c.intervalleJours = 2;
@@ -2446,7 +2462,13 @@ class AppModel extends ChangeNotifier {
       // Repartition uniforme sur les jours disponibles.
       c.prochaineRevision =
           joursDispo[(i * joursDispo.length) ~/ aPlanifier.length];
-      c.intervalleJours = 1;
+      // Intervalle initial de 7 j (et non 1) : ces chapitres sont « deja
+      // vus » — a intervalle 1, les 95 chapitres d'un programme importe
+      // revenaient TOUS 2-3 jours apres leur premiere revision, et la file
+      // explosait en trois semaines (mesure en simulation : 0 -> 83 dus en
+      // aout, meme en faisant tout le plan chaque soir). Avec 7, le premier
+      // verdict repart vers 12-18 j et la file reste plate.
+      c.intervalleJours = 7;
     }
     _touch();
     return aPlanifier.length;
@@ -2570,13 +2592,16 @@ class AppModel extends ChangeNotifier {
     return l;
   }
 
-  List<Colle> collesAvenir() {
-    final now = DateTime.now();
+  /// [maintenant] : horloge injectable — le moteur la fournit, l'UI peut
+  /// l'omettre. Sans elle, le simulateur (tests longue duree) voyait des
+  /// kholles « EN RETARD » fantomes pendant des mois.
+  List<Colle> collesAvenir({DateTime? maintenant}) {
+    final now = maintenant ?? DateTime.now();
     return colles.where((c) => c.end.isAfter(now)).toList();
   }
 
-  Colle? prochaineColle() {
-    final l = collesAvenir();
+  Colle? prochaineColle({DateTime? maintenant}) {
+    final l = collesAvenir(maintenant: maintenant);
     return l.isEmpty ? null : l.first;
   }
 

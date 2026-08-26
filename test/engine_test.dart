@@ -861,7 +861,9 @@ Voici le résultat demandé :
       expect(c.prochaineRevision, isNotNull);
       expect(c.prochaineRevision!.isAfter(DateTime(2026, 8, 4)), isTrue);
       expect(c.prochaineRevision!.isAfter(fin), isFalse);
-      expect(c.intervalleJours, 1);
+      // 7 j et non 1 : l intervalle initial realiste est LE correctif du
+      // backlog explosif mesure en simulation (0 -> 83 dus en un mois).
+      expect(c.intervalleJours, 7);
     }
     // Et elles sont REPARTIES, pas toutes le meme jour.
     final jours = m.chapitres
