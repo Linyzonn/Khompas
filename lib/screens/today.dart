@@ -597,7 +597,10 @@ class _TodayScreenState extends State<TodayScreen> {
       // ici, y compris pour les utilisateurs existants.
       if (m.estEte() &&
           m.cinqDemi &&
-          m.chapitres.any((c) => c.etape > 0 && c.prochaineRevision == null))
+          // MEME liste que l'etaleur (litteraires exclus) : sinon un
+          // chapitre d'anglais « deja vu » maintenait le bandeau pour
+          // toujours, meme apres une planification reussie.
+          m.chapitresSansReactivation().isNotEmpty)
         _banniereAction(
           context.tokens.attention,
           Icons.wb_sunny_outlined,
@@ -2117,6 +2120,11 @@ class _TodayScreenState extends State<TodayScreen> {
             // — cartes », « prépare ta khôlle ») revenait dans le plan
             // aussitot coche.
             m.marquerFait(s.matiere);
+            // Les blocs DM ont leur PROPRE cle : ils sont generes par une
+            // section dediee qui ignore le marquage par matiere — coche,
+            // le creneau du jour restait affiche (l'heure comptee, mais
+            // le bloc immortel).
+            if (s.devoirId != null) m.marquerFait('dm:${s.devoirId}');
             if (s.chapitreId != null) {
               final i = m.chapitres.indexWhere((c) => c.id == s.chapitreId);
               if (i >= 0) {

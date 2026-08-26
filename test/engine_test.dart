@@ -871,11 +871,17 @@ Voici le résultat demandé :
     expect(jours.length, greaterThan(5));
   });
 
-  test('etalerReactivation sans plage été : ne fait rien', () {
+  test('etalerReactivation sans plage : implicite en juillet/août, inerte '
+      'le reste de l’année', () {
     m.chapitres.add(
         Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
-    expect(m.etalerReactivation(maintenant: DateTime(2026, 8, 4)), 0);
+    // Octobre sans plage : rien (pas de vacances a etaler).
+    expect(m.etalerReactivation(maintenant: DateTime(2026, 10, 6)), 0);
     expect(m.chapitres.first.prochaineRevision, isNull);
+    // Aout sans plage : fin implicite au 31 — l'etaleur ne doit plus
+    // rendre 0 en silence (le bouton « Planifier » semblait mort).
+    expect(m.etalerReactivation(maintenant: DateTime(2026, 8, 4)), 1);
+    expect(m.chapitres.first.prochaineRevision, isNotNull);
   });
 
   // ---------- Bilan de concours (5/2) ----------
@@ -1747,5 +1753,52 @@ Voici le résultat demandé :
         .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
     final s = suggere(m, 120, maintenant: DateTime(2026, 10, 5, 18));
     expect(s.any((x) => x.raison.contains('réactivation')), isFalse);
+  });
+
+  test('bandeau « Planifier » : un chapitre littéraire ne le maintient pas '
+      'après une planification réussie', () {
+    // Le cas du camarade : Maths ET Anglais marques « deja vus », aucune
+    // plage saisie, on est en aout.
+    final now = DateTime(2026, 8, 4, 18);
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
+    m.chapitres.add(
+        Chapitre(matiere: 'Anglais', nom: 'Voc kholle', etape: 1, maitrise: 2));
+    // Avant : le bandeau a une raison de s'afficher (Maths a planifier).
+    expect(m.chapitresSansReactivation(), hasLength(1));
+    expect(m.chapitresSansReactivation().first.matiere, 'Maths');
+    // Planifier — sans plage saisie, la fin implicite est le 31 aout.
+    final n = m.etalerReactivation(maintenant: now);
+    expect(n, 1, reason: 'Maths planifie, Anglais exclu (litteraire)');
+    // INVARIANT du bandeau : apres une planification reussie, plus rien a
+    // planifier -> le bandeau disparait (il partage cette liste).
+    expect(m.chapitresSansReactivation(), isEmpty);
+    expect(
+        m.chapitres.firstWhere((c) => c.matiere == 'Maths').prochaineRevision,
+        isNotNull);
+  });
+
+  test('bloc DM coché : il disparaît du plan du jour et revient demain', () {
+    final now = DateTime(2026, 8, 4, 18);
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
+    m.devoirs.add(Devoir(
+      id: 'dm-test',
+      matiere: 'Maths',
+      titre: 'Exos de rentrée',
+      dateRendu: DateTime(2026, 9, 1),
+      dateDonne: DateTime(2026, 7, 6),
+      dureeEstimeeMin: 360,
+    ));
+    bool blocDm(Suggestion x) => x.devoirId == 'dm-test';
+    expect(suggere(m, 240, maintenant: now).any(blocDm), isTrue);
+    // Le ✓ marque le creneau du jour (cle dediee au devoir).
+    m.marquerFait('dm:dm-test', maintenant: now);
+    expect(suggere(m, 240, maintenant: now).any(blocDm), isFalse,
+        reason: 'coche, le creneau ne doit pas revenir ce soir');
+    // Demain, l'etalement reprend normalement.
+    expect(
+        suggere(m, 240, maintenant: DateTime(2026, 8, 5, 18)).any(blocDm),
+        isTrue);
   });
 }

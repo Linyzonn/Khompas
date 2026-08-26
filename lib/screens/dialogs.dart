@@ -913,7 +913,12 @@ Future<int?> planifierReactivationEte(BuildContext context) async {
   final m = AppModel.instance;
   final now = DateTime.now();
   var plage = m.plageSansCours(now);
-  if (plage == null || plage.type != 'ete') {
+  // En juillet/aout la plage est implicite (etaleur et moteur la
+  // deduisent) : le dialogue « Creer la plage » n'a plus de raison de
+  // barrer la route — et son « Annuler » laissait croire que le bouton
+  // ne faisait rien.
+  final moisEte = now.month == 7 || now.month == 8;
+  if (!moisEte && (plage == null || plage.type != 'ete')) {
     final creer = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

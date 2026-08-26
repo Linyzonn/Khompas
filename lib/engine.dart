@@ -232,6 +232,7 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     if (d.dateDonne.year == now.year &&
         d.dateDonne.month == now.month &&
         d.dateDonne.day == now.day &&
+        !m.estFait('dm:${d.id}', maintenant: now) &&
         budget >= 30) {
       out.add(Suggestion(
         d.matiere,
@@ -267,8 +268,11 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
       if (cadence > 3) cadence = 3;
       final aujourdHui = DateTime(now.year, now.month, now.day);
       final jourIdx = aujourdHui.difference(kAncreRotation).inDays;
-      if (jourIdx % cadence == 0) {
-        final d = aEtaler[(jourIdx ~/ cadence) % aEtaler.length];
+      final dmJour = aEtaler[(jourIdx ~/ cadence) % aEtaler.length];
+      // Creneau du jour deja coche -> il ne revient que demain.
+      if (jourIdx % cadence == 0 &&
+          !m.estFait('dm:${dmJour.id}', maintenant: now)) {
+        final d = dmJour;
         final joursRestants = d.dateRendu.difference(now).inDays + 1;
         out.add(Suggestion(
           d.matiere,
@@ -1044,6 +1048,8 @@ List<Suggestion> _suggereEte(
   // annoncee par le prof.
   for (final d in m.devoirsARendre()) {
     if (reste < 30) break;
+    // Creneau deja coche aujourd'hui -> il ne revient que demain.
+    if (m.estFait('dm:${d.id}', maintenant: now)) continue;
     final dj = DateTime(d.dateRendu.year, d.dateRendu.month, d.dateRendu.day)
         .difference(aujourdHui)
         .inDays;

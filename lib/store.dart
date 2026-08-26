@@ -2390,12 +2390,34 @@ class AppModel extends ChangeNotifier {
   /// remis a 1. Le flux « rappels du jour » les sert ensuite a cadence
   /// reguliere — au lieu d'un mur de dette le premier jour.
   /// Retourne le nombre de chapitres planifies (0 si pas de plage d'ete).
+  /// Chapitres qu'une reactivation d'ete PEUT planifier : commences
+  /// (etape > 0), NON litteraires (le francais et les langues n'ont rien a
+  /// reviser en chapitres — leur ete, ce sont les oeuvres, citations et
+  /// voc), et pas encore programmes. Bandeau « Planifier » et etaleur
+  /// regardent tous deux CETTE liste : s'ils divergent, le bandeau peut
+  /// rester affiche apres une planification reussie.
+  List<Chapitre> chapitresSansReactivation() => chapitres
+      .where((c) =>
+          c.etape > 0 &&
+          c.prochaineRevision == null &&
+          !matiereLitteraire(c.matiere))
+      .toList();
+
   int etalerReactivation({DateTime? maintenant}) {
     final now = maintenant ?? DateTime.now();
     final plage = plageSansCours(now);
-    if (plage == null || plage.type != 'ete') return 0;
     final aujourdHui = DateTime(now.year, now.month, now.day);
-    final finPlage = DateTime(plage.fin.year, plage.fin.month, plage.fin.day);
+    // Sans plage saisie : en juillet/aout, fin implicite au 31 aout (meme
+    // regle que le mode ete du moteur) — l'etaleur ne doit pas rendre 0 en
+    // silence parce qu'un clic sur « Creer la plage » a ete annule.
+    final DateTime finPlage;
+    if (plage != null && plage.type == 'ete') {
+      finPlage = DateTime(plage.fin.year, plage.fin.month, plage.fin.day);
+    } else if (now.month == 7 || now.month == 8) {
+      finPlage = DateTime(now.year, 8, 31);
+    } else {
+      return 0;
+    }
     var joursRestants = finPlage.difference(aujourdHui).inDays;
     if (joursRestants < 1) joursRestants = 1;
     // Les matieres litteraires (francais, langues) n'ont RIEN a reviser en
