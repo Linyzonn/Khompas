@@ -85,10 +85,21 @@ List<Suggestion> suggere(AppModel m, int minutesDispo, {DateTime? maintenant}) {
   // reactivation douce (rotation du programme, annales, repos) — un ete de
   // 5/2 ne ressemble ni a une soiree de semaine ni aux revisions d'avril.
   final plage = m.plageSansCours(now);
-  if (plage != null &&
-      plage.type == 'ete' &&
-      m.chapitres.any((c) => c.etape > 0)) {
-    return _suggereEte(m, minutesDispo, now, plage);
+  var plageEte = (plage != null && plage.type == 'ete') ? plage : null;
+  // JUILLET/AOUT SANS PLAGE SAISIE : plage implicite jusqu'au 31 aout.
+  // L'ete ne doit pas dependre d'un passage par « Planifier » : deux
+  // camarades avec le meme lien doivent recevoir le meme plan — celui qui
+  // n'avait pas configure sa reactivation restait en mode normal (pas de
+  // sessions de 15 min, pas de ressenti).
+  plageEte ??= (now.month == 7 || now.month == 8)
+      ? PlageSansCours(
+          titre: 'Été',
+          debut: DateTime(now.year, 7, 1),
+          fin: DateTime(now.year, 8, 31),
+          type: 'ete')
+      : null;
+  if (plageEte != null && m.chapitres.any((c) => c.etape > 0)) {
+    return _suggereEte(m, minutesDispo, now, plageEte);
   }
   if (m.dateConcours != null &&
       now.isBefore(m.dateConcours!) &&
@@ -994,7 +1005,7 @@ List<Suggestion> _suggereEte(
         'Dimanche = repos 😌 La consolidation se fait aussi en dormant — un seul petit bloc, et seulement si tu en as envie',
         30,
         chapitreId: c.id,
-        rappel: dus.isNotEmpty && c.id == dus.first.id,
+        rappel: true,
         consigne: consigneDe(c.matiere, 'rappel'),
       ));
     }
@@ -1167,6 +1178,11 @@ List<Suggestion> _suggereEte(
       '$contexte · $quandRevu',
       mins > reste ? reste : mins,
       chapitreId: c.id,
+      // rappel: le ✓ demande le ressenti, et l'evaluation INSCRIT le
+      // chapitre dans la repetition espacee (intervalle regle par la
+      // reponse) — sans ca, un utilisateur qui n'a jamais planifie sa
+      // reactivation ne voyait ni sessions de 15 min ni auto-evaluation.
+      rappel: true,
       consigne: consigneDe(c.matiere, 'revision'),
     ));
     reste -= mins;

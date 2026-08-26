@@ -12,6 +12,12 @@ import 'package:khompas/models.dart';
 import 'package:khompas/store.dart';
 
 /// AppModel est un singleton : chaque test repart d'un etat vierge.
+/// Date fixe HORS ete et hors dimanche (mardi 6 octobre 2026, 18 h) :
+/// les tests du mode normal ne doivent pas dependre du jour ou la suite
+/// tourne — en aout, l'ete implicite (juillet/aout sans plage saisie)
+/// capturait tout test base sur tNormal.
+final tNormal = DateTime(2026, 10, 6, 18);
+
 void reset(AppModel m) {
   m.colles = [];
   m.ds = [];
@@ -56,23 +62,23 @@ void main() {
     // 26 h : TOUJOURS demain, quelle que soit l'heure du test (20 h pouvait
     // retomber le meme jour pour un test lance avant 4 h du matin).
     m.colles.add(Colle(
-        matiere: 'Maths', start: DateTime.now().add(const Duration(hours: 26))));
+        matiere: 'Maths', start: tNormal.add(const Duration(hours: 26))));
     m.chapitres
         .add(Chapitre(matiere: 'Anglais', nom: 'Vocab', etape: 1, maitrise: 2));
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s, isNotEmpty);
     expect(s.first.matiere, 'Maths');
     expect(s.first.raison.toLowerCase(), contains('demain'));
   });
 
   test('devoir en retard (≤ 5 j) : urgence maximale, raison EN RETARD', () {
-    final now = DateTime.now();
+    final now = tNormal;
     m.devoirs.add(Devoir(
       matiere: 'Physique-Chimie',
       dateRendu: now.subtract(const Duration(days: 2)),
       dateDonne: now.subtract(const Duration(days: 9)),
     ));
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.first.matiere, 'Physique-Chimie');
     expect(s.first.raison, contains('EN RETARD'));
   });
@@ -81,7 +87,7 @@ void main() {
 
   test('jachère : une matière délaissée 8 j remonte devant une matière '
       'travaillée hier', () {
-    final now = DateTime.now();
+    final now = tNormal;
     m.chapitres
         .add(Chapitre(matiere: 'Français', nom: 'Thème', etape: 2, maitrise: 3));
     m.chapitres
@@ -94,7 +100,7 @@ void main() {
         matiere: 'Maths',
         date: now.subtract(const Duration(days: 1)),
         minutes: 60));
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.first.matiere, 'Français');
     expect(s.first.raison, contains('Pas travaillée'));
   });
@@ -111,7 +117,7 @@ void main() {
       m.chapitres.add(
           Chapitre(matiere: 'SII', nom: nom, etape: 2, maitrise: maitrise));
     }
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.first.matiere, 'Chimie');
     // Le chapitre jamais consolide est signale par ⚠ dans le contenu.
     expect(s.first.titre, contains('⚠'));
@@ -120,7 +126,7 @@ void main() {
   // ---------- Repetition espacee ----------
 
   test('rappel dû aujourd\'hui : bloc de 15 min en tête, marqué rappel', () {
-    final now = DateTime.now();
+    final now = tNormal;
     m.chapitres.add(Chapitre(
       matiere: 'Maths',
       nom: 'Séries entières',
@@ -129,8 +135,8 @@ void main() {
       prochaineRevision: DateTime(now.year, now.month, now.day),
       intervalleJours: 4,
     ));
-    expect(rappelsDus(m).length, 1);
-    final s = suggere(m, 120);
+    expect(rappelsDus(m, maintenant: tNormal).length, 1);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.first.rappel, isTrue);
     expect(s.first.minutes, 15);
     expect(s.first.titre, contains('Séries entières'));
@@ -144,7 +150,7 @@ void main() {
         nom: 'X',
         etape: 2,
         maitrise: 3,
-        prochaineRevision: DateTime.now(),
+        prochaineRevision: tNormal,
         intervalleJours: 40);
     m.chapitres.add(c);
     m.evaluerRevision(c.id, 'facile');
@@ -159,21 +165,21 @@ void main() {
   // ---------- DM du jour ----------
 
   test('DM distribué aujourd\'hui : suggestion « lis-le ce soir »', () {
-    final now = DateTime.now();
+    final now = tNormal;
     m.devoirs.add(Devoir(
       matiere: 'Maths',
       titre: 'DM 4',
       dateRendu: now.add(const Duration(days: 7)),
       dateDonne: now,
     ));
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.any((x) => x.titre.contains('Lis le DM 4')), isTrue);
   });
 
   // ---------- EDT : parite A/B et plages sans cours ----------
 
   test('routinesLe : respecte les semaines A/B et les plages sans cours', () {
-    final now = DateTime.now();
+    final now = tNormal;
     m.refSemaineA = mondayOf(now); // cette semaine est une semaine A
     m.routines.add(Routine(
         titre: 'Maths', jour: now.weekday, debutMin: 480, matiere: 'Maths',
@@ -196,7 +202,7 @@ void main() {
 
   test('mode révisions : rappels dus d\'abord, puis alternance des matières',
       () {
-    final now = DateTime.now();
+    final now = tNormal;
     m.dateConcours = now.add(const Duration(days: 30));
     m.chapitres.addAll([
       Chapitre(matiere: 'Maths', nom: 'M1', etape: 2, maitrise: 0),
@@ -204,7 +210,7 @@ void main() {
       Chapitre(matiere: 'Physique-Chimie', nom: 'P1', etape: 2, maitrise: 2),
       Chapitre(matiere: 'Physique-Chimie', nom: 'P2', etape: 2, maitrise: 3),
     ]);
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.length, greaterThanOrEqualTo(2));
     expect(s.first.raison, contains('J-'));
     // Interleaving : deux matieres differentes en tete, pas deux fois la meme.
@@ -219,16 +225,16 @@ void main() {
       prochaineRevision: DateTime(now.year, now.month, now.day),
     );
     m.chapitres.add(du);
-    final s2 = suggere(m, 120);
+    final s2 = suggere(m, 120, maintenant: tNormal);
     expect(s2.first.chapitreId, du.id);
     expect(s2.first.rappel, isTrue);
   });
 
   test('date de concours passée : retour au mode normal', () {
-    m.dateConcours = DateTime.now().subtract(const Duration(days: 1));
+    m.dateConcours = tNormal.subtract(const Duration(days: 1));
     m.chapitres
         .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s, isNotEmpty);
     expect(s.first.raison, isNot(contains('J-')));
   });
@@ -263,7 +269,7 @@ void main() {
 
   test('épreuve imminente + erreurs non refaites : bloc « refais tes '
       'erreurs » en tête', () {
-    final now = DateTime.now();
+    final now = tNormal;
     m.ds.add(Ds(
         matiere: 'Maths',
         date: DateTime(now.year, now.month, now.day)
@@ -272,7 +278,7 @@ void main() {
         matiere: 'Maths', texte: 'Oubli du cas λ = 0', type: 'Méthode'));
     m.erreurs.add(Erreur(
         matiere: 'Maths', texte: 'Signe', type: 'Calcul', refaite: true));
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.first.titre, contains('📕'));
     expect(s.first.titre, contains('1 à revoir')); // seule la non-refaite
     expect(s.first.matiere, 'Maths');
@@ -282,7 +288,7 @@ void main() {
 
   test('mode révisions à J-45 : une annale non faite entre dans le plan, '
       'matière la moins couverte d\'abord', () {
-    m.dateConcours = DateTime.now().add(const Duration(days: 30));
+    m.dateConcours = tNormal.add(const Duration(days: 30));
     m.chapitres
         .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 2, maitrise: 3));
     m.annales.add(
@@ -292,7 +298,7 @@ void main() {
         fait: true));
     // Budget de soir de semaine -> c'est la version "une PARTIE" qui sort
     // (l'epreuve entiere est reservee aux gros budgets — teste plus bas).
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.first.titre, contains('CCINP 2024'));
     expect(s.first.matiere, 'Maths');
   });
@@ -301,7 +307,7 @@ void main() {
 
   test('mode oraux : l\'oral daté imminent en tête, puis rotation des '
       'autres épreuves', () {
-    final now = DateTime.now();
+    final now = tNormal;
     m.modeOraux = true;
     m.oraux.addAll([
       EpreuveOrale(
@@ -312,7 +318,7 @@ void main() {
       EpreuveOrale(concours: 'CCINP', epreuve: 'Anglais'),
       EpreuveOrale(concours: 'Centrale-Supélec', epreuve: 'TIPE'),
     ]);
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s, isNotEmpty);
     expect(s.first.matiere, 'Maths');
     expect(s.first.raison, contains('J-3'));
@@ -343,9 +349,9 @@ void main() {
   });
 
   test('fusionnerMatieres : tout passe de la source vers la cible', () {
-    m.colles.add(Colle(matiere: 'LV1', start: DateTime.now()));
+    m.colles.add(Colle(matiere: 'LV1', start: tNormal));
     m.seances.add(
-        Seance(matiere: 'LV1', date: DateTime.now(), minutes: 30));
+        Seance(matiere: 'LV1', date: tNormal, minutes: 30));
     m.chapitres
         .add(Chapitre(matiere: 'Anglais', nom: 'Vocab', etape: 1));
     m.prios['LV1'] = 3;
@@ -366,7 +372,7 @@ void main() {
     m.chapitres.add(c);
     m.setBilan(
       Bilan(
-          jour: DateTime.now(),
+          jour: tNormal,
           routineId: 'r1',
           matiere: 'Maths',
           type: 'Cours',
@@ -379,7 +385,7 @@ void main() {
     // Le prof finit le chapitre au cours suivant :
     m.setBilan(
       Bilan(
-          jour: DateTime.now().add(const Duration(days: 2)),
+          jour: tNormal.add(const Duration(days: 2)),
           routineId: 'r1',
           matiere: 'Maths',
           type: 'Cours',
@@ -442,24 +448,24 @@ Voici le résultat :
 
   test('khôlle du jour : « AUJOURD\'HUI », pas « demain » ni « EN RETARD »',
       () {
-    final now = DateTime.now();
+    final now = tNormal;
     // Une kholle plus tard dans la journee (ou tot le matin : le test doit
     // passer a toute heure — on prend 23h59 du jour meme).
     m.colles.add(Colle(
         matiere: 'Maths',
         start: DateTime(now.year, now.month, now.day, 23, 58)));
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.first.raison, contains('AUJOURD\'HUI'));
     expect(s.first.raison, isNot(contains('RETARD')));
   });
 
   test('DM à rendre AUJOURD\'HUI : plus jamais « EN RETARD » le jour J', () {
-    final now = DateTime.now();
+    final now = tNormal;
     m.devoirs.add(Devoir(
         matiere: 'Physique',
         dateRendu: DateTime(now.year, now.month, now.day),
         dateDonne: now.subtract(const Duration(days: 7))));
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.first.raison, contains('AUJOURD\'HUI'));
   });
 
@@ -467,7 +473,7 @@ Voici le résultat :
 
   test('DM proche : la suggestion EST la tâche (titre + remarque + '
       'devoirId)', () {
-    final now = DateTime.now();
+    final now = tNormal;
     final d = Devoir(
         matiere: 'Maths',
         titre: 'DM 3',
@@ -475,7 +481,7 @@ Voici le résultat :
         dateDonne: now.subtract(const Duration(days: 2)),
         remarque: 'exos 1 à 4');
     m.devoirs.add(d);
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     final sug = s.firstWhere((x) => x.matiere == 'Maths');
     expect(sug.titre, contains('Avance DM 3'));
     expect(sug.titre, contains('exos 1 à 4'));
@@ -486,7 +492,7 @@ Voici le résultat :
 
   test('jour libre (EDT rempli mais rien aujourd\'hui) + gros budget : '
       '4 matières retenues', () {
-    final now = DateTime.now();
+    final now = tNormal;
     // Une routine sur un AUTRE jour que celui du test -> aujourd'hui libre.
     final autreJour = now.weekday == 7 ? 1 : now.weekday + 1;
     m.routines.add(Routine(titre: 'Maths', jour: autreJour, debutMin: 480));
@@ -494,14 +500,14 @@ Voici le résultat :
       m.chapitres
           .add(Chapitre(matiere: mat, nom: 'Ch $mat', etape: 2, maitrise: 2));
     }
-    final s = suggere(m, 300);
+    final s = suggere(m, 300, maintenant: tNormal);
     expect(s.map((x) => x.matiere).toSet().length, greaterThanOrEqualTo(4));
   });
 
   // ---------- Vacances : creneau DM etale, cadence annoncee ----------
 
   test('vacances + 2 DM : un créneau DM apparaît avec sa cadence', () {
-    final now = DateTime.now();
+    final now = tNormal;
     m.sansCours.add(PlageSansCours(
         titre: 'Vacances',
         debut: now.subtract(const Duration(days: 2)),
@@ -516,7 +522,7 @@ Voici le résultat :
         titre: 'DM 5',
         dateRendu: now.add(const Duration(days: 6)),
         dateDonne: now.subtract(const Duration(days: 1))));
-    final s = suggere(m, 180);
+    final s = suggere(m, 180, maintenant: tNormal);
     expect(s.any((x) => x.titre.contains('Créneau DM')), isTrue);
   });
 
@@ -524,20 +530,20 @@ Voici le résultat :
 
   test('mode révisions : annale ENTIÈRE seulement à gros budget, sinon '
       'une PARTIE', () {
-    m.dateConcours = DateTime.now().add(const Duration(days: 30));
+    m.dateConcours = tNormal.add(const Duration(days: 30));
     m.chapitres
         .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 2, maitrise: 3));
     m.annales
         .add(Annale(concours: 'CCINP', matiere: 'Maths', annee: 2024));
-    final soir = suggere(m, 120);
+    final soir = suggere(m, 120, maintenant: tNormal);
     expect(soir.any((x) => x.titre.contains('PARTIE')), isTrue);
-    final weekend = suggere(m, 300);
+    final weekend = suggere(m, 300, maintenant: tNormal);
     expect(weekend.any((x) => x.titre.contains('EN CONDITIONS')), isTrue);
   });
 
   test('annale faite récemment avec ressenti moyen : la CORRECTION ACTIVE '
       'passe devant', () {
-    m.dateConcours = DateTime.now().add(const Duration(days: 30));
+    m.dateConcours = tNormal.add(const Duration(days: 30));
     m.chapitres
         .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 2, maitrise: 3));
     m.annales.add(Annale(
@@ -546,9 +552,9 @@ Voici le résultat :
         annee: 2023,
         fait: true,
         ressenti: 2,
-        dateFait: DateTime.now().subtract(const Duration(days: 1))));
+        dateFait: tNormal.subtract(const Duration(days: 1))));
     m.annales.add(Annale(concours: 'CCINP', matiere: 'Maths', annee: 2024));
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.any((x) => x.titre.contains('Correction active')), isTrue);
     expect(s.any((x) => x.titre.contains('PARTIE')), isFalse);
   });
@@ -577,7 +583,7 @@ Voici le résultat demandé :
   // ---------- DS du jour ----------
 
   test('un DS AUJOURD\'HUI (daté à minuit) reste visible dans le scoring', () {
-    final now = DateTime.now();
+    final now = tNormal;
     // Les DS sont dates a minuit : a 18 h, l'ancien code (isBefore(now))
     // ecartait le DS du jour et la branche AUJOURD'HUI etait morte.
     m.ds.add(Ds(
@@ -585,7 +591,7 @@ Voici le résultat demandé :
         titre: 'DS 4',
         date: DateTime(now.year, now.month, now.day),
         note: null));
-    final s = suggere(m, 120);
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.any((x) => x.matiere == 'Physique'), isTrue);
     expect(
         s.firstWhere((x) => x.matiere == 'Physique').raison,
@@ -600,7 +606,7 @@ Voici le résultat demandé :
         nom: 'Suites',
         etape: 1,
         intervalleJours: 10,
-        prochaineRevision: DateTime.now());
+        prochaineRevision: tNormal);
     m.chapitres.add(c);
     m.evaluerRevision(c.id, 'cava');
     expect(c.intervalleJours, 17);
@@ -613,7 +619,7 @@ Voici le résultat demandé :
         nom: 'Intégrales',
         etape: 1,
         intervalleJours: 8,
-        prochaineRevision: DateTime.now());
+        prochaineRevision: tNormal);
     m.chapitres.add(c);
     m.evaluerRevision(c.id, 'difficile'); // echecs = 1, intervalle = 2
     m.evaluerRevision(c.id, 'difficile'); // echecs = 2, intervalle = 2
@@ -626,7 +632,7 @@ Voici le résultat demandé :
 
   test('révision en retard (< 7 j) : la suivante s\'ancre sur la date DUE',
       () {
-    final now = DateTime.now();
+    final now = tNormal;
     final due = DateTime(now.year, now.month, now.day)
         .subtract(const Duration(days: 3));
     final c = Chapitre(
@@ -636,7 +642,7 @@ Voici le résultat demandé :
         intervalleJours: 10,
         prochaineRevision: due);
     m.chapitres.add(c);
-    m.evaluerRevision(c.id, 'cava'); // 10 -> 17 j, ancre sur la date due
+    m.evaluerRevision(c.id, 'cava', maintenant: now); // 10 -> 17 j, ancre sur la date due
     expect(c.prochaineRevision, due.add(Duration(days: c.intervalleJours)));
   });
 
@@ -648,10 +654,10 @@ Voici le résultat demandé :
         maitrise: 4,
         intervalleJours: 30);
     m.chapitres.add(c);
-    m.recalibrerChapitres([c.id]);
+    m.recalibrerChapitres([c.id], maintenant: tNormal);
     expect(c.maitrise, 2);
     expect(c.intervalleJours, 1);
-    final now = DateTime.now();
+    final now = tNormal;
     expect(
         c.prochaineRevision,
         DateTime(now.year, now.month, now.day)
@@ -672,15 +678,15 @@ Voici le résultat demandé :
   // ---------- Seuil J-90 du mode revisions ----------
 
   test('date de concours lointaine (> 90 j) : le mode normal continue', () {
-    m.dateConcours = DateTime.now().add(const Duration(days: 200));
+    m.dateConcours = tNormal.add(const Duration(days: 200));
     m.chapitres
         .add(Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
     // Une khôlle demain doit toujours apparaitre : en mode revisions
     // premature, elle disparaissait pendant des mois.
     m.colles.add(Colle(
         matiere: 'Physique',
-        start: DateTime.now().add(const Duration(hours: 26))));
-    final s = suggere(m, 120);
+        start: tNormal.add(const Duration(hours: 26))));
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.any((x) => x.matiere == 'Physique'), isTrue,
         reason: 'la khôlle de demain doit rester dans le plan');
     expect(s.any((x) => x.titre.startsWith('Réviser :')), isFalse,
@@ -689,21 +695,21 @@ Voici le résultat demandé :
 
   test('mode révisions : une khôlle imminente garde sa place dans le plan',
       () {
-    m.dateConcours = DateTime.now().add(const Duration(days: 30));
+    m.dateConcours = tNormal.add(const Duration(days: 30));
     m.chapitres
         .add(Chapitre(matiere: 'Maths', nom: 'Suites', etape: 2, maitrise: 2));
     m.colles.add(Colle(
         matiere: 'Anglais',
         programme: 'Press review',
-        start: DateTime.now().add(const Duration(hours: 26))));
-    final s = suggere(m, 120);
+        start: tNormal.add(const Duration(hours: 26))));
+    final s = suggere(m, 120, maintenant: tNormal);
     expect(s.any((x) => x.titre.contains('khôlle')), isTrue);
   });
 
   // ---------- Rotation des DM de vacances ----------
 
   test('vacances + 2 DM : les créneaux tournent entre les DM', () {
-    // Date FIXE injectee : cale sur DateTime.now(), ce test echouait un
+    // Date FIXE injectee : cale sur tNormal, ce test echouait un
     // jour sur deux — avec une cadence de 2, jourIdx % cadence != 0 les
     // jours impairs depuis kAncreRotation (et la parite dependait en plus
     // du fuseau horaire du runner). Echeances PROCHES (6 j devant, 2 DM)
@@ -1710,5 +1716,36 @@ Voici le résultat demandé :
     final j = m.exportJsonCompact();
     expect(j, contains('"eplS":true'));
     expect(j, contains('2027-04-26'));
+  });
+
+  test('été implicite : en août SANS plage saisie, le plan passe quand même '
+      'en réactivation et demande le ressenti', () {
+    // Le cas du camarade qui recoit le lien : chapitres importes (deja
+    // vus) mais AUCUNE plage ete, reactivation jamais planifiee.
+    final now = DateTime(2026, 8, 4, 18); // mardi, debut aout (rentree loin)
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
+    final s = suggere(m, 120, maintenant: now);
+    expect(s, isNotEmpty);
+    final bloc = s.firstWhere((x) => x.chapitreId != null);
+    expect(bloc.raison, contains('réactivation'));
+    // rappel:true -> le ✓ ouvre la feuille de ressenti.
+    expect(bloc.rappel, isTrue);
+    // L'evaluation INSCRIT le chapitre dans l'espacement : « ca va »
+    // espace de x1,7 (intervalle 1 -> 2 j), donc le canal « Rappel »
+    // 15 min prend le relais a J+2.
+    m.evaluerRevision(bloc.chapitreId!, 'cava', maintenant: now);
+    final aJPlus2 = suggere(m, 120, maintenant: DateTime(2026, 8, 6, 18));
+    final rappel = aJPlus2.firstWhere((x) => x.chapitreId != null);
+    expect(rappel.titre, contains('Rappel'));
+    expect(rappel.minutes, 15);
+  });
+
+  test('été implicite : hors juillet/août sans plage, le mode normal reste '
+      'inchangé', () {
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
+    final s = suggere(m, 120, maintenant: DateTime(2026, 10, 5, 18));
+    expect(s.any((x) => x.raison.contains('réactivation')), isFalse);
   });
 }
