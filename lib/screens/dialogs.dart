@@ -950,7 +950,12 @@ Future<int?> planifierReactivationEte(BuildContext context) async {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       duration: const Duration(seconds: 5),
       content: Text(n == 0
-          ? 'Aucun chapitre commencé à planifier — importe d\'abord le programme officiel.'
+          // n == 0 a deux sens depuis que l’etaleur est non destructif :
+          // tout est deja planifie (cas normal), ou rien a planifier.
+          ? (m.chapitres
+                  .any((c) => c.etape > 0 && !matiereLitteraire(c.matiere))
+              ? 'Rien à replanifier : ta réactivation est déjà en place ✅ (les chapitres déjà programmés gardent leur date).'
+              : 'Aucun chapitre commencé à planifier — importe d’abord le programme officiel.')
           : 'Réactivation planifiée ✅ $n chapitres répartis jusqu\'à la fin des vacances — ils arriveront en « Rappel du jour ».'),
     ));
   }

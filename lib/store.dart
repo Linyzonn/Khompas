@@ -279,6 +279,7 @@ class AppModel extends ChangeNotifier {
           dateConcours = newDateConcours;
           eplS = newEplS;
           dateEplS = newDateEplS;
+          reparerEspacement();
           bilans = newBilans;
           evenements = newEvenements;
           sansCours = newSansCours;
@@ -356,6 +357,9 @@ class AppModel extends ChangeNotifier {
     // JAMAIS de re-sauvegarde si le chargement a echoue : on ecraserait le
     // fichier principal avec un etat vide (la copie .corrompu ne suffit pas).
     if (_migrerMatieres() && !chargementEchoue) save();
+    // Repare les revisions ecrasees par l'ancien etaleur (invariant
+    // dernierRevu + intervalle). Sauvegarde uniquement si necessaire.
+    if (reparerEspacement() > 0 && !chargementEchoue) save();
     loaded = true;
     notifyListeners();
     // Taches d'arriere-plan non bloquantes (silencieuses hors ligne).
@@ -2419,6 +2423,27 @@ class AppModel extends ChangeNotifier {
           !matiereLitteraire(c.matiere))
       .toList();
 
+  /// INVARIANT de l'espacement : une revision n'est jamais due avant
+  /// dernierRevu + intervalle. L'ancien etaleur le violait (il replanifiait
+  /// AUSSI les chapitres deja en cours : un chapitre revu la veille avec un
+  /// intervalle de 20 j se retrouvait du le lendemain) — cette reparation
+  /// remet d'aplomb les donnees touchees, au chargement et apres un pull.
+  /// Retourne le nombre de chapitres repares.
+  int reparerEspacement() {
+    var n = 0;
+    for (final c in chapitres) {
+      if (c.dernierRevu == null || c.prochaineRevision == null) continue;
+      final plancher = DateTime(
+              c.dernierRevu!.year, c.dernierRevu!.month, c.dernierRevu!.day)
+          .add(Duration(days: c.intervalleJours));
+      if (c.prochaineRevision!.isBefore(plancher)) {
+        c.prochaineRevision = plancher;
+        n++;
+      }
+    }
+    return n;
+  }
+
   int etalerReactivation({DateTime? maintenant}) {
     final now = maintenant ?? DateTime.now();
     final plage = plageSansCours(now);
@@ -2438,8 +2463,13 @@ class AppModel extends ChangeNotifier {
     if (joursRestants < 1) joursRestants = 1;
     // Les matieres litteraires (francais, langues) n'ont RIEN a reviser en
     // chapitres : leur ete, ce sont les oeuvres, les citations et le voc.
-    final aPlanifier = chapitres
-        .where((c) => c.etape > 0 && !matiereLitteraire(c.matiere))
+    // NON DESTRUCTIF : seuls les chapitres HORS de la repetition espacee
+    // sont planifies (la meme liste que le bandeau « Planifier »). Un
+    // chapitre deja programme garde sa date et son intervalle — replanifier
+    // ecrasait des semaines de progression (intervalles regagnes a 7,
+    // revisions retassees sur les jours de vacances restants : l'utilisateur
+    // a vu ses chapitres deja revus revenir en tete du jour au lendemain).
+    final aPlanifier = chapitresSansReactivation()
         .toList()
       ..sort((a, b) {
         final pa = prios[a.matiere] ?? 2;

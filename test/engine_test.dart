@@ -1803,4 +1803,61 @@ Voici le résultat demandé :
         suggere(m, 240, maintenant: DateTime(2026, 8, 5, 18)).any(blocDm),
         isTrue);
   });
+
+  test('etalerReactivation est NON DESTRUCTIF : un chapitre deja programme '
+      'garde sa date et son intervalle', () {
+    final now = DateTime(2026, 8, 4);
+    // Deja dans la repetition espacee : intervalle gagne de 20 j.
+    final rode = Chapitre(
+        matiere: 'Maths',
+        nom: 'Rodé',
+        etape: 2,
+        maitrise: 3,
+        intervalleJours: 20,
+        prochaineRevision: DateTime(2026, 8, 20));
+    rode.dernierRevu = DateTime(2026, 7, 31);
+    final vierge =
+        Chapitre(matiere: 'Physique', nom: 'Vierge', etape: 1, maitrise: 2);
+    m.chapitres.addAll([rode, vierge]);
+    final n = m.etalerReactivation(maintenant: now);
+    // Seul le chapitre hors systeme est planifie.
+    expect(n, 1);
+    expect(vierge.prochaineRevision, isNotNull);
+    // Le chapitre rode n'a PAS bouge (replanifier ecrasait des semaines de
+    // progression : revisions retassees, intervalles remis a 7).
+    expect(rode.prochaineRevision, DateTime(2026, 8, 20));
+    expect(rode.intervalleJours, 20);
+  });
+
+  test('reparerEspacement : guerit une revision due avant '
+      'dernierRevu + intervalle (donnees ecrasees par l ancien etaleur)', () {
+    final casse = Chapitre(
+        matiere: 'Maths',
+        nom: 'Écrasé',
+        etape: 2,
+        intervalleJours: 7,
+        prochaineRevision: DateTime(2026, 8, 27));
+    casse.dernierRevu = DateTime(2026, 8, 26); // revu hier, du demain : KO
+    final sain = Chapitre(
+        matiere: 'Physique',
+        nom: 'Sain',
+        etape: 2,
+        intervalleJours: 10,
+        prochaineRevision: DateTime(2026, 9, 5));
+    sain.dernierRevu = DateTime(2026, 8, 26);
+    // Retard legitime : du bien APRES dernierRevu + intervalle a l'epoque —
+    // simplement jamais fait. Ne doit pas bouger.
+    final enRetard = Chapitre(
+        matiere: 'SII',
+        nom: 'En retard',
+        etape: 2,
+        intervalleJours: 5,
+        prochaineRevision: DateTime(2026, 7, 1));
+    enRetard.dernierRevu = DateTime(2026, 6, 26);
+    m.chapitres.addAll([casse, sain, enRetard]);
+    expect(m.reparerEspacement(), 1);
+    expect(casse.prochaineRevision, DateTime(2026, 9, 2)); // 26/08 + 7 j
+    expect(sain.prochaineRevision, DateTime(2026, 9, 5));
+    expect(enRetard.prochaineRevision, DateTime(2026, 7, 1));
+  });
 }
