@@ -34,43 +34,68 @@ Future<T?> feuilleAdaptative<T>(
 /// avant, le dialogue etait recopie mot pour mot.
 Future<void> montrerCleCompte(BuildContext context, String cle,
     {required String rappel}) {
+  // La fermeture EXIGE un geste : copier la cle, ou cocher « je l'ai
+  // notee ». Un simple bouton « C'est note » se tapait par reflexe et la
+  // cle partait aux oubliettes — perdre la cle = perdre le compte, c'est
+  // LE drame a eviter (le rappel J+7 n'est qu'un filet).
+  var copiee = false;
+  var noteeAilleurs = false;
   return showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (context) => AlertDialog(
-      title: const Text('Ta clé de compte 🔑'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: SelectableText(
-              cle,
-              style: const TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2),
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Ta clé de compte 🔑'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: SelectableText(
+                cle,
+                style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'NOTE-LA précieusement : c\'est elle — et elle seule — qui permet '
-            'de retrouver tes données sur un autre appareil ou après une '
-            'réinstallation. $rappel',
-            style: const TextStyle(fontSize: 13),
+            const SizedBox(height: 10),
+            Text(
+              'NOTE-LA précieusement : c’est elle — et elle seule — qui permet '
+              'de retrouver tes données sur un autre appareil ou après une '
+              'réinstallation. $rappel',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: kEsp8),
+            FilledButton.tonalIcon(
+              icon: Icon(copiee ? Icons.check : Icons.copy, size: 18),
+              label: Text(copiee ? 'Copiée ✅' : 'Copier la clé'),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: cle));
+                setState(() => copiee = true);
+              },
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text('Je l’ai notée en lieu sûr',
+                  style: TextStyle(fontSize: 13)),
+              value: noteeAilleurs,
+              onChanged: (v) => setState(() => noteeAilleurs = v ?? false),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            // Grise tant qu'aucun des deux gestes n a ete fait.
+            onPressed: copiee || noteeAilleurs
+                ? () => Navigator.pop(context)
+                : null,
+            child: const Text('C’est noté'),
           ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () async {
-            await Clipboard.setData(ClipboardData(text: cle));
-          },
-          child: const Text('Copier'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('C\'est noté'),
-        ),
-      ],
     ),
   );
 }
@@ -100,6 +125,33 @@ Future<String?> demanderCleCompte(BuildContext context) {
       ],
     ),
   );
+}
+
+/// Confirmation de suppression PARTAGEE. Chaque ecran supprimait d'un
+/// SEUL tap — corbeille adjacente au bouton d'edition, aucune annulation :
+/// l'audit a compte 14 sites ou un doigt qui glisse detruisait une saisie.
+Future<bool> confirmerSuppression(BuildContext context, String quoi) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Supprimer $quoi ?'),
+      content: const Text('Cette action est définitive.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler')),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Supprimer'),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
 }
 
 /// Feuille d'auto-evaluation en 1 tap apres une revision espacee.

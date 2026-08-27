@@ -158,7 +158,16 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
             : Color(subjectColor(bloc.matiere));
     final total = termine ? 1 : bloc.minutes * 60;
     final r = restant;
-    return Scaffold(
+    return PopScope(
+      // Quitter par la fleche retour (ou le back Android) au milieu d'un
+      // bloc : le temps reellement passe est credite comme avec le bouton
+      // « Passer » — avant, jusqu'a 24 min de travail disparaissaient.
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop && !termine && running) {
+          _finBloc(complet: false);
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(title: const Text('Minuteur')),
       body: Padding(
         padding: const EdgeInsets.all(kEsp24),
@@ -244,6 +253,7 @@ class _MinuteurScreenState extends State<MinuteurScreen> {
             ],
           ],
         ),
+      ),
       ),
     );
   }

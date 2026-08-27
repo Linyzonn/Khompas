@@ -4,6 +4,10 @@ name: Tests du serveur (Deno)
 # un serveur cassé partirait en prod sans ce garde-fou).
 on:
   push:
+    # Un changement de docs seules ne merite pas une passe de CI.
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
     paths:
       - 'server/**'
       - '.github/workflows/server-tests.yml'

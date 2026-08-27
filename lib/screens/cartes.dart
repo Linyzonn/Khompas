@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'dialogs.dart';
 import 'import_cartes.dart';
 
 /// CARTES : citations de francais et voc d'anglais, revisees facon Anki
@@ -99,9 +100,13 @@ class _CitationsScreenState extends State<CitationsScreen> {
                       },
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline, size: 18),
-                        onPressed: () {
+                        onPressed: () async {
+                          if (!await confirmerSuppression(
+                              context, 'cette citation')) {
+                            return;
+                          }
                           m.deleteCitation(c.id);
-                          setState(() {});
+                          if (mounted) setState(() {});
                         },
                       ),
                     ),
@@ -372,9 +377,13 @@ class _VocabScreenState extends State<VocabScreen> {
                       ),
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline, size: 18),
-                        onPressed: () {
+                        onPressed: () async {
+                          if (!await confirmerSuppression(
+                              context, 'ce mot de voc')) {
+                            return;
+                          }
                           m.deleteMotVocab(v.id);
-                          setState(() {});
+                          if (mounted) setState(() {});
                         },
                       ),
                     ),

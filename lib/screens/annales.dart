@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'dialogs.dart';
 
 /// TRACKER D'ANNALES : les sujets de concours a faire / faits, par matiere,
 /// avec un ressenti /5. En mode revisions concours (J-45 et moins), le plan
@@ -134,9 +135,10 @@ class _AnnalesScreenState extends State<AnnalesScreen> {
           : null,
       trailing: IconButton(
         icon: const Icon(Icons.delete_outline, size: 18),
-        onPressed: () {
+        onPressed: () async {
+          if (!await confirmerSuppression(context, 'cette annale')) return;
           m.deleteAnnale(a.id);
-          setState(() {});
+          if (mounted) setState(() {});
         },
       ),
     );

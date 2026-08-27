@@ -451,6 +451,9 @@ class _EdtScreenState extends State<EdtScreen> {
     );
     final m = AppModel.instance;
     if (action == 'suppr') {
+      if (!mounted || !await confirmerSuppression(context, 'ce créneau')) {
+        return;
+      }
       m.deleteRoutine(r.id);
     } else if (action == 'ok') {
       r

@@ -248,7 +248,13 @@ async function lireDonneesCompte(id: string): Promise<string | null> {
     const ancien = await kv.get(['accd', id, i]);
     if (ancien.value != null) {
       morceaux.push(ancien.value as Uint8Array | string);
+      continue;
     }
+    // Morceau manquant = copie INCOHERENTE (ecriture concurrente d'un vieux
+    // client, purge croisee). ECHOUER bruyamment : renvoyer un JSON tronque
+    // en silence le ferait passer pour des donnees valides — et un
+    // « Récupérer » rapatrierait un compte ampute.
+    throw new Error(`compte : morceau ${i + 1}/${chunks} manquant`);
   }
   return recollerMorceaux(morceaux);
 }
@@ -562,6 +568,43 @@ export async function gerer(
   const xff = req.headers.get('x-forwarded-for')?.split(',') ?? [];
   const ip = (info.remoteAddr as Deno.NetAddr).hostname ||
     (xff.length ? xff[xff.length - 1].trim() : '') || 'inconnu';
+
+  // ---------- SAUVEGARDE ADMINISTRATEUR ----------
+  // Deno KV est l'UNIQUE copie des comptes : un projet supprime par erreur
+  // et tous les semestres disparaissent — exactement le drame que le client
+  // combat. Ce point de sortie exporte TOUT le KV en JSONL ; il n'existe
+  // que si ADMIN_JETON est defini dans l'environnement (sinon 404, la
+  // fonctionnalite est invisible), et exige ce jeton en en-tete. Une action
+  // GitHub planifiee l'appelle chaque nuit et archive un dump CHIFFRE.
+  if (p === '/api/admin/dump' && req.method === 'GET') {
+    // Meme 404 qu'un chemin inconnu : la fonctionnalite est INVISIBLE tant
+    // que le jeton n'est pas configure, et un mauvais jeton n'apprend rien.
+    const jetonAttendu = Deno.env.get('ADMIN_JETON') ?? '';
+    if (jetonAttendu.length < 24) return erreur('Code inconnu.', 404);
+    const fourni = req.headers.get('x-admin-jeton') ?? '';
+    // Comparaison en temps constant : un jeton ne se compare jamais avec ===.
+    const a = new TextEncoder().encode(fourni);
+    const b = new TextEncoder().encode(jetonAttendu);
+    let diff = a.length === b.length ? 0 : 1;
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      diff |= a[i] ^ b[i];
+    }
+    if (diff !== 0) return erreur('Code inconnu.', 404);
+    const lignes: string[] = [];
+    for await (const e of kv.list({ prefix: [] })) {
+      // Les morceaux de comptes sont des Uint8Array : base64 pour survivre
+      // au JSON. La restauration fait le chemin inverse.
+      const v = e.value instanceof Uint8Array
+        ? { __u8: btoa(String.fromCharCode(...e.value)) }
+        : e.value;
+      lignes.push(JSON.stringify({ k: e.key, v }));
+    }
+    return new Response(lignes.join('\n'), {
+      headers: cors(
+        new Headers({ 'content-type': 'application/jsonl; charset=utf-8' }),
+      ),
+    });
+  }
 
   // Petite page de sante, pratique pour verifier que le deploiement marche.
   if (p === '' || p === '/') {
@@ -922,6 +965,15 @@ export async function gerer(
     const auth = await authOuRefus();
     if (auth instanceof Response) return auth;
     const id = auth;
+    // GLISSEMENT DU TTL DE LA CLE : ['acc', id] ne recevait son expireIn
+    // (400 j) qu'a la creation — un compte pousse tous les soirs expirait
+    // QUAND MEME a ~13 mois, et les donnees (elles, rafraichies) devenaient
+    // inaccessibles a jamais (aucune route ne recree un id impose). Chaque
+    // push fait maintenant glisser l'expiration.
+    const acc = await kv.get(['acc', id]);
+    if (acc.value != null) {
+      await kv.set(['acc', id], acc.value, { expireIn: TTL });
+    }
     // Rejeter les corps enormes AVANT de les materialiser en memoire.
     const annonce = Number(req.headers.get('content-length') ?? '0');
     if (annonce > MAX_DONNEES_COMPTE + 100_000) {
@@ -986,11 +1038,25 @@ export async function gerer(
       await kv.set(['accd', id, maj, i], morceaux[i], { expireIn: TTL });
     }
     const n = morceaux.length;
-    await kv.set(
-      ['accm', id],
-      { maj, chunks: n, exportedAt: exportedAt || maj },
-      { expireIn: TTL },
-    );
+    // Bascule ATOMIQUE de la meta, conditionnee a la version lue au debut :
+    // deux appareils pouvaient passer la garde 409 ensemble (lecture avant
+    // la premiere ecriture de l'autre), et la purge du premier supprimait
+    // les chunks du second — meta pointant vers des morceaux absents. Le
+    // perdant recoit 409 ; ses chunks orphelins partent a la purge suivante.
+    const commit = await kv.atomic()
+      .check({ key: ['accm', id], versionstamp: metaAvant.versionstamp })
+      .set(
+        ['accm', id],
+        { maj, chunks: n, exportedAt: exportedAt || maj },
+        { expireIn: TTL },
+      )
+      .commit();
+    if (!commit.ok) {
+      return erreur(
+        'Ton autre appareil a poussé au même moment — fais « Récupérer » puis réessaie.',
+        409,
+      );
+    }
     for await (const e of kv.list({ prefix: ['accd', id] })) {
       if (e.key.length === 4 && e.key[2] === maj) continue; // version courante
       await kv.delete(e.key);
@@ -1019,7 +1085,18 @@ export async function gerer(
       return erreur('Aucune donnée sur ce compte pour le moment.', 404);
     }
     const { maj } = meta.value as { maj: number };
-    const data = await lireDonneesCompte(id);
+    // Copie incoherente (morceau manquant) : message CLAIR plutot que le
+    // 500 generique — l'utilisateur sait quoi faire (re-pousser).
+    let data: string | null;
+    try {
+      data = await lireDonneesCompte(id);
+    } catch (e) {
+      console.error('lecture compte incoherente :', e);
+      return erreur(
+        'Copie serveur incomplète — refais « Envoyer » depuis un appareil à jour.',
+        500,
+      );
+    }
     return json({ version: maj, data: data ?? '' });
   }
 

@@ -1860,4 +1860,87 @@ Voici le résultat demandé :
     expect(sain.prochaineRevision, DateTime(2026, 9, 5));
     expect(enRetard.prochaineRevision, DateTime(2026, 7, 1));
   });
+
+  // ---------- Audit v0.24 : findings verifies ----------
+
+  test('semaine A/B : la parité SURVIT au changement d\u2019heure de mars', () {
+    // Reference posee un lundi d'HEURE D'HIVER. En local, 21 semaines plus
+    // tard (apres le passage a l'heure d'ete), la difference vaut
+    // 147 j - 1 h que .inDays tronquait a 146 -> parite INVERSEE pendant
+    // sept mois, pile la periode des revisions.
+    m.refSemaineA = DateTime(2025, 11, 3); // lundi, heure d'hiver
+    // Meme parite : 0 et 21 semaines plus tard (21 impaire -> semaine B).
+    expect(m.semaineEstA(DateTime(2025, 11, 3)), isTrue);
+    expect(m.semaineEstA(DateTime(2025, 11, 10)), isFalse);
+    // Lundi 30 mars 2026 : premiere semaine APRES le passage a l'heure
+    // d'ete, 21 semaines apres la reference -> B (l'ancien code disait A).
+    expect(m.semaineEstA(DateTime(2026, 3, 30)), isFalse);
+    expect(m.semaineEstA(DateTime(2026, 4, 6)), isTrue);
+    // Et en plein ete aussi.
+    expect(m.semaineEstA(DateTime(2026, 6, 22)), isFalse,
+        reason: '33 semaines apres la reference (impair) = B');
+  });
+
+  test('erreurs : successive relearning — une coche ne suffit pas, deux '
+      'succès espacés consolident', () {
+    final e = Erreur(matiere: 'Maths', texte: 'Signe oublié');
+    final now = DateTime(2026, 10, 6);
+    // Jamais refaite : a refaire.
+    expect(e.aRefaire(now), isTrue);
+    // Refaite AUJOURD'HUI : sort de la file...
+    e.refaite = true;
+    e.refaiteLe = now;
+    e.foisRefaite = 1;
+    expect(e.aRefaire(now), isFalse);
+    // ... mais REVIENT 30 j plus tard (un seul succes ne consolide pas).
+    expect(e.aRefaire(now.add(const Duration(days: 35))), isTrue);
+    // Deux succes espaces : consolidee pour de bon.
+    e.foisRefaite = 2;
+    expect(e.aRefaire(now.add(const Duration(days: 100))), isFalse);
+  });
+
+  test('erreurs : proposées aussi en modes révisions et été (elles ne '
+      'sortaient jamais hors période de khôlle)', () {
+    final now = DateTime(2027, 3, 1, 18);
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 2, maitrise: 2));
+    m.erreurs.add(Erreur(matiere: 'Maths', texte: 'Signe oublié'));
+    // Mode revisions (concours a J-50).
+    m.dateConcours = DateTime(2027, 4, 20);
+    final sRev = suggere(m, 180, maintenant: now);
+    expect(sRev.any((x) => x.titre.contains('erreur')), isTrue,
+        reason: 'revisions : le cahier d erreurs doit tourner');
+    // Mode ete.
+    m.dateConcours = null;
+    expect(
+        suggere(m, 180, maintenant: DateTime(2026, 8, 4, 18))
+            .any((x) => x.titre.contains('erreur')),
+        isTrue,
+        reason: 'ete : idem');
+  });
+
+  test('vacances : un DM urgent ne prend jamais DEUX créneaux le même soir',
+      () {
+    final now = DateTime(2026, 8, 10, 18); // vacances d'ete... mode ete ?
+    // Vacances de Toussaint plutot : plage 'vacances', mode normal.
+    m.sansCours.add(PlageSansCours(
+        titre: 'Toussaint',
+        debut: DateTime(2026, 10, 17),
+        fin: DateTime(2026, 11, 1),
+        type: 'vacances'));
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 2, maitrise: 2));
+    m.devoirs.add(Devoir(
+      id: 'dm-6h',
+      matiere: 'Maths',
+      titre: 'DM 4',
+      dateRendu: DateTime(2026, 10, 24),
+      dateDonne: DateTime(2026, 10, 15),
+      dureeEstimeeMin: 360,
+    ));
+    final s = suggere(m, 180, maintenant: DateTime(2026, 10, 20, 18));
+    expect(s.where((x) => x.devoirId == 'dm-6h').length, lessThanOrEqualTo(1),
+        reason: 'creneau dedie + etaleur vacances ne doivent pas doubler');
+    expect(now, isNotNull); // (utilise pour eviter le lint unused)
+  });
 }

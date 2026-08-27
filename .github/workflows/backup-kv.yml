@@ -1,0 +1,54 @@
+# SAUVEGARDE NOCTURNE du Deno KV : le serveur est l'unique copie des
+# comptes — ce workflow en archive chaque nuit un dump CHIFFRE (AES-256)
+# en artefact GitHub (30 jours de retention glissante).
+#
+# Prerequis (une fois, voir docs dans le resume de v0.24) :
+#   - Deno Deploy  : variable d'environnement ADMIN_JETON (>= 24 caracteres)
+#   - GitHub repo  : Settings -> Secrets -> Actions :
+#       ADMIN_JETON : la meme valeur que sur Deno Deploy
+#       BACKUP_CLE  : une phrase de chiffrement longue (a garder en lieu sur !)
+#
+# Restauration : telecharger l'artefact puis
+#   openssl enc -d -aes-256-cbc -pbkdf2 -pass "pass:<BACKUP_CLE>" \
+#     -in dump.jsonl.enc -out dump.jsonl
+# et rejouer les lignes {k, v} dans un KV (les valeurs {__u8: ...} sont des
+# Uint8Array en base64).
+name: Sauvegarde KV
+
+on:
+  schedule:
+    - cron: '17 3 * * *' # chaque nuit, 03h17 UTC (heure creuse)
+  workflow_dispatch: {} # declenchable a la main pour tester
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Export du KV (jeton admin)
+        run: |
+          if [ -z "${{ secrets.ADMIN_JETON }}" ]; then
+            echo "Secret ADMIN_JETON absent — sauvegarde non configurée." >&2
+            exit 1
+          fi
+          curl -fsS 'https://khompas.linyzonn.deno.net/api/admin/dump' \
+            -H "x-admin-jeton: ${{ secrets.ADMIN_JETON }}" \
+            -o dump.jsonl
+          wc -c dump.jsonl
+
+      - name: Chiffrement (AES-256, PBKDF2)
+        run: |
+          if [ -z "${{ secrets.BACKUP_CLE }}" ]; then
+            echo "Secret BACKUP_CLE absent — refus d'archiver en clair." >&2
+            exit 1
+          fi
+          openssl enc -aes-256-cbc -pbkdf2 \
+            -pass "pass:${{ secrets.BACKUP_CLE }}" \
+            -in dump.jsonl -out dump.jsonl.enc
+          rm dump.jsonl
+
+      - name: Archivage (30 jours glissants)
+        uses: actions/upload-artifact@v4
+        with:
+          name: kv-${{ github.run_id }}
+          path: dump.jsonl.enc
+          retention-days: 30

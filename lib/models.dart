@@ -700,6 +700,20 @@ class Erreur {
   String? chapitreId;
   DateTime date;
   bool refaite;
+  // SUCCESSIVE RELEARNING (Rawson & Dunlosky) : UNE reussite ne suffit pas
+  // a retenir une correction — une erreur « refaite » ressort en veille
+  // d'epreuve apres 30 j, jusqu'a DEUX succes espaces. Avant : cochee une
+  // fois, l'erreur sortait du circuit pour toujours et revenait... au DS.
+  DateTime? refaiteLe;
+  int foisRefaite;
+
+  /// L'erreur merite-t-elle de repasser dans le plan ?
+  bool aRefaire(DateTime maintenant) {
+    if (!refaite) return true;
+    if (foisRefaite >= 2) return false; // consolidee : 2 succes espaces
+    if (refaiteLe == null) return false;
+    return maintenant.difference(refaiteLe!).inDays > 30;
+  }
 
   Erreur({
     String? id,
@@ -710,6 +724,8 @@ class Erreur {
     this.chapitreId,
     DateTime? date,
     this.refaite = false,
+    this.refaiteLe,
+    this.foisRefaite = 0,
   })  : date = date ?? DateTime.now(),
         id = id ?? _newId();
 
@@ -722,6 +738,8 @@ class Erreur {
         'chapitreId': chapitreId,
         'date': date.toIso8601String(),
         'refaite': refaite,
+        'refaiteLe': refaiteLe?.toIso8601String(),
+        'foisRefaite': foisRefaite,
       };
 
   static Erreur fromJson(Map<String, dynamic> j) => Erreur(
@@ -733,6 +751,10 @@ class Erreur {
         chapitreId: j['chapitreId'] as String?,
         date: DateTime.parse(j['date'] as String),
         refaite: (j['refaite'] ?? false) as bool,
+        refaiteLe: j['refaiteLe'] == null
+            ? null
+            : DateTime.tryParse(j['refaiteLe'] as String),
+        foisRefaite: ((j['foisRefaite'] ?? 0) as num).toInt(),
       );
 }
 

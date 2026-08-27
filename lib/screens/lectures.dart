@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'dialogs.dart';
 import 'cartes.dart';
 
 /// ŒUVRES DE FRANÇAIS de l'année (3 livres + le thème) : suivi de lecture
@@ -117,9 +118,13 @@ class _LecturesScreenState extends State<LecturesScreen> {
                 IconButton(
                   tooltip: 'Supprimer',
                   icon: const Icon(Icons.delete_outline, size: 18),
-                  onPressed: () {
+                  onPressed: () async {
+                    if (!await confirmerSuppression(
+                        context, 'cette œuvre (et ta progression)')) {
+                      return;
+                    }
                     m.deleteOeuvre(o.id);
-                    setState(() {});
+                    if (mounted) setState(() {});
                   },
                 ),
               ],

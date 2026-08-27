@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'dialogs.dart';
 
 /// MODE ORAUX : le planning des epreuves orales par concours (les dates
 /// tombent apres l'admissibilite — tout est facultatif sauf concours +
@@ -121,12 +122,15 @@ class _OrauxScreenState extends State<OrauxScreen> {
       subtitle: Text(sous,
           style: styleMeta(context)),
       trailing: PopupMenuButton<String>(
-        onSelected: (v) {
+        onSelected: (v) async {
           if (v == 'edit') {
             _editer(o);
           } else if (v == 'delete') {
+            if (!await confirmerSuppression(context, 'cette épreuve orale')) {
+              return;
+            }
             m.deleteOral(o.id);
-            setState(() {});
+            if (mounted) setState(() {});
           }
         },
         itemBuilder: (_) => [

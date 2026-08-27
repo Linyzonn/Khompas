@@ -374,8 +374,14 @@ void main() {
             m.oeuvres.add(Oeuvre(titre: 'Oeuvre $i', auteur: 'A', pages: 320));
           }
         },
-        evenements: (m, date, j) =>
-            anneeScolaire(m, date, j, DateTime(2026, 9, 1)),
+        evenements: (m, date, j) {
+          anneeScolaire(m, date, j, DateTime(2026, 9, 1));
+          // Re-clics sur « Planifier » en cours d'ete : le geste qui a
+          // ecrase les donnees reelles (etaleur destructif, v0.23.1). Un
+          // etaleur sain doit etre IDEMPOTENT — le backlog ne doit pas
+          // sauter apres ces jours-la.
+          if (j == 10 || j == 25) m.etalerReactivation(maintenant: date);
+        },
         budgetMin: (d) =>
             d.month == 8 || d.weekday >= 6 ? 240 : 120,
         blocsFaits: (j) => 5,

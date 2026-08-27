@@ -604,6 +604,11 @@ class AppModel extends ChangeNotifier {
 
   void _programmerPush() {
     if (compteCle.isEmpty || serverUrl.isEmpty) return;
+    // Chargement local echoue = on ne sait PAS ce qu'on a en memoire :
+    // pousser ecraserait la copie serveur (le seul filet restant) avec du
+    // vide. Le push reprend apres restauration/recuperation, qui remettent
+    // chargementEchoue a false.
+    if (chargementEchoue) return;
     _pushTimer?.cancel();
     // 30 s (et non 3) : une soiree de travail declenche des dizaines de
     // modifications — grouper divise d'autant les ecritures KV, et
@@ -622,6 +627,7 @@ class AppModel extends ChangeNotifier {
   }
 
   Future<void> _pousserAuto() async {
+    if (chargementEchoue) return; // ceinture ET bretelles (cf. _programmerPush)
     try {
       // JSON COMPACT (l'indente est reserve au fichier de sauvegarde
       // humain) : ~30-40 % plus petit, ca repousse d'autant la limite de
@@ -876,6 +882,9 @@ class AppModel extends ChangeNotifier {
       throw Exception('aucune donnée sur ce compte pour le moment.');
     }
     final resume = fusionnerDonnees(data);
+    // L'etat fusionne peut contenir des revisions ecrasees par une vieille
+    // version distante : reparer AVANT de re-pousser.
+    reparerEspacement();
     await _memoriserVersion(resultat!.$1);
     syncConflit = false;
     compteEnAvance = false;
@@ -1362,6 +1371,7 @@ class AppModel extends ChangeNotifier {
           !c.start.isBefore(lundi) &&
           c.start.isBefore(fin)) {
         c.programme = texte.trim();
+        _stamp(c.id);
       }
     }
     _touch();
@@ -1396,6 +1406,7 @@ class AppModel extends ChangeNotifier {
           final texte = progs[c.matiere.toLowerCase()];
           if (texte != null && texte.trim().isNotEmpty) {
             c.programme = texte.trim();
+            _stamp(c.id);
             change = true;
           }
         }
@@ -1752,7 +1763,15 @@ class AppModel extends ChangeNotifier {
   /// Semaine A ou B ? true = A. Sans reference definie, tout est "A".
   bool semaineEstA(DateTime d) {
     if (refSemaineA == null) return true;
-    final diff = mondayOf(d).difference(mondayOf(refSemaineA!)).inDays;
+    // Difference en UTC : entre heure d'hiver et heure d'ete, 7n jours
+    // locaux font 7n x 24h - 1h, que .inDays tronque a 7n-1 — la parite
+    // A/B s'inversait donc pendant SEPT MOIS (fin mars -> fin octobre),
+    // pile la periode des revisions. En UTC, les minuits sont exacts.
+    final a = mondayOf(d);
+    final b = mondayOf(refSemaineA!);
+    final diff = DateTime.utc(a.year, a.month, a.day)
+        .difference(DateTime.utc(b.year, b.month, b.day))
+        .inDays;
     return (diff ~/ 7) % 2 == 0;
   }
 
@@ -2438,6 +2457,7 @@ class AppModel extends ChangeNotifier {
           .add(Duration(days: c.intervalleJours));
       if (c.prochaineRevision!.isBefore(plancher)) {
         c.prochaineRevision = plancher;
+        _stamp(c.id);
         n++;
       }
     }
@@ -2492,6 +2512,7 @@ class AppModel extends ChangeNotifier {
       // Repartition uniforme sur les jours disponibles.
       c.prochaineRevision =
           joursDispo[(i * joursDispo.length) ~/ aPlanifier.length];
+      _stamp(c.id);
       // Intervalle initial de 7 j (et non 1) : ces chapitres sont « deja
       // vus » — a intervalle 1, les 95 chapitres d'un programme importe
       // revenaient TOUS 2-3 jours apres leur premiere revision, et la file

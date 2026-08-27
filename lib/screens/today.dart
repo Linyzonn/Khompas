@@ -131,9 +131,21 @@ class _TodayScreenState extends State<TodayScreen> {
     if (_recapJour == aujourdHui) return;
     final sansBilan = m.creneauxSansBilan(now);
     final kholles = _khollesSansPostMortem(m, now);
-    if (sansBilan.isEmpty && kholles.isEmpty) return;
+    // Les DS du jour aussi : 4 h d'epreuve et l'app ne demandait RIEN le
+    // soir — les questions ratees n'atteignaient jamais le cahier
+    // d'erreurs (identifiables a chaud uniquement).
+    final dsJour = now.hour >= 13
+        ? m.ds
+            .where((d) =>
+                d.date.year == now.year &&
+                d.date.month == now.month &&
+                d.date.day == now.day &&
+                !m.estFait('recap-ds:${d.id}'))
+            .toList()
+        : <Ds>[];
+    if (sansBilan.isEmpty && kholles.isEmpty && dsJour.isEmpty) return;
     _recapJour = aujourdHui;
-    final total = sansBilan.length + kholles.length;
+    final total = sansBilan.length + kholles.length + dsJour.length;
     final choisi = await feuilleAdaptative<Object>(
       context,
       (context) => SafeArea(
@@ -155,6 +167,16 @@ class _TodayScreenState extends State<TodayScreen> {
                 style: styleMeta(context),
               ),
               const SizedBox(height: kEsp8),
+              for (final d in dsJour)
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.edit_note, size: 20),
+                  title: Text('${d.titre} ${d.matiere}'),
+                  subtitle: const Text('Tes questions ratées, à chaud',
+                      style: TextStyle(fontSize: 11)),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: () => Navigator.pop(context, d),
+                ),
               for (final c in kholles)
                 ListTile(
                   dense: true,
@@ -197,6 +219,7 @@ class _TodayScreenState extends State<TodayScreen> {
     if (choisi == null || !mounted) return;
     if (choisi is Routine) await _bilanSheet(choisi);
     if (choisi is Colle) await _postMortemKholle(choisi);
+    if (choisi is Ds) await _postMortemDs(choisi);
     // Il reste peut-etre d'autres moments a recap : on repropose.
     _recapJour = null;
     if (mounted) _proposerRecap();
@@ -263,11 +286,69 @@ class _TodayScreenState extends State<TodayScreen> {
               Align(
                 alignment: Alignment.centerRight,
                 child: FilledButton(
-                  onPressed: () {
-                    c.remarque = tombeCtl.text.trim();
-                    m.updateColle(c);
-                    Navigator.pop(context);
-                  },
+                  // La sauvegarde se fait AU RETOUR de la feuille (fermee
+                  // d'un glissement comprise) : ce bouton ne fait que fermer.
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Terminé'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    // MEME fermee d'un glissement vers le bas (geste standard des bottom
+    // sheets), la feuille ne perd plus le texte : « ce qui est tombe en
+    // colle annonce le DS » est une donnee trop precieuse pour dependre
+    // d'un bouton.
+    final texte = tombeCtl.text.trim();
+    if (texte != c.remarque.trim()) {
+      c.remarque = texte;
+      m.updateColle(c);
+    }
+    tombeCtl.dispose();
+  }
+
+  /// POST-MORTEM d'un DS (le soir meme) : les questions ratees sont
+  /// identifiables A CHAUD — le lendemain, elles sont deja oubliees. La
+  /// note viendra plus tard (alerte dediee au retour de copie).
+  Future<void> _postMortemDs(Ds d) async {
+    final m = AppModel.instance;
+    m.marquerFait('recap-ds:${d.id}');
+    await feuilleAdaptative<void>(
+      context,
+      (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(kEsp16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${d.titre} ${d.matiere} — qu\u2019est-ce qui t\u2019a bloqué ?',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: kEsp4),
+              Text(
+                'À chaud, tu sais exactement où tu as perdu des points. Demain, ce sera flou — 30 secondes maintenant valent une séance entière plus tard.',
+                style: styleMeta(context),
+              ),
+              const SizedBox(height: kEsp12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  ActionChip(
+                    avatar: const Icon(Icons.menu_book_outlined, size: 16),
+                    label: const Text('Noter une question ratée'),
+                    onPressed: () =>
+                        ajouterErreurDialog(context, matiere: d.matiere),
+                  ),
+                ],
+              ),
+              const SizedBox(height: kEsp12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(context),
                   child: const Text('Terminé'),
                 ),
               ),
@@ -436,6 +517,19 @@ class _TodayScreenState extends State<TodayScreen> {
         break;
       }
     }
+    // DS passe il y a 7-21 j sans note : la saisir est le SEUL declencheur
+    // du recalibrage des chapitres fragiles — sans alerte, il fallait y
+    // penser tout seul dans l'onglet Notes.
+    Ds? dsCherche;
+    for (final d in m.ds) {
+      final anciennete = now.difference(d.date).inDays;
+      if (d.note == null && !d.interro && anciennete >= 7 && anciennete <= 21) {
+        dsCherche = d;
+        break;
+      }
+    }
+    final dsSansNote = dsCherche;
+
     final vocColle = kholleAnglais == null
         ? <MotVocab>[]
         : kholleAnglais.listesVoc.isNotEmpty
@@ -576,6 +670,22 @@ class _TodayScreenState extends State<TodayScreen> {
           'Ta khôlle de ${sansProgramme.matiere} est ${frJour(sansProgramme.start)} et n\'a pas de programme — colle-le ici (5 s), il servira aussi à ton plan du soir${m.codeClasse.isEmpty ? '' : ' et à toute ta classe'}.',
           'Coller',
           () => _collerProgramme(sansProgramme!),
+        ),
+      if (dsSansNote != null)
+        _banniereAction(
+          context.tokens.attention,
+          Icons.grade_outlined,
+          'Ton ${dsSansNote.titre} de ${dsSansNote.matiere} du ${frDateCourte(dsSansNote.date)} n\u2019a pas de note — la saisir recalibre tes chapitres fragiles (c\u2019est elle qui pilote tes révisions).',
+          'Saisir',
+          () async {
+            final d = dsSansNote;
+            final n = await noteAvecRecalibrage(context,
+                matiere: d.matiere, current: d.note);
+            if (n != null) {
+              d.note = n < 0 ? null : n;
+              m.updateDs(d);
+            }
+          },
         ),
       if (kholleAnglais != null && vocColle.isNotEmpty)
         _banniereAction(

@@ -417,9 +417,13 @@ class _ChaptersScreenState extends State<ChaptersScreen> {
                     IconButton(
                       tooltip: 'Supprimer ce chapitre',
                       icon: const Icon(Icons.delete_outline, size: 20),
-                      onPressed: () {
+                      onPressed: () async {
+                        if (!await confirmerSuppression(
+                            context, 'ce chapitre (et sa progression)')) {
+                          return;
+                        }
                         m.deleteChapitre(c.id);
-                        Navigator.pop(context);
+                        if (context.mounted) Navigator.pop(context);
                       },
                     ),
                   ],

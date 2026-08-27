@@ -130,7 +130,7 @@ List<Chapitre> rappelsDus(AppModel m, {DateTime? maintenant}) {
 /// deja coche aujourd'hui, ou budget trop court.
 ///
 /// Le concours : 3 QCM de 2 h coeff 1 (maths sur le programme de PCSI,
-/// physique sur celui de MPSI, anglais — ELIMINATOIRE sous 8), puis les
+/// physique sur celui de MPSI, anglais — ELIMINATOIRE sous 10), puis les
 /// selections psychotechniques PSY 1/PSY 2. Tout se joue sur les
 /// AUTOMATISMES et l'habitude : une rotation courte et QUOTIDIENNE bat les
 /// gros blocs de veille d'epreuve — exactement la logique de la repetition
@@ -166,7 +166,7 @@ Suggestion? suggestionEplS(AppModel m, DateTime now, int reste) {
     ),
     (
       'Anglais — vocabulaire et structures',
-      'Éliminatoire sous 8 : la régularité paie',
+      'Éliminatoire sous 10 : la régularité paie',
       'Tes cartes de voc + un article à trous. Note chaque structure inconnue : le QCM d’anglais recycle toujours les mêmes pièges.',
     ),
     (
@@ -315,7 +315,10 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
       final dmJour = aEtaler[(jourIdx ~/ cadence) % aEtaler.length];
       // Creneau du jour deja coche -> il ne revient que demain.
       if (jourIdx % cadence == 0 &&
-          !m.estFait('dm:${dmJour.id}', maintenant: now)) {
+          !m.estFait('dm:${dmJour.id}', maintenant: now) &&
+          // Deja servi ce soir par le creneau DM dedie (2 quater) : un
+          // devoir de 6 h pouvait squatter DEUX blocs et evincer le reste.
+          !out.any((x) => x.devoirId == dmJour.id)) {
         final d = dmJour;
         final joursRestants = d.dateRendu.difference(now).inDays + 1;
         out.add(Suggestion(
@@ -365,7 +368,7 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     }
     for (final mat in proches) {
       final aRefaire =
-          m.erreurs.where((e) => e.matiere == mat && !e.refaite).length;
+          m.erreurs.where((e) => e.matiere == mat && e.aRefaire(now)).length;
       if (aRefaire == 0) continue;
       out.add(Suggestion(
         mat,
@@ -747,7 +750,14 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     } else {
       out.add(Suggestion(mat, quoi, raisons[mat] ?? '', mins,
           chapitreId: chapitreId,
-          devoirId: e?.genre == 'dm' ? e?.devoirId : null,
+          // Ne pas rattacher le DM s'il a DEJA son creneau ce soir
+          // (dedie ou etaleur de vacances) : deux blocs au meme devoirId
+          // se disputaient le ✓ « Rendu ? ».
+          devoirId: e != null &&
+                  e.genre == 'dm' &&
+                  !out.any((x) => x.devoirId == e.devoirId)
+              ? e.devoirId
+              : null,
           consigne: consigneCustom ?? consigneDe(mat, typeConsigne)));
     }
   }
@@ -807,6 +817,33 @@ List<Chapitre> _chapitresDuDs(AppModel m, String mat, DateTime now) {
   return l;
 }
 
+/// Bloc « Refais tes erreurs » du jour — le retrieval practice au
+/// meilleur rendement (ce sont les points REELLEMENT perdus par l'eleve).
+/// Rotation par matiere sur kAncreRotation ; null si rien a refaire, deja
+/// fait aujourd'hui, ou budget < 15 min. Les modes revisions/oraux/ete ne
+/// proposaient JAMAIS le cahier d'erreurs : 40 erreurs accumulees pendant
+/// les annales ne ressortaient qu'a la prochaine kholle... qui n'existe
+/// plus en periode de concours.
+Suggestion? suggestionErreurs(AppModel m, DateTime now, int reste) {
+  if (reste < 15) return null;
+  final aRefaire = m.erreurs.where((e) => e.aRefaire(now)).toList();
+  if (aRefaire.isEmpty) return null;
+  final matieres = aRefaire.map((e) => e.matiere).toSet().toList()..sort();
+  final aujourdHui = DateTime(now.year, now.month, now.day);
+  final mat = matieres[
+      aujourdHui.difference(kAncreRotation).inDays % matieres.length];
+  if (m.estFait(mat, maintenant: now)) return null;
+  final n = aRefaire.where((e) => e.matiere == mat).length;
+  return Suggestion(
+    mat,
+    '🧾 Refais $n erreur(s) de $mat',
+    'Cahier d’erreurs — le meilleur rendement : ce sont TES points perdus',
+    15,
+    consigne:
+        'Refais chaque exercice SANS regarder la correction. Réussi sans hésiter ? Coche « refaite ». Sinon elle reste en file — c’est normal, deux succès espacés consolident.',
+  );
+}
+
 String _nomFragile(Chapitre c) =>
     c.maitrise == 0 ? '⚠ ${c.nom} (jamais consolidé)' : c.nom;
 
@@ -825,6 +862,15 @@ List<Suggestion> _suggereRevisions(
   if (blocEplS != null) {
     out.add(blocEplS);
     reste -= blocEplS.minutes;
+  }
+
+  // Cahier d'erreurs : un bloc par jour aussi PENDANT les revisions —
+  // c'est la qu'il rapporte le plus (les annales en produisent chaque
+  // semaine, et les refaire vaut plus que d'en faire de nouvelles).
+  final blocErreursRev = suggestionErreurs(m, now, reste);
+  if (blocErreursRev != null) {
+    out.add(blocErreursRev);
+    reste -= 15;
   }
 
   // File de revisions DEBORDANTE : le format 30 min de la rotation ne
@@ -1176,6 +1222,14 @@ List<Suggestion> _suggereEte(
     reste -= blocEplS.minutes;
   }
 
+  // Cahier d'erreurs : l'ete est LE moment de solder les fautes de
+  // l'annee ecoulee (pour une 5/2, ce sont les points du concours rate).
+  final blocErreursEte = suggestionErreurs(m, now, reste);
+  if (blocErreursEte != null) {
+    out.add(blocErreursEte);
+    reste -= 15;
+  }
+
   // ---- 3. Annale en douceur : ~1 par semaine glissante, correction
   // active en priorite (c'est la qu'on apprend).
   if (m.annales.isNotEmpty && reste >= 45) {
@@ -1363,6 +1417,13 @@ List<Suggestion> _suggereOraux(AppModel m, int minutesDispo, DateTime now) {
     reste -= mins;
     i++;
   }
+  // Cahier d'erreurs : les oraux recyclent les memes pieges que l'ecrit.
+  final blocErreursOral = suggestionErreurs(m, now, reste);
+  if (blocErreursOral != null) {
+    out.add(blocErreursOral);
+    reste -= 15;
+  }
+
   // La repetition espacee ne s'arrete pas pendant les oraux : les epreuves
   // portent sur CES chapitres (simulation : file 22 -> 73 en un mois de
   // mode oraux, avec 105 min/j de budget inutilise). Le budget restant

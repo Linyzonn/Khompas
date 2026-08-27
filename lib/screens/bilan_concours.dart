@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'dialogs.dart';
 
 /// BILAN DE CONCOURS (5/2) : les notes de l'an dernier, epreuve par
 /// epreuve, avec les barres quand on les connait. L'app en tire « ou tu
@@ -177,9 +178,10 @@ class _BilanConcoursScreenState extends State<BilanConcoursScreen> {
       trailing: IconButton(
         tooltip: 'Supprimer ce résultat',
         icon: const Icon(Icons.delete_outline, size: 18),
-        onPressed: () {
+        onPressed: () async {
+          if (!await confirmerSuppression(context, 'ce résultat')) return;
           m.deleteResultatConcours(r.id);
-          setState(() {});
+          if (mounted) setState(() {});
         },
       ),
     );

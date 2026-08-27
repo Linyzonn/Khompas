@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'dialogs.dart';
 
 /// CAHIER D'ERREURS : chaque erreur notee apres une kholle / un DS / un TD,
 /// classee par type. Le but n'est pas la liste — c'est de REFAIRE chaque
@@ -98,6 +99,12 @@ class _ErreursScreenState extends State<ErreursScreen> {
         value: e.refaite,
         onChanged: (v) {
           e.refaite = v ?? false;
+          if (e.refaite) {
+            // Chaque succes espace compte : au 2e, l'erreur est consolidee
+            // et sort definitivement du circuit.
+            e.refaiteLe = DateTime.now();
+            e.foisRefaite++;
+          }
           m.updateErreur(e);
           setState(() {});
         },
@@ -119,8 +126,9 @@ class _ErreursScreenState extends State<ErreursScreen> {
             final ok = await ajouterErreurDialog(context, initial: e);
             if (ok && mounted) setState(() {});
           } else if (v == 'delete') {
+            if (!await confirmerSuppression(context, 'cette erreur')) return;
             m.deleteErreur(e.id);
-            setState(() {});
+            if (mounted) setState(() {});
           }
         },
         itemBuilder: (_) => [

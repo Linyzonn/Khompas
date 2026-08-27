@@ -597,3 +597,73 @@ Deno.test('compte : un texte ACCENTUÉ volumineux passe (octets, pas caractères
   const { data } = await rGet.json();
   if (data !== donnees) throw new Error('données accentuées corrompues au retour');
 });
+
+Deno.test('dump admin : invisible sans jeton configuré, refuse un mauvais jeton, exporte avec le bon', async () => {
+  // Sans ADMIN_JETON dans l'environnement : le chemin n'existe pas (404).
+  Deno.env.delete('ADMIN_JETON');
+  let r = await gerer(req('GET', '/api/admin/dump'), infoIp('10.9.0.1'));
+  if (r.status !== 404) throw new Error(`dump : HTTP ${r.status} au lieu de 404`);
+  await r.body?.cancel();
+
+  // Jeton trop court : toujours invisible (une valeur de test oubliée ne
+  // doit pas ouvrir la porte).
+  Deno.env.set('ADMIN_JETON', 'court');
+  r = await gerer(req('GET', '/api/admin/dump'), infoIp('10.9.0.1'));
+  if (r.status !== 404) throw new Error(`dump : HTTP ${r.status} au lieu de 404`);
+  await r.body?.cancel();
+
+  // Jeton configuré mais mauvais en-tête : même 404 générique.
+  Deno.env.set('ADMIN_JETON', 'jeton-de-test-suffisamment-long');
+  r = await gerer(
+    req('GET', '/api/admin/dump', { headers: { 'x-admin-jeton': 'faux' } }),
+    infoIp('10.9.0.1'),
+  );
+  if (r.status !== 404) throw new Error(`dump : HTTP ${r.status} au lieu de 404`);
+  await r.body?.cancel();
+
+  // Bon jeton : le dump contient les clés du KV, valeurs binaires en base64.
+  await kv.set(['test-dump', 'texte'], { a: 1 });
+  await kv.set(['test-dump', 'binaire'], new Uint8Array([72, 105]));
+  r = await gerer(
+    req('GET', '/api/admin/dump', {
+      headers: { 'x-admin-jeton': 'jeton-de-test-suffisamment-long' },
+    }),
+    infoIp('10.9.0.1'),
+  );
+  if (r.status !== 200) throw new Error(`dump : HTTP ${r.status} au lieu de 200`);
+  const corps = await r.text();
+  const lignes = corps.split('\n').map((l) => JSON.parse(l));
+  const texte = lignes.find((l) => l.k[0] === 'test-dump' && l.k[1] === 'texte');
+  const binaire = lignes.find((l) => l.k[0] === 'test-dump' && l.k[1] === 'binaire');
+  if (JSON.stringify(texte?.v) !== '{"a":1}') throw new Error('valeur texte perdue : ' + JSON.stringify(texte));
+  if (binaire?.v?.__u8 !== btoa('Hi')) throw new Error('valeur binaire perdue : ' + JSON.stringify(binaire));
+  Deno.env.delete('ADMIN_JETON');
+  await kv.delete(['test-dump', 'texte']);
+  await kv.delete(['test-dump', 'binaire']);
+});
+
+Deno.test('morceau manquant : lecture BRUYANTE (500) au lieu d\'un JSON tronqué silencieux', async () => {
+  const ip = '10.9.1.1';
+  const rC = await gerer(req('POST', '/api/comptes'), infoIp(ip));
+  const { cle } = await rC.json();
+  const rP = await gerer(
+    req('PUT', '/api/compte/data', {
+      body: '{"chapitres":[1,2,3]}',
+      headers: { 'x-khompas-cle': cle },
+    }),
+    infoIp(ip),
+  );
+  if (rP.status !== 200) throw new Error(`push : HTTP ${rP.status}`);
+  const { version } = await rP.json();
+  const id = cle.slice(0, 6);
+  // Sabotage : on supprime le premier morceau (simule une purge croisée).
+  await kv.delete(['accd', id, version, 0]);
+  const rG = await gerer(
+    req('GET', '/api/compte/data', { headers: { 'x-khompas-cle': cle } }),
+    infoIp(ip),
+  );
+  if (rG.status !== 500) {
+    throw new Error(`attendu 500 bruyant, reçu HTTP ${rG.status}`);
+  }
+  await rG.body?.cancel();
+});

@@ -190,6 +190,10 @@ class ApiKhompas {
       {bool force = false}) async {
     final deadline = DateTime.now().add(const Duration(minutes: 4));
     var premiere = true;
+    // Backoff progressif : 5 s puis 8, 12, 18, 27, plafonne a 30 s. Au pic
+    // de rentree (toute une classe importe le meme soir), des sondes fixes
+    // a 5 s multipliaient les requetes par 4 sans accelerer personne.
+    var attenteS = 5;
     while (true) {
       final query = (force && premiere) ? '?force=1' : '';
       premiere = false;
@@ -202,7 +206,8 @@ class ApiKhompas {
           throw Exception(
               "l'extraction prend trop de temps — réessaie dans une minute, le serveur continue de travailler.");
         }
-        await Future.delayed(const Duration(seconds: 5));
+        await Future.delayed(Duration(seconds: attenteS));
+        attenteS = (attenteS * 3 ~/ 2).clamp(5, 30);
         continue;
       }
       if (r.statusCode != 200) _lance(r);

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'dialogs.dart';
 import '../vacances_officielles.dart';
 
 /// Calendrier interne : roulement des semaines (A/B) et periodes SANS cours
@@ -118,9 +119,12 @@ class _CalendrierScreenState extends State<CalendrierScreen> {
                   Text('du ${frDateCourte(p.debut)} au ${frDateCourte(p.fin)}'),
               trailing: IconButton(
                 icon: const Icon(Icons.delete_outline, size: 20),
-                onPressed: () {
+                onPressed: () async {
+                  if (!await confirmerSuppression(context, 'cette plage')) {
+                    return;
+                  }
                   m.deletePlageSansCours(p.id);
-                  setState(() {});
+                  if (mounted) setState(() {});
                 },
               ),
             ),

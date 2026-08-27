@@ -469,6 +469,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 m.updateColle(c);
               }
             } else if (v == 'delete') {
+              if (!await confirmerSuppression(context, 'cette khôlle')) return;
               m.deleteColle(c.id);
             }
           },
@@ -498,6 +499,9 @@ class _AgendaScreenState extends State<AgendaScreen> {
               final edited = await editEvenementDialog(context, initial: ev);
               if (edited != null) m.updateEvenement(edited);
             } else if (v == 'delete') {
+              if (!await confirmerSuppression(context, 'cet événement')) {
+                return;
+              }
               m.deleteEvenement(ev.id);
             }
           },
@@ -562,6 +566,9 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   final edited = await editDevoirDialog(context, initial: d);
                   if (edited != null) m.updateDevoir(edited);
                 } else if (v == 'delete') {
+                  if (!await confirmerSuppression(context, 'ce devoir')) {
+                    return;
+                  }
                   m.deleteDevoir(d.id);
                 }
               },
@@ -598,6 +605,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
               m.updateDs(d);
             }
           } else if (v == 'delete') {
+            if (!await confirmerSuppression(context, 'ce DS')) return;
             m.deleteDs(d.id);
           }
         },

@@ -4,6 +4,10 @@ name: Tests Flutter (analyze + test)
 # push et chaque PR passent analyze + les ~85 tests (~2 min avec le cache).
 on:
   push:
+    # Un changement de docs seules ne merite pas une passe de CI.
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
   pull_request:
   workflow_dispatch:
 
