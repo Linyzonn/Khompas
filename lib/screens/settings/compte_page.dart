@@ -67,6 +67,39 @@ class _ComptePageState extends State<ComptePage> {
     final m = AppModel.instance;
     final cle = await demanderCleCompte(context);
     if (cle == null || cle.trim().isEmpty || !mounted) return;
+    // Se connecter a un compte REMPLACE les donnees de cet appareil (c'est
+    // un import, pas une fusion). Sur un appareil vierge c'est indolore ;
+    // sur un appareil qui contient deja un semestre de travail, c'etait une
+    // perte silencieuse en deux taps. On demande confirmation, avec le
+    // detail de ce qui est en jeu.
+    final aDesDonnees = m.colles.isNotEmpty ||
+        m.chapitres.isNotEmpty ||
+        m.ds.isNotEmpty ||
+        m.seances.isNotEmpty;
+    if (aDesDonnees) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Remplacer les données de cet appareil ?'),
+          content: Text(
+            'Cet appareil contient déjà ${m.chapitres.length} chapitre(s), '
+            '${m.colles.length} khôlle(s) et ${m.ds.length} DS.\n\n'
+            'Se connecter à un compte REMPLACE tout par le contenu de ce '
+            'compte. Si tu veux au contraire garder les deux, connecte-toi '
+            'puis utilise « Fusionner ».',
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Remplacer')),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
     try {
       final resume = await m.connecterCompte(cle);
       if (!mounted) return;

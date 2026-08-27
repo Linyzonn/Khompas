@@ -1239,11 +1239,9 @@ Voici le résultat demandé :
     m.oeuvres.add(Oeuvre(titre: 'Deuxième'));
     // Un jour multiple de 3 depuis l'ancre (cadence 1 j/3), hors vacances.
     var jour = DateTime(2026, 9, 15, 18);
-    while (DateTime(jour.year, jour.month, jour.day)
-            .difference(kAncreRotation)
-            .inDays %
-        3 !=
-        0) {
+    // MEME formule que le moteur (jourRotation, en UTC) : la recalculer
+    // a la main ici la desynchronisait du code teste.
+    while (jourRotation(jour) % 3 != 0) {
       jour = jour.add(const Duration(days: 1));
     }
     final s = suggere(m, 180, maintenant: jour);
@@ -2056,5 +2054,66 @@ Voici le résultat demandé :
     final parJour = minutesParJourSemaine(m, maintenant: now, jours: 56);
     expect(parJour[0], greaterThan(0));
     expect(parJour[2], 0, reason: 'aucun mercredi travaille');
+  });
+
+  // ---------- Findings de gravité 1 écartés par le filtre de l'audit ----------
+
+  test('rotation : l’ancre est en UTC — pas de jour rejoué au changement '
+      'd’heure', () {
+    // 29 mars 2026 = dernier jour d'heure d'hiver, 30 mars = premier jour
+    // d'heure d'ete. En heure LOCALE, la difference avec l'ancre perdait
+    // 1 h et .inDays tronquait : deux jours de suite recevaient le meme
+    // index de rotation.
+    final avant = jourRotation(DateTime(2026, 3, 29));
+    final apres = jourRotation(DateTime(2026, 3, 30));
+    expect(apres, avant + 1, reason: 'le 30 mars doit avancer d’un cran');
+    // Et le retour a l'heure d'hiver ne doit pas sauter de jour non plus.
+    expect(jourRotation(DateTime(2026, 10, 26)),
+        jourRotation(DateTime(2026, 10, 25)) + 1);
+    // Une annee entiere = 365 crans exactement.
+    expect(jourRotation(DateTime(2027, 1, 1)) - jourRotation(DateTime(2026, 1, 1)),
+        365);
+  });
+
+  test('EPL/S : le bloc ne dépasse jamais le budget du soir', () {
+    m.eplS = true;
+    m.dateEplS = DateTime(2026, 10, 20); // J-14 : le bloc veut s’allonger
+    final now = DateTime(2026, 10, 6, 19);
+    // Budget de 25 min : le bloc long (30) ne tient pas -> il reste à 20.
+    final court = suggestionEplS(m, now, 25);
+    expect(court, isNotNull);
+    expect(court!.minutes, 20, reason: 'jamais plus que le budget restant');
+    // Budget confortable : il s’allonge comme prévu.
+    expect(suggestionEplS(m, now, 60)!.minutes, 30);
+  });
+
+  test('« ce qui est tombé en khôlle » ressort avant le DS de la matière',
+      () {
+    final now = DateTime(2026, 10, 6, 18);
+    final c = Chapitre(
+        matiere: 'Maths', nom: 'Séries entières', etape: 1, maitrise: 1);
+    m.chapitres.add(c);
+    // Une khôlle passée AVEC son post-mortem.
+    m.colles.add(Colle(
+        matiere: 'Maths',
+        start: DateTime(2026, 9, 29, 16),
+        note: 14,
+        remarque: 'question de cours Cauchy-Lipschitz'));
+    // Une khôlle trop ancienne (> 5 semaines) : elle ne doit PAS ressortir.
+    m.colles.add(Colle(
+        matiere: 'Maths',
+        start: DateTime(2026, 7, 1, 16),
+        remarque: 'vieux sujet oublié'));
+    expect(tombeEnKholles(m, 'Maths', now), 'question de cours Cauchy-Lipschitz');
+    // Et un DS annoncé fait ressortir l’info dans le plan du soir.
+    m.ds.add(Ds(
+        matiere: 'Maths',
+        titre: 'DS 3',
+        date: DateTime(2026, 10, 9),
+        chapitreIds: [c.id]));
+    final maths = suggere(m, 120, maintenant: now)
+        .firstWhere((x) => x.matiere == 'Maths');
+    expect(maths.titre, contains('Tombé en khôlle'));
+    expect(maths.titre, contains('Cauchy-Lipschitz'));
   });
 }

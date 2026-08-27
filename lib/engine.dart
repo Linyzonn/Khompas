@@ -36,7 +36,20 @@ const int kSeuilModeRevisionsJours = 90;
 
 /// Ancre fixe et arbitraire pour les rotations "un jour sur N" : seul le
 /// nombre de jours ecoules modulo N compte, pas la date elle-meme.
-final DateTime kAncreRotation = DateTime(2026);
+/// Ancre en UTC : entre heure d'hiver et heure d'ete, une difference de
+/// N jours LOCAUX vaut N x 24 h - 1 h, que `.inDays` tronque a N-1 — la
+/// rotation « un jour sur N » rejouait alors le meme index deux jours de
+/// suite en mars (et en sautait un en octobre). Meme piege que la parite
+/// des semaines A/B. Toutes les differences se calculent donc en UTC via
+/// [jourRotation].
+final DateTime kAncreRotation = DateTime.utc(2026);
+
+/// Numero de jour STABLE pour les rotations (EPL/S, cadence DM, matieres
+/// du cahier d'erreurs, ordre des oraux) : insensible au changement d'heure.
+int jourRotation(DateTime jour) =>
+    DateTime.utc(jour.year, jour.month, jour.day)
+        .difference(kAncreRotation)
+        .inDays;
 
 /// Minutes reellement disponibles ce soir compte tenu de l'heure limite de
 /// sommeil. Fonction PURE (testable) : [nowMin] = minutes depuis minuit.
@@ -149,8 +162,11 @@ Suggestion? suggestionEplS(AppModel m, DateTime now, int reste) {
     if (dj < -30) return null;
     if (dj >= 0) {
       echeance = ' · écrits dans $dj j';
-      // Derniere ligne droite : les series s'allongent.
-      if (dj <= 30) minutes = 30;
+      // Derniere ligne droite : les series s'allongent — mais SEULEMENT
+      // si la soiree peut les absorber (la garde d'entree teste 20 min :
+      // sans ce `reste >= 30`, un budget de 20-29 min recevait un bloc de
+      // 30 et le plan depassait le temps demande).
+      if (dj <= 30 && reste >= 30) minutes = 30;
     }
   }
   const rotation = [
@@ -176,7 +192,7 @@ Suggestion? suggestionEplS(AppModel m, DateTime now, int reste) {
     ),
   ];
   final (titre, raison, consigne) =
-      rotation[aujourdHui.difference(kAncreRotation).inDays % 4];
+      rotation[jourRotation(aujourdHui) % 4];
   return Suggestion('EPL/S', titre, raison + echeance, minutes,
       consigne: consigne);
 }
@@ -311,7 +327,7 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
       if (cadence < 1) cadence = 1;
       if (cadence > 3) cadence = 3;
       final aujourdHui = DateTime(now.year, now.month, now.day);
-      final jourIdx = aujourdHui.difference(kAncreRotation).inDays;
+      final jourIdx = jourRotation(aujourdHui);
       final dmJour = aEtaler[(jourIdx ~/ cadence) % aEtaler.length];
       // Creneau du jour deja coche -> il ne revient que demain.
       if (jourIdx % cadence == 0 &&
@@ -390,7 +406,7 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
   final aLire = m.oeuvresNonFinies();
   if (aLire.isNotEmpty && budget >= 45) {
     final jourIdx =
-        DateTime(now.year, now.month, now.day).difference(kAncreRotation).inDays;
+        jourRotation(now);
     if (jourIdx % 3 == 0) {
       // UN livre a la fois, dans l'ORDRE choisi par l'eleve (la liste des
       // oeuvres se reordonne par glisser-deposer) — on ne papillonne pas
@@ -654,6 +670,9 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
           '${auProgramme.take(2).map((c) => c.nom).join(', ')}';
       typeConsigne = e.genre;
       if (auProgramme.length == 1) chapitreId = auProgramme.first.id;
+      // Ce qui est deja tombe en kholle annonce le DS : on le RESSORT ici.
+      final tombe = tombeEnKholles(m, mat, now);
+      if (tombe.isNotEmpty) quoi = '$quoi\n📌 Tombé en khôlle : $tombe';
     } else if (matiereLitteraire(mat)) {
       // Langues & francais : pas de chapitres a « revoir ». Le travail
       // impose (DM, programme de colle) est deja servi par les branches du
@@ -795,6 +814,23 @@ int minutesPourDevoir(Devoir d, DateTime maintenant, int reste) {
   return borne > reste ? reste : borne;
 }
 
+/// Ce qui est TOMBE dans les kholles recentes de [mat] (5 semaines) —
+/// l'app le collecte apres chaque kholle en promettant que « ce qui tombe
+/// en colle annonce souvent le DS ». Sans ce lecteur, la promesse etait
+/// vide : la donnee dormait dans Colle.remarque sans jamais ressortir.
+String tombeEnKholles(AppModel m, String mat, DateTime now) {
+  final debut = now.subtract(const Duration(days: 35));
+  final bouts = <String>[];
+  for (final c in m.colles) {
+    if (c.matiere != mat || c.start.isAfter(now) || c.start.isBefore(debut)) {
+      continue;
+    }
+    final t = c.remarque.trim();
+    if (t.isNotEmpty && !bouts.contains(t)) bouts.add(t);
+  }
+  return bouts.take(3).join(' · ');
+}
+
 /// Chapitres annonces au programme du prochain DS de [mat] (≤ 10 jours).
 /// Vide si le prof n'a rien annonce — le plan retombe alors sur son
 /// comportement habituel.
@@ -831,7 +867,7 @@ Suggestion? suggestionErreurs(AppModel m, DateTime now, int reste) {
   final matieres = aRefaire.map((e) => e.matiere).toSet().toList()..sort();
   final aujourdHui = DateTime(now.year, now.month, now.day);
   final mat = matieres[
-      aujourdHui.difference(kAncreRotation).inDays % matieres.length];
+      jourRotation(aujourdHui) % matieres.length];
   if (m.estFait(mat, maintenant: now)) return null;
   final n = aRefaire.where((e) => e.matiere == mat).length;
   return Suggestion(
@@ -1401,7 +1437,7 @@ List<Suggestion> _suggereOraux(AppModel m, int minutesDispo, DateTime now) {
   // 2. Rotation quotidienne des autres epreuves.
   final autres = aVenir.where((o) => o.id != urgent?.id).toList();
   if (autres.isEmpty) return out;
-  final depart = aujourdHui.difference(kAncreRotation).inDays % autres.length;
+  final depart = jourRotation(aujourdHui) % autres.length;
   var i = 0;
   while (reste >= 30 && i < autres.length) {
     final o = autres[(depart + i) % autres.length];
