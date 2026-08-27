@@ -9,6 +9,7 @@ import 'package:khompas/ics.dart';
 import 'package:khompas/vacances_officielles.dart';
 import 'package:khompas/methodes.dart';
 import 'package:khompas/models.dart';
+import 'package:khompas/stats.dart';
 import 'package:khompas/store.dart';
 
 /// AppModel est un singleton : chaque test repart d'un etat vierge.
@@ -1942,5 +1943,118 @@ Voici le résultat demandé :
     expect(s.where((x) => x.devoirId == 'dm-6h').length, lessThanOrEqualTo(1),
         reason: 'creneau dedie + etaleur vacances ne doivent pas doubler');
     expect(now, isNotNull); // (utilise pour eviter le lint unused)
+  });
+
+  // ---------- Tableau de bord (lib/stats.dart) ----------
+
+  test('série : jours consécutifs, tolérante au jour en cours', () {
+    final now = DateTime(2026, 10, 6, 19); // mardi
+    // Travaille les 3 jours precedents + aujourd'hui.
+    for (var d = 0; d < 4; d++) {
+      m.seances.add(Seance(
+          matiere: 'Maths',
+          date: DateTime(2026, 10, 6 - d, 20),
+          minutes: 60));
+    }
+    expect(serieEnCours(m, maintenant: now), 4);
+    // Un trou casse la serie : on ajoute un jour isole 10 j avant.
+    m.seances.add(
+        Seance(matiere: 'Maths', date: DateTime(2026, 9, 26), minutes: 60));
+    expect(serieEnCours(m, maintenant: now), 4, reason: 'le trou coupe');
+    expect(meilleureSerie(m), 4);
+    // RIEN aujourd'hui a 8 h du matin : la serie de la veille TIENT (on ne
+    // casse pas une serie avant que la soiree ait eu lieu).
+    m.seances.removeWhere((x) => x.date.day == 6);
+    expect(serieEnCours(m, maintenant: DateTime(2026, 10, 6, 8)), 3);
+    // Mais deux jours sans rien, la serie tombe.
+    expect(serieEnCours(m, maintenant: DateTime(2026, 10, 7, 20)), 0);
+  });
+
+  test('état mémoire : maîtrise, file, intervalle moyen, littéraires exclus',
+      () {
+    final now = DateTime(2026, 10, 6, 19);
+    m.chapitres.add(Chapitre(
+        matiere: 'Maths',
+        nom: 'A',
+        etape: 2,
+        maitrise: 4,
+        intervalleJours: 30,
+        prochaineRevision: DateTime(2026, 11, 1)));
+    m.chapitres.add(Chapitre(
+        matiere: 'Maths',
+        nom: 'B',
+        etape: 2,
+        maitrise: 1,
+        intervalleJours: 10,
+        prochaineRevision: DateTime(2026, 10, 2))); // en retard
+    m.chapitres.add(
+        Chapitre(matiere: 'Physique', nom: 'C', etape: 1, maitrise: 2));
+    // Un chapitre LITTERAIRE ne compte pas (rien a reviser en chapitres).
+    m.chapitres.add(
+        Chapitre(matiere: 'Anglais', nom: 'Voc', etape: 1, maitrise: 0));
+    final e = etatMemoire(m, maintenant: now);
+    expect(e.parMaitrise[4], 1);
+    expect(e.parMaitrise[1], 1);
+    expect(e.parMaitrise[2], 1);
+    expect(e.parMaitrise[0], 0, reason: 'le chapitre d anglais est exclu');
+    expect(e.programmes, 2);
+    expect(e.horsSysteme, 1, reason: 'Physique C : commence, jamais programme');
+    expect(e.dus, 1);
+    expect(e.enRetard, 1);
+    expect(e.intervalleMoyen, 20); // (30 + 10) / 2
+    expect(e.consolides, 1);
+  });
+
+  test('notes : khôlles et DS séparés, écart à la moyenne de classe', () {
+    m.colles.add(Colle(
+        matiere: 'Maths', start: DateTime(2026, 10, 1, 16), note: 14));
+    m.colles.add(Colle(
+        matiere: 'Maths', start: DateTime(2026, 10, 3, 16), note: 16));
+    m.ds.add(Ds(
+        matiere: 'Maths',
+        date: DateTime(2026, 10, 2),
+        note: 9,
+        moyenneClasse: 7)); // sous 10 mais AU-DESSUS de la classe
+    final (kh, dsM, ecart) = moyennesMatiere(m, 'Maths');
+    expect(kh, 15);
+    expect(dsM, 9);
+    expect(ecart, 2, reason: 'un 9 pour 7 de moyenne est une bonne note');
+    // Historique chronologique, kholles et DS melanges.
+    final h = historiqueNotes(m, 'Maths');
+    expect(h.map((e) => e.$2).toList(), [14, 9, 16]);
+  });
+
+  test('cahier d’erreurs : répartition par type et bilan de consolidation',
+      () {
+    final now = DateTime(2026, 10, 6);
+    m.erreurs.add(Erreur(matiere: 'Maths', texte: 'a', type: 'Calcul'));
+    m.erreurs.add(Erreur(matiere: 'Maths', texte: 'b', type: 'Calcul'));
+    m.erreurs.add(Erreur(matiere: 'Physique', texte: 'c', type: 'Cours'));
+    final consolidee = Erreur(matiere: 'Maths', texte: 'd', type: 'Calcul')
+      ..refaite = true
+      ..foisRefaite = 2
+      ..refaiteLe = now;
+    m.erreurs.add(consolidee);
+    expect(erreursPar(m, 'type').first, ('Calcul', 3));
+    final (total, cons, attente) = bilanErreurs(m, maintenant: now);
+    expect(total, 4);
+    expect(cons, 1);
+    expect(attente, 3);
+  });
+
+  test('temps : total 30 j et rythme par jour de semaine', () {
+    final now = DateTime(2026, 10, 6, 19);
+    m.seances.add(
+        Seance(matiere: 'Maths', date: DateTime(2026, 10, 5), minutes: 120));
+    m.seances.add(
+        Seance(matiere: 'Maths', date: DateTime(2026, 9, 28), minutes: 60));
+    // Hors fenetre de 30 j : ignoree.
+    m.seances.add(
+        Seance(matiere: 'Maths', date: DateTime(2026, 8, 1), minutes: 999));
+    expect(minutesTotal(m, maintenant: now, jours: 30), 180);
+    // Les deux seances tombent un LUNDI (index 0) : moyenne non nulle.
+    final parJour = minutesParJourSemaine(m, maintenant: now, jours: 56);
+    expect(parJour[0], greaterThan(0));
+    expect(parJour[2], 0, reason: 'aucun mercredi travaille');
   });
 }

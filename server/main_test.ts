@@ -2,7 +2,12 @@
 // Le module est importe SANS demarrer Deno.serve (garde import.meta.main),
 // et un KV en memoire est injecte : chaque test parle au vrai handler.
 // (--allow-read : le test d'egalite des prompts lit lib/ai_extractor.dart.)
-import { gerer, injecterKv, promptColloscope } from './main.ts';
+import {
+  gerer,
+  injecterKv,
+  promptColloscope,
+  statistiquesGlobales,
+} from './main.ts';
 
 const kv = await Deno.openKv(':memory:');
 injecterKv(kv);
@@ -667,3 +672,118 @@ Deno.test('morceau manquant : lecture BRUYANTE (500) au lieu d\'un JSON tronqué
   }
   await rG.body?.cancel();
 });
+
+Deno.test('stats produit : agrège sans jamais exposer un compte, et compte les fonctionnalités', async () => {
+  const ip = '10.9.2.1';
+  const clesCreees: string[] = [];
+  // Deux comptes au profil different.
+  for (const [i, profil] of [
+    { filiere: 'PSI', eplS: true, chapitres: 12, notes: [14, 15] },
+    { filiere: 'PSI', eplS: false, chapitres: 4, notes: [8, 9] },
+  ].entries()) {
+    const rC = await gerer(req('POST', '/api/comptes'), infoIp(`${ip}${i}`));
+    const { cle } = await rC.json();
+    clesCreees.push(cle, cle.slice(0, 6)); // cle complete ET identifiant
+    const maintenant = Date.now();
+    const jour = 86_400_000;
+    const donnees = JSON.stringify({
+      app: 'khompas',
+      exportedAt: new Date(maintenant).toISOString(),
+      filiere: profil.filiere,
+      eplS: profil.eplS,
+      cinqDemi: i === 0,
+      chapitres: Array.from({ length: profil.chapitres }, (_, k) => ({
+        id: `c${k}`,
+        matiere: 'Maths',
+        nom: `ch${k}`,
+        etape: 1,
+        maitrise: k % 4,
+        intervalleJours: 5,
+        prochaineRevision: new Date(maintenant + jour).toISOString(),
+      })),
+      // Une note recente et une ancienne : le delta devient mesurable.
+      colles: [
+        {
+          id: 'k1',
+          matiere: 'Maths',
+          start: new Date(maintenant - 5 * jour).toISOString(),
+          note: profil.notes[1],
+        },
+        {
+          id: 'k2',
+          matiere: 'Maths',
+          start: new Date(maintenant - 45 * jour).toISOString(),
+          note: profil.notes[0],
+        },
+      ],
+      seances: [
+        {
+          id: 's1',
+          matiere: 'Maths',
+          date: new Date(maintenant - jour).toISOString(),
+          minutes: 90,
+        },
+      ],
+      erreurs: [],
+      vocab: [],
+      citations: [],
+    });
+    const rP = await gerer(
+      req('PUT', '/api/compte/data', {
+        body: donnees,
+        headers: { 'x-khompas-cle': cle },
+      }),
+      infoIp(`${ip}${i}`),
+    );
+    if (rP.status !== 200) throw new Error(`push ${i} : HTTP ${rP.status}`);
+    await rP.body?.cancel();
+  }
+
+  const st = await statistiquesGlobales() as Record<string, Record<string, unknown>>;
+  if ((st.comptes.total as number) < 2) {
+    throw new Error(`comptes : ${st.comptes.total}`);
+  }
+  // Les deux comptes viennent de pousser -> actifs.
+  if ((st.comptes.actifs7j as number) < 2) throw new Error('actifs7j');
+  // Fonctionnalites : chapitres chez les deux, EPL/S chez un seul.
+  const f = st.fonctionnalites as Record<string, { comptes: number }>;
+  if (f.chapitres.comptes < 2) throw new Error('chapitres non comptés');
+  if (f.eplS.comptes < 1) throw new Error('eplS non compté');
+  // Progression mesurable : les deux ont une note recente ET une ancienne.
+  if ((st.progression.comptesMesurables as number) < 2) {
+    throw new Error('progression non mesurée');
+  }
+
+  // GARDE D'ANONYMAT : la reponse ne doit contenir NI identifiant, NI
+  // contenu. On cherche des marqueurs qui trahiraient une fuite.
+  const brut = JSON.stringify(st);
+  for (const interdit of ['ch0', 'Maths', ...clesCreees]) {
+    if (brut.includes(interdit)) {
+      throw new Error(`fuite de donnée « ${interdit} » dans les stats`);
+    }
+  }
+  // Une ventilation sous le seuil de cohorte est regroupée, pas nominative.
+  const fil = st.profils.filieres as Record<string, number>;
+  if (Object.keys(fil).includes('PSI')) {
+    throw new Error('cohorte de 2 comptes exposée : le seuil ne joue pas');
+  }
+});
+
+Deno.test('stats produit : 404 sans jeton admin (route invisible)', async () => {
+  Deno.env.delete('ADMIN_JETON');
+  const r = await gerer(req('GET', '/api/admin/stats'), infoIp('10.9.2.9'));
+  assertEquals404(r.status);
+  await r.body?.cancel();
+  Deno.env.set('ADMIN_JETON', 'jeton-de-test-suffisamment-long');
+  const r2 = await gerer(
+    req('GET', '/api/admin/stats', { headers: { 'x-admin-jeton': 'faux' } }),
+    infoIp('10.9.2.9'),
+  );
+  assertEquals404(r2.status);
+  await r2.body?.cancel();
+  Deno.env.delete('ADMIN_JETON');
+});
+
+function assertEquals404(status: number) {
+  if (status !== 404) throw new Error(`attendu 404, reçu ${status}`);
+}

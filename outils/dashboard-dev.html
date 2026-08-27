@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Khompas — tableau de bord développeur</title>
+<!--
+  TABLEAU DE BORD DÉVELOPPEUR — à ouvrir EN LOCAL (double-clic sur ce
+  fichier). Il interroge /api/admin/stats avec le jeton d'administration.
+
+  Pourquoi un fichier local et pas une page en ligne : ce jeton donne accès
+  aux statistiques et à l'export complet. Il ne doit jamais vivre sur une
+  page publique. Ici il reste dans le localStorage de TON navigateur.
+
+  Ce que le serveur renvoie : des AGRÉGATS uniquement — jamais un compte,
+  jamais un contenu. Voir statistiquesGlobales() dans server/main.ts.
+-->
+<style>
+  :root {
+    --fond: #f5f6fa; --carte: #fff; --bord: #dfe2ec; --texte: #14161e;
+    --doux: #5b5b66; --primaire: #3b54c0; --ok: #1e7a4b; --att: #9a6511;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fond: #14161e; --carte: #1c1f2a; --bord: #2c3040; --texte: #eceef5;
+      --doux: #b4b4c0; --primaire: #aab9f2; --ok: #6fd39b; --att: #e8b85c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: var(--fond); color: var(--texte);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .page { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 28px 0 10px; }
+  .doux { color: var(--doux); font-size: 13px; }
+  .barre { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 16px 0; }
+  input, button {
+    font: inherit; padding: 8px 12px; border-radius: 10px;
+    border: 1px solid var(--bord); background: var(--carte); color: var(--texte);
+  }
+  input { min-width: 280px; }
+  button { cursor: pointer; background: var(--primaire); color: #fff; border: none; }
+  button.secondaire { background: var(--carte); color: var(--texte); border: 1px solid var(--bord); }
+  .tuiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+  .tuile { background: var(--carte); border: 1px solid var(--bord); border-radius: 14px; padding: 12px; }
+  .chiffre { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .legende { color: var(--doux); font-size: 12.5px; }
+  table { width: 100%; border-collapse: collapse; background: var(--carte);
+          border: 1px solid var(--bord); border-radius: 14px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--bord); font-size: 13.5px; }
+  th { color: var(--doux); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .jauge { height: 8px; background: var(--bord); border-radius: 99px; overflow: hidden; min-width: 90px; }
+  .jauge > i { display: block; height: 100%; background: var(--primaire); }
+  .note { background: var(--carte); border: 1px solid var(--bord); border-left: 4px solid var(--primaire);
+          border-radius: 10px; padding: 12px; margin: 14px 0; font-size: 13.5px; }
+  .err { border-left-color: #c1442e; }
+  code { background: var(--fond); padding: 1px 5px; border-radius: 5px; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Khompas — tableau de bord développeur</h1>
+  <p class="doux">Statistiques agrégées du serveur. Aucune donnée nominative : le serveur ne renvoie que des totaux, des médianes et des répartitions.</p>
+
+  <div class="barre">
+    <input id="url" value="https://khompas.linyzonn.deno.net" aria-label="URL du serveur">
+    <input id="jeton" type="password" placeholder="ADMIN_JETON" aria-label="Jeton d'administration">
+    <button id="charger">Charger</button>
+    <button id="oublier" class="secondaire">Oublier le jeton</button>
+  </div>
+
+  <div id="etat"></div>
+  <div id="corps"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const CLE_STOCK = 'khompas-admin-jeton';
+const CLE_URL = 'khompas-admin-url';
+
+// Le jeton reste dans CE navigateur, jamais dans le dépôt.
+try {
+  $('jeton').value = localStorage.getItem(CLE_STOCK) || '';
+  $('url').value = localStorage.getItem(CLE_URL) || $('url').value;
+} catch (_) { /* stockage bloqué : on saisit à chaque fois */ }
+
+const n = (v) => (v ?? 0).toLocaleString('fr-FR');
+const pct = (v) => `${v ?? 0} %`;
+const octets = (o) => {
+  if (!o) return '0 o';
+  if (o < 1024) return `${o} o`;
+  if (o < 1048576) return `${(o / 1024).toFixed(1)} Ko`;
+  return `${(o / 1048576).toFixed(1)} Mo`;
+};
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+function tuile(chiffre, legende) {
+  return `<div class="tuile"><div class="chiffre">${chiffre}</div><div class="legende">${legende}</div></div>`;
+}
+
+function tableau(entetes, lignes) {
+  return `<table><thead><tr>${entetes.map((e) => `<th>${e}</th>`).join('')}</tr></thead>`
+    + `<tbody>${lignes.join('')}</tbody></table>`;
+}
+
+/// Une ligne « fonctionnalité » avec sa jauge d'adoption.
+function ligneAdoption(nom, d) {
+  return `<tr><td>${esc(nom)}</td>`
+    + `<td style="width:45%"><div class="jauge"><i style="width:${d.part}%"></i></div></td>`
+    + `<td class="n">${n(d.comptes)}</td><td class="n">${pct(d.part)}</td></tr>`;
+}
+
+const NOMS = {
+  colloscope: 'Colloscope (khôlles)', chapitres: 'Chapitres', edt: 'Emploi du temps',
+  cartes: 'Cartes (citations / voc)', erreurs: 'Cahier d’erreurs', annales: 'Annales',
+  oeuvres: 'Œuvres de français', devoirs: 'Devoirs (DM)', classe: 'Rattaché à une classe',
+  eplS: 'Mode EPL/S', modeOraux: 'Mode oraux', cinqDemi: 'Profil 5/2',
+  dateConcours: 'Date de concours', semaineAB: 'Semaines A/B', zoneVacances: 'Zone de vacances',
+  trajet: 'Temps de trajet', sommeil: 'Heure limite de sommeil',
+  pomodoro: 'Méthode pomodoro', bilanConcours: 'Bilan de concours',
+};
+
+function rendre(d) {
+  const c = d.comptes, p = d.progression, e = d.engagement, s = d.serveur;
+  const delta = (v) => v === null || v === undefined
+    ? '—'
+    : `${v > 0 ? '+' : ''}${(v / 10).toFixed(1)} pt`;
+
+  const adoption = Object.entries(d.fonctionnalites)
+    .sort((a, b) => b[1].comptes - a[1].comptes)
+    .map(([k, v]) => ligneAdoption(NOMS[k] || k, v))
+    .join('');
+
+  const filieres = Object.entries(d.profils.filieres)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n">${n(v)}</td></tr>`)
+    .join('') || '<tr><td colspan="2" class="legende">Aucune donnée</td></tr>';
+
+  const contenu = Object.keys(d.contenu.medianes)
+    .map((k) => `<tr><td>${esc(k)}</td><td class="n">${n(d.contenu.medianes[k])}</td>`
+      + `<td class="n">${n(d.contenu.totaux[k])}</td></tr>`)
+    .join('');
+
+  // Le comparatif assidus / occasionnels est LA question produit : ceux qui
+  // s'en servent progressent-ils plus ? Masqué tant que la cohorte est trop
+  // petite pour rester anonyme.
+  const comparatif = (p.deltaMedianAssidus === null && p.deltaMedianOccasionnels === null)
+    ? `<div class="note">Comparatif assidus / occasionnels indisponible : cohortes trop petites pour rester anonymes. Il apparaîtra avec plus de comptes actifs.</div>`
+    : tableau(['Cohorte', 'Évolution médiane des notes (30 j vs 30 j avant)'], [
+        `<tr><td>Assidus (≥ 16 jours actifs / 30)</td><td class="n">${delta(p.deltaMedianAssidus)}</td></tr>`,
+        `<tr><td>Occasionnels</td><td class="n">${delta(p.deltaMedianOccasionnels)}</td></tr>`,
+      ]);
+
+  $('corps').innerHTML = `
+    <h2>Comptes</h2>
+    <div class="tuiles">
+      ${tuile(n(c.total), 'comptes créés')}
+      ${tuile(n(c.actifs7j), 'actifs (7 j)')}
+      ${tuile(n(c.actifs30j), 'actifs (30 j)')}
+      ${tuile(pct(c.retention30j), 'rétention à 30 j')}
+      ${tuile(n(d.classes.total), 'classes')}
+      ${tuile(n(e.assidus), 'assidus (≥ 16 j / 30)')}
+    </div>
+    ${(c.illisibles || c.sansDonnees)
+      ? `<div class="note err">⚠ ${n(c.illisibles)} compte(s) illisible(s) · ${n(c.sansDonnees)} sans données. À surveiller : une copie serveur incohérente empêche « Récupérer ».</div>`
+      : ''}
+
+    <h2>Progression des élèves</h2>
+    <div class="tuiles">
+      ${tuile(n(p.enHausse), 'en hausse')}
+      ${tuile(n(p.stables), 'stables')}
+      ${tuile(n(p.enBaisse), 'en baisse')}
+      ${tuile(delta(p.deltaMedianDixiemes), 'évolution médiane')}
+      ${tuile(pct(p.partConsolidesMediane), 'chapitres consolidés (médiane)')}
+      ${tuile(`${n(p.intervalleMoyenMedianJours)} j`, 'intervalle de révision médian')}
+    </div>
+    <p class="doux">Mesuré sur ${n(p.comptesMesurables)} compte(s) ayant des notes sur les deux périodes. « Stable » = moins de 0,3 point d’écart.</p>
+    ${comparatif}
+
+    <h2>Adoption des fonctionnalités</h2>
+    <p class="doux">Quelles fonctionnalités servent vraiment — celles du bas coûtent de la maintenance sans usage.</p>
+    ${tableau(['Fonctionnalité', '', 'Comptes', 'Part'], [adoption])}
+
+    <h2>Engagement</h2>
+    <div class="tuiles">
+      ${tuile(`${Math.floor(e.minutes30jMediane / 60)} h`, 'travaillées / 30 j (médiane)')}
+      ${tuile(`${n(e.joursActifs30jMediane)} j`, 'jours actifs / 30 (médiane)')}
+    </div>
+
+    <h2>Filières</h2>
+    ${tableau(['Filière', 'Comptes'], [filieres])}
+
+    <h2>Contenu saisi</h2>
+    ${tableau(['Objet', 'Médiane par compte', 'Total'], [contenu])}
+
+    <h2>Serveur</h2>
+    <div class="tuiles">
+      ${tuile(n(s.requetesAujourdhui), 'requêtes aujourd’hui')}
+      ${tuile(n(s.clesKv), 'clés dans le KV')}
+      ${tuile(octets(s.octetsComptes), 'données de comptes')}
+      ${tuile(octets(s.octetsCompteMedian), 'par compte (médiane)')}
+      ${tuile(`${(s.partQuotaKvPourMille / 10).toFixed(1)} %`, 'du quota KV gratuit (1 Gio)')}
+      ${tuile(n(d.classes.programmesPartages), 'programmes de colle partagés')}
+    </div>
+
+    <div class="note">${esc(d.confidentialite)}<br>Généré le ${new Date(d.genereLe).toLocaleString('fr-FR')}.</div>
+  `;
+}
+
+async function charger() {
+  const url = $('url').value.replace(/\/+$/, '');
+  const jeton = $('jeton').value.trim();
+  if (!jeton) { $('etat').innerHTML = '<div class="note err">Renseigne le jeton d’administration.</div>'; return; }
+  $('etat').innerHTML = '<div class="note">Chargement…</div>';
+  try {
+    const r = await fetch(`${url}/api/admin/stats`, { headers: { 'x-admin-jeton': jeton } });
+    if (r.status === 404) {
+      // 404 volontaire : route invisible sans jeton valide (anti-balayage).
+      $('etat').innerHTML = '<div class="note err">404 — jeton refusé, ou <code>ADMIN_JETON</code> pas encore défini sur Deno Deploy (la route reste invisible tant qu’il manque).</div>';
+      return;
+    }
+    if (!r.ok) { $('etat').innerHTML = `<div class="note err">HTTP ${r.status}</div>`; return; }
+    const d = await r.json();
+    try {
+      localStorage.setItem(CLE_STOCK, jeton);
+      localStorage.setItem(CLE_URL, url);
+    } catch (_) { /* stockage bloqué : sans conséquence */ }
+    $('etat').innerHTML = '';
+    rendre(d);
+  } catch (err) {
+    $('etat').innerHTML = `<div class="note err">Échec réseau : ${esc(err.message)}. Serveur déployé ?</div>`;
+  }
+}
+
+$('charger').addEventListener('click', charger);
+$('jeton').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') charger(); });
+$('oublier').addEventListener('click', () => {
+  try { localStorage.removeItem(CLE_STOCK); } catch (_) { /* rien */ }
+  $('jeton').value = '';
+  $('etat').innerHTML = '<div class="note">Jeton oublié de ce navigateur.</div>';
+  $('corps').innerHTML = '';
+});
+// Jeton déjà mémorisé : on charge tout de suite.
+if ($('jeton').value) charger();
+</script>
+</body>
+</html>

@@ -4,10 +4,9 @@ name: Tests du serveur (Deno)
 # un serveur cassé partirait en prod sans ce garde-fou).
 on:
   push:
-    # Un changement de docs seules ne merite pas une passe de CI.
-    paths-ignore:
-      - '**.md'
-      - 'LICENSE'
+    # GitHub INTERDIT paths + paths-ignore sur le meme evenement (le
+    # workflow devient invalide et echoue avant de demarrer). Ici `paths`
+    # suffit : il est deja bien plus restrictif qu'une exclusion de docs.
     paths:
       - 'server/**'
       - '.github/workflows/server-tests.yml'

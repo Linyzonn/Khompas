@@ -96,7 +96,7 @@ function cors(h: Headers = new Headers()): Headers {
   h.set('access-control-allow-origin', '*');
   h.set(
     'access-control-allow-headers',
-    'content-type, x-khompas-cle, x-khompas-gestion, x-khompas-version-connue',
+    'content-type, x-khompas-cle, x-khompas-gestion, x-khompas-version-connue, x-admin-jeton',
   );
   h.set('access-control-allow-methods', 'GET,POST,PUT,DELETE,OPTIONS');
   return h;
@@ -552,6 +552,296 @@ if (import.meta.main) {
   });
 }
 
+// ============================ STATISTIQUES PRODUIT ============================
+// Tableau de bord du DEVELOPPEUR : combien de comptes, quelles
+// fonctionnalites servent vraiment, l'app fait-elle progresser.
+//
+// REGLE ABSOLUE DE CONCEPTION : ces donnees sont celles de lyceens, souvent
+// mineurs. On ne renvoie donc QUE des agregats — jamais une ligne par
+// compte, jamais un identifiant, jamais un contenu (nom de chapitre, texte
+// d'erreur, note individuelle). Et toute ventilation dont l'effectif est
+// inferieur a kCohorteMin est masquee : sur un petit parc, « 1 compte en
+// MPSI qui a 8 de moyenne » designerait quelqu'un.
+const kCohorteMin = 5;
+
+function _mediane(l: number[]): number {
+  if (l.length === 0) return 0;
+  const t = [...l].sort((a, b) => a - b);
+  const m = t.length >> 1;
+  return t.length % 2 ? t[m] : Math.round((t[m - 1] + t[m]) / 2);
+}
+
+/// Masque une ventilation trop fine pour rester anonyme.
+function _ventilation(map: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  let autres = 0;
+  for (const [k, v] of Object.entries(map)) {
+    if (v >= kCohorteMin) {
+      out[k] = v;
+    } else {
+      autres += v;
+    }
+  }
+  if (autres > 0) out['(effectifs trop faibles)'] = autres;
+  return out;
+}
+
+export async function statistiquesGlobales(): Promise<unknown> {
+  const maintenant = Date.now();
+  const jourMs = 86_400_000;
+
+  // ---- Parcours des comptes (agregation au vol, rien n'est conserve) ----
+  let comptes = 0, illisibles = 0, sansDonnees = 0;
+  let actifs7 = 0, actifs30 = 0, actifs90 = 0;
+  let octetsTotal = 0;
+  const filieres: Record<string, number> = {};
+  const octets: number[] = [];
+  const fonction: Record<string, number> = {
+    colloscope: 0, chapitres: 0, edt: 0, cartes: 0, erreurs: 0, annales: 0,
+    oeuvres: 0, devoirs: 0, classe: 0, eplS: 0, modeOraux: 0, cinqDemi: 0,
+    dateConcours: 0, semaineAB: 0, zoneVacances: 0, trajet: 0, sommeil: 0,
+    pomodoro: 0, bilanConcours: 0,
+  };
+  const nb: Record<string, number[]> = {
+    chapitres: [], colles: [], ds: [], seances: [], erreurs: [], cartes: [],
+  };
+  const minutes30: number[] = [];
+  const joursActifs30: number[] = [];
+  const partConsolides: number[] = [];
+  const intervalles: number[] = [];
+  // Progression : delta de moyenne (30 j vs 30 j precedents), par compte.
+  const deltas: number[] = [];
+  let hausse = 0, stable = 0, baisse = 0;
+  // Assidus vs occasionnels : l'app fait-elle progresser CEUX QUI S'EN
+  // SERVENT ? (la question produit la plus utile)
+  const deltasAssidus: number[] = [];
+  const deltasAutres: number[] = [];
+
+  for await (const e of kv.list({ prefix: ['acc'] })) {
+    if (e.key.length !== 2 || e.key[0] !== 'acc') continue;
+    comptes++;
+    const id = String(e.key[1]);
+    const meta = await kv.get(['accm', id]);
+    if (!meta.value) {
+      sansDonnees++;
+      continue;
+    }
+    const maj = (meta.value as { maj?: number }).maj ?? 0;
+    const age = maintenant - maj;
+    if (age < 7 * jourMs) actifs7++;
+    if (age < 30 * jourMs) actifs30++;
+    if (age < 90 * jourMs) actifs90++;
+
+    let d: Record<string, unknown>;
+    try {
+      const brut = await lireDonneesCompte(id);
+      if (!brut) {
+        sansDonnees++;
+        continue;
+      }
+      octetsTotal += brut.length;
+      octets.push(brut.length);
+      d = JSON.parse(brut) as Record<string, unknown>;
+    } catch (_) {
+      illisibles++;
+      continue;
+    }
+
+    const liste = (k: string): unknown[] =>
+      Array.isArray(d[k]) ? d[k] as unknown[] : [];
+    const filiere = typeof d.filiere === 'string' && d.filiere ? d.filiere : '?';
+    filieres[filiere] = (filieres[filiere] ?? 0) + 1;
+
+    const chapitres = liste('chapitres') as Record<string, unknown>[];
+    const colles = liste('colles') as Record<string, unknown>[];
+    const ds = liste('ds') as Record<string, unknown>[];
+    const seances = liste('seances') as Record<string, unknown>[];
+    const cartes = liste('citations').length + liste('vocab').length;
+
+    nb.chapitres.push(chapitres.length);
+    nb.colles.push(colles.length);
+    nb.ds.push(ds.length);
+    nb.seances.push(seances.length);
+    nb.erreurs.push(liste('erreurs').length);
+    nb.cartes.push(cartes);
+
+    // ---- Fonctionnalites REELLEMENT utilisees ----
+    if (colles.length > 0) fonction.colloscope++;
+    if (chapitres.length > 0) fonction.chapitres++;
+    if (liste('routines').length > 0) fonction.edt++;
+    if (cartes > 0) fonction.cartes++;
+    if (liste('erreurs').length > 0) fonction.erreurs++;
+    if (liste('annales').length > 0) fonction.annales++;
+    if (liste('oeuvres').length > 0) fonction.oeuvres++;
+    if (liste('devoirs').length > 0) fonction.devoirs++;
+    if (liste('resultatsConcours').length > 0) fonction.bilanConcours++;
+    if (typeof d.codeClasse === 'string' && d.codeClasse) fonction.classe++;
+    if (d.eplS === true) fonction.eplS++;
+    if (d.modeOraux === true) fonction.modeOraux++;
+    if (d.cinqDemi === true) fonction.cinqDemi++;
+    if (d.dateConcours) fonction.dateConcours++;
+    if (d.refSemaineA) fonction.semaineAB++;
+    if (typeof d.zoneVacances === 'string' && d.zoneVacances) {
+      fonction.zoneVacances++;
+    }
+    if (typeof d.trajetMinutes === 'number' && d.trajetMinutes > 0) {
+      fonction.trajet++;
+    }
+    if (d.heureLimiteMin != null) fonction.sommeil++;
+    if (d.methodeTravail && d.methodeTravail !== 'checklist') {
+      fonction.pomodoro++;
+    }
+
+    // ---- Engagement sur 30 jours ----
+    let min30 = 0;
+    const jours = new Set<string>();
+    for (const s of seances) {
+      const t = Date.parse(String(s.date ?? ''));
+      if (Number.isNaN(t) || maintenant - t > 30 * jourMs) continue;
+      min30 += Number(s.minutes ?? 0);
+      jours.add(new Date(t).toISOString().slice(0, 10));
+    }
+    minutes30.push(min30);
+    joursActifs30.push(jours.size);
+
+    // ---- Memorisation ----
+    if (chapitres.length > 0) {
+      const commences = chapitres.filter((c) => Number(c.etape ?? 0) > 0);
+      if (commences.length > 0) {
+        const consolides =
+          commences.filter((c) => Number(c.maitrise ?? 0) >= 3).length;
+        partConsolides.push(
+          Math.round((consolides / commences.length) * 100),
+        );
+      }
+      const programmes = chapitres.filter((c) => c.prochaineRevision);
+      if (programmes.length > 0) {
+        intervalles.push(
+          Math.round(
+            programmes.reduce(
+              (t, c) => t + Number(c.intervalleJours ?? 0),
+              0,
+            ) / programmes.length,
+          ),
+        );
+      }
+    }
+
+    // ---- PROGRESSION : moyenne des 30 derniers jours vs les 30 d'avant ----
+    const recentes: number[] = [];
+    const anciennes: number[] = [];
+    const classe = (dateStr: unknown, note: unknown) => {
+      const n = Number(note);
+      if (!Number.isFinite(n) || note == null) return;
+      const t = Date.parse(String(dateStr ?? ''));
+      if (Number.isNaN(t)) return;
+      const age = maintenant - t;
+      if (age < 30 * jourMs) recentes.push(n);
+      else if (age < 60 * jourMs) anciennes.push(n);
+    };
+    for (const c of colles) classe(c.start, c.note);
+    for (const x of ds) classe(x.date, x.note);
+    if (recentes.length > 0 && anciennes.length > 0) {
+      const moy = (l: number[]) => l.reduce((a, b) => a + b, 0) / l.length;
+      const delta = moy(recentes) - moy(anciennes);
+      // Dixiemes de point : entiers, pour ne pas trainer de flottants.
+      const d10 = Math.round(delta * 10);
+      deltas.push(d10);
+      if (d10 >= 3) hausse++;
+      else if (d10 <= -3) baisse++;
+      else stable++;
+      if (jours.size >= 16) deltasAssidus.push(d10);
+      else deltasAutres.push(d10);
+    }
+  }
+
+  // ---- Classes ----
+  let classes = 0;
+  let programmesPartages = 0;
+  for await (const e of kv.list({ prefix: ['class'] })) {
+    if (e.key.length === 2) classes++;
+  }
+  for await (const _ of kv.list({ prefix: ['prog'] })) programmesPartages++;
+
+  // ---- Serveur ----
+  const jourIso = new Date().toISOString().slice(0, 10);
+  const requetes = await kv.get(['rlg', jourIso]);
+  let clesTotal = 0;
+  for await (const _ of kv.list({ prefix: [] })) clesTotal++;
+
+  const pct = (n: number) =>
+    comptes === 0 ? 0 : Math.round((n / comptes) * 100);
+
+  return {
+    genereLe: new Date(maintenant).toISOString(),
+    confidentialite:
+      'Agrégats uniquement : aucun identifiant, aucun contenu, aucune ligne par compte. ' +
+      `Les ventilations de moins de ${kCohorteMin} comptes sont regroupées.`,
+    comptes: {
+      total: comptes,
+      actifs7j: actifs7,
+      actifs30j: actifs30,
+      actifs90j: actifs90,
+      retention30j: pct(actifs30),
+      sansDonnees,
+      illisibles,
+    },
+    profils: {
+      filieres: _ventilation(filieres),
+      cinqDemi: fonction.cinqDemi,
+      partCinqDemi: pct(fonction.cinqDemi),
+    },
+    fonctionnalites: Object.fromEntries(
+      Object.entries(fonction).map(([k, v]) => [k, { comptes: v, part: pct(v) }]),
+    ),
+    contenu: {
+      medianes: Object.fromEntries(
+        Object.entries(nb).map(([k, v]) => [k, _mediane(v)]),
+      ),
+      totaux: Object.fromEntries(
+        Object.entries(nb).map(([k, v]) => [k, v.reduce((a, b) => a + b, 0)]),
+      ),
+    },
+    engagement: {
+      minutes30jMediane: _mediane(minutes30),
+      joursActifs30jMediane: _mediane(joursActifs30),
+      // Un compte « assidu » travaille plus d'un jour sur deux.
+      assidus: minutes30.length === 0
+        ? 0
+        : joursActifs30.filter((j) => j >= 16).length,
+    },
+    progression: {
+      comptesMesurables: deltas.length,
+      enHausse: hausse,
+      stables: stable,
+      enBaisse: baisse,
+      deltaMedianDixiemes: _mediane(deltas),
+      // La question produit : ceux qui s'en servent progressent-ils PLUS ?
+      deltaMedianAssidus: deltasAssidus.length >= kCohorteMin
+        ? _mediane(deltasAssidus)
+        : null,
+      deltaMedianOccasionnels: deltasAutres.length >= kCohorteMin
+        ? _mediane(deltasAutres)
+        : null,
+      partConsolidesMediane: _mediane(partConsolides),
+      intervalleMoyenMedianJours: _mediane(intervalles),
+    },
+    classes: {
+      total: classes,
+      programmesPartages,
+      comptesRattaches: fonction.classe,
+    },
+    serveur: {
+      requetesAujourdhui: Number(requetes.value ?? 0),
+      clesKv: clesTotal,
+      octetsComptes: octetsTotal,
+      octetsCompteMedian: _mediane(octets),
+      // Le KV gratuit plafonne a 1 Gio : de quoi voir venir.
+      partQuotaKvPourMille: Math.round((octetsTotal / 1_073_741_824) * 1000),
+    },
+  };
+}
+
 export async function gerer(
   req: Request,
   info: Deno.ServeHandlerInfo,
@@ -576,20 +866,30 @@ export async function gerer(
   // que si ADMIN_JETON est defini dans l'environnement (sinon 404, la
   // fonctionnalite est invisible), et exige ce jeton en en-tete. Une action
   // GitHub planifiee l'appelle chaque nuit et archive un dump CHIFFRE.
-  if (p === '/api/admin/dump' && req.method === 'GET') {
-    // Meme 404 qu'un chemin inconnu : la fonctionnalite est INVISIBLE tant
-    // que le jeton n'est pas configure, et un mauvais jeton n'apprend rien.
-    const jetonAttendu = Deno.env.get('ADMIN_JETON') ?? '';
-    if (jetonAttendu.length < 24) return erreur('Code inconnu.', 404);
-    const fourni = req.headers.get('x-admin-jeton') ?? '';
-    // Comparaison en temps constant : un jeton ne se compare jamais avec ===.
-    const a = new TextEncoder().encode(fourni);
-    const b = new TextEncoder().encode(jetonAttendu);
+  // Garde commune aux routes d'administration : meme 404 qu'un chemin
+  // inconnu (la fonctionnalite est INVISIBLE tant que le jeton n'est pas
+  // configure, et un mauvais jeton n'apprend rien), comparaison en temps
+  // constant — un jeton ne se compare jamais avec ===.
+  const adminRefuse = (): Response | null => {
+    const attendu = Deno.env.get('ADMIN_JETON') ?? '';
+    if (attendu.length < 24) return erreur('Code inconnu.', 404);
+    const a = new TextEncoder().encode(req.headers.get('x-admin-jeton') ?? '');
+    const b = new TextEncoder().encode(attendu);
     let diff = a.length === b.length ? 0 : 1;
-    for (let i = 0; i < Math.min(a.length, b.length); i++) {
-      diff |= a[i] ^ b[i];
-    }
-    if (diff !== 0) return erreur('Code inconnu.', 404);
+    for (let i = 0; i < Math.min(a.length, b.length); i++) diff |= a[i] ^ b[i];
+    return diff === 0 ? null : erreur('Code inconnu.', 404);
+  };
+
+  // Statistiques PRODUIT (tableau de bord du developpeur) — agregats seuls.
+  if (p === '/api/admin/stats' && req.method === 'GET') {
+    const refus = adminRefuse();
+    if (refus) return refus;
+    return json(await statistiquesGlobales());
+  }
+
+  if (p === '/api/admin/dump' && req.method === 'GET') {
+    const refus = adminRefuse();
+    if (refus) return refus;
     const lignes: string[] = [];
     for await (const e of kv.list({ prefix: [] })) {
       // Les morceaux de comptes sont des Uint8Array : base64 pour survivre
