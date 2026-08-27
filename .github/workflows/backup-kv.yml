@@ -8,11 +8,13 @@
 #       ADMIN_JETON : la meme valeur que sur Deno Deploy
 #       BACKUP_CLE  : une phrase de chiffrement longue (a garder en lieu sur !)
 #
-# Restauration : telecharger l'artefact puis
+# Restauration : telecharger l'artefact, le dezipper, puis
 #   openssl enc -d -aes-256-cbc -pbkdf2 -pass "pass:<BACKUP_CLE>" \
 #     -in dump.jsonl.enc -out dump.jsonl
-# et rejouer les lignes {k, v} dans un KV (les valeurs {__u8: ...} sont des
-# Uint8Array en base64).
+#   deno run --unstable-kv --allow-read outils/restaurer-kv.ts dump.jsonl
+# (lecture seule ; ajouter --ecrire --kv <chemin> pour restaurer vraiment).
+# Le chemin COMPLET est verifie par un test — « sauvegarde : aller-retour
+# dump -> restauration » dans server/main_test.ts.
 name: Sauvegarde KV
 
 on:

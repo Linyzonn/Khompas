@@ -787,3 +787,73 @@ Deno.test('stats produit : 404 sans jeton admin (route invisible)', async () => 
 function assertEquals404(status: number) {
   if (status !== 404) throw new Error(`attendu 404, reçu ${status}`);
 }
+
+Deno.test('sauvegarde : aller-retour dump → restauration, données identiques', async () => {
+  // Une sauvegarde jamais restaurée n'est qu'une espérance : ce test
+  // parcourt TOUTE la chaîne (push → dump admin → relecture du dump →
+  // réécriture dans un KV neuf → relecture par la clé d'origine).
+  const ip = '10.9.3.1';
+  const rC = await gerer(req('POST', '/api/comptes'), infoIp(ip));
+  const { cle } = await rC.json();
+  // Accents + emoji : le piège UTF-16 qui avait cassé la production.
+  const original = JSON.stringify({
+    app: 'khompas',
+    exportedAt: new Date().toISOString(),
+    chapitres: [{ id: 'c1', matiere: 'Mathématiques', nom: 'Séries 🔁' }],
+  });
+  const rP = await gerer(
+    req('PUT', '/api/compte/data', {
+      body: original,
+      headers: { 'x-khompas-cle': cle },
+    }),
+    infoIp(ip),
+  );
+  if (rP.status !== 200) throw new Error(`push : HTTP ${rP.status}`);
+  await rP.body?.cancel();
+
+  Deno.env.set('ADMIN_JETON', 'jeton-de-test-suffisamment-long');
+  const rD = await gerer(
+    req('GET', '/api/admin/dump', {
+      headers: { 'x-admin-jeton': 'jeton-de-test-suffisamment-long' },
+    }),
+    infoIp(ip),
+  );
+  if (rD.status !== 200) throw new Error(`dump : HTTP ${rD.status}`);
+  const dump = await rD.text();
+  Deno.env.delete('ADMIN_JETON');
+
+  // Restauration dans un KV NEUF (le scénario du sinistre).
+  const kvNeuf = await Deno.openKv(':memory:');
+  for (const brut of dump.split('\n')) {
+    if (!brut.trim()) continue;
+    const l = JSON.parse(brut) as { k: Deno.KvKey; v: unknown };
+    let v = l.v;
+    // Les Uint8Array voyagent en base64 : on les rétablit.
+    if (v && typeof v === 'object' && '__u8' in (v as Record<string, unknown>)) {
+      const bin = atob(String((v as Record<string, unknown>).__u8));
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      v = u8;
+    }
+    await kvNeuf.set(l.k, v);
+  }
+
+  // Le serveur repart sur le KV restauré : la clé d'origine doit marcher.
+  injecterKv(kvNeuf);
+  try {
+    const rG = await gerer(
+      req('GET', '/api/compte/data', { headers: { 'x-khompas-cle': cle } }),
+      infoIp(ip),
+    );
+    if (rG.status !== 200) {
+      throw new Error(`relecture après restauration : HTTP ${rG.status}`);
+    }
+    const { data } = await rG.json();
+    if (data !== original) {
+      throw new Error('les données restaurées diffèrent de l’original');
+    }
+  } finally {
+    injecterKv(kv); // rendre le KV partagé aux tests suivants
+    kvNeuf.close();
+  }
+});
