@@ -2116,4 +2116,72 @@ Voici le résultat demandé :
     expect(maths.titre, contains('Tombé en khôlle'));
     expect(maths.titre, contains('Cauchy-Lipschitz'));
   });
+
+  test('Physique-Chimie : la matière fusionnée couvre ses composantes '
+      '(programme du DS, échéances)', () {
+    expect(matiereCouvre('Physique-Chimie', 'Physique'), isTrue);
+    expect(matiereCouvre('Physique-Chimie', 'Chimie'), isTrue);
+    expect(matiereCouvre('Physique/Chimie', 'chimie'), isTrue);
+    expect(matiereCouvre('Physique-Chimie', 'Maths'), isFalse);
+    expect(matiereCouvre('Physique', 'Physique-Chimie'), isFalse);
+    expect(matiereCouvre('Physique', 'Physique'), isTrue);
+
+    // Chapitres saisis dans Physique et Chimie, DS dans la matiere FUSIONNEE.
+    final now = DateTime(2026, 10, 6, 18);
+    final cPhys = Chapitre(
+        matiere: 'Physique', nom: 'Induction', etape: 1, maitrise: 1);
+    final cChim =
+        Chapitre(matiere: 'Chimie', nom: 'Cinétique', etape: 1, maitrise: 2);
+    m.chapitres.addAll([cPhys, cChim]);
+    m.ds.add(Ds(
+        matiere: 'Physique-Chimie',
+        titre: 'DS 1',
+        date: DateTime(2026, 10, 10),
+        chapitreIds: [cPhys.id, cChim.id]));
+    final s = suggere(m, 180, maintenant: now);
+    // Le bloc Physique (composante) connait le programme du DS fusionne.
+    final phys = s.where((x) => x.matiere == 'Physique').toList();
+    expect(phys, isNotEmpty, reason: 'le DS fusionné crée une échéance Physique');
+    expect(phys.first.titre, contains('Au programme du DS'));
+  });
+
+  test('DS avec heure : sérialisation aller-retour', () {
+    final d = Ds(
+        matiere: 'Physique-Chimie',
+        titre: 'DS 1',
+        date: DateTime(2026, 10, 10),
+        debutMin: 8 * 60,
+        dureeMin: 240);
+    final r = Ds.fromJson(d.toJson());
+    expect(r.debutMin, 480);
+    expect(r.dureeMin, 240);
+    // Sans heure : les valeurs par defaut restent stables.
+    final sans = Ds.fromJson(
+        Ds(matiere: 'Maths', date: DateTime(2026, 10, 10)).toJson());
+    expect(sans.debutMin, isNull);
+    expect(sans.dureeMin, 120);
+  });
+
+  test('EDT en « Physique-Chimie » : le bonus cours du jour touche Physique '
+      'et Chimie', () {
+    final now = DateTime(2026, 10, 6, 18); // mardi
+    m.chapitres.add(
+        Chapitre(matiere: 'Physique', nom: 'Induction', etape: 2, maitrise: 2));
+    m.chapitres.add(
+        Chapitre(matiere: 'Maths', nom: 'Séries', etape: 2, maitrise: 2));
+    // Cours de la matiere FUSIONNEE ce mardi a l'EDT.
+    m.routines.add(Routine(
+        titre: 'Physique-Chimie',
+        matiere: 'Physique-Chimie',
+        jour: 2,
+        debutMin: 600,
+        dureeMin: 120));
+    // Une autre routine pour que la journee ne soit pas « libre ».
+    m.routines.add(
+        Routine(titre: 'Maths', matiere: 'Maths', jour: 2, debutMin: 480, dureeMin: 60));
+    final s = suggere(m, 120, maintenant: now);
+    final phys = s.firstWhere((x) => x.matiere == 'Physique');
+    expect(phys.raison, contains('Cours d'), 
+        reason: 'le cours fusionné doit booster la composante Physique');
+  });
 }

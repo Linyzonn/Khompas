@@ -255,7 +255,14 @@ class _AgendaScreenState extends State<AgendaScreen> {
       for (final c in m.collesAvenir())
         (c.start, '🎤', 'Khôlle ${c.matiere} · ${frHeure(c.start)}', Color(subjectColor(c.matiere))),
       for (final d in m.ds)
-        if (!d.date.isBefore(aujourdHui))
+        if (!d.date.isBefore(aujourdHui) &&
+            // Epreuve du jour DEJA passee (heure saisie) : on ne la montre
+            // plus — une interro de 8h n'a rien a faire ici a 18h.
+            !(d.date.year == now.year &&
+                d.date.month == now.month &&
+                d.date.day == now.day &&
+                d.debutMin != null &&
+                now.hour * 60 + now.minute > d.debutMin! + d.dureeMin))
           (d.date, '📝', '${d.titre} ${d.matiere}', Color(subjectColor(d.matiere))),
       for (final d in m.devoirsARendre())
         if (!d.dateRendu.isBefore(aujourdHui))

@@ -391,6 +391,8 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
   var coeff = initial?.coeff ?? 1.0;
   var interro = initial?.interro ?? false;
   final chapitreIds = Set<String>.from(initial?.chapitreIds ?? const <String>[]);
+  int? debutMinDs = initial?.debutMin;
+  var dureeDs = initial?.dureeMin ?? 120;
   final moyClasseCtl = TextEditingController(
       text: initial?.moyenneClasse?.toString() ?? '');
 
@@ -461,6 +463,47 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
                 if (d != null) setState(() => date = d);
               },
             ),
+            // Heure FACULTATIVE : avec elle, le DS devient un vrai bloc
+            // dans l'emploi du temps (sans elle : pastille de journee).
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.schedule, size: 18),
+                  label: Text(debutMinDs == null
+                      ? 'Heure (facultatif)'
+                      : '${debutMinDs! ~/ 60}h${(debutMinDs! % 60) == 0 ? '' : (debutMinDs! % 60).toString().padLeft(2, '0')} · ${dureeDs ~/ 60}h${(dureeDs % 60) == 0 ? '' : '30'}'),
+                  onPressed: () async {
+                    final t = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay(
+                          hour: (debutMinDs ?? 480) ~/ 60,
+                          minute: (debutMinDs ?? 0) % 60),
+                    );
+                    if (t != null) {
+                      setState(() => debutMinDs = t.hour * 60 + t.minute);
+                    }
+                  },
+                ),
+                if (debutMinDs != null) ...[
+                  const SizedBox(width: kEsp8),
+                  DropdownButton<int>(
+                    value: dureeDs,
+                    items: [
+                      for (final mn in const [60, 120, 180, 240])
+                        DropdownMenuItem(
+                            value: mn, child: Text('${mn ~/ 60} h')),
+                    ],
+                    onChanged: (v) => setState(() => dureeDs = v ?? 120),
+                  ),
+                  IconButton(
+                    tooltip: 'Sans heure',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.close, size: 16),
+                    onPressed: () => setState(() => debutMinDs = null),
+                  ),
+                ],
+              ],
+            ),
             const SizedBox(height: kEsp12),
             Row(
               children: [
@@ -490,9 +533,14 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
                     fontSize: 13, color: couleurSecondaire(context))),
             const SizedBox(height: kEsp4),
             Builder(builder: (context) {
+              // matiereCouvre : un DS de « Physique-Chimie » propose les
+              // chapitres de Physique ET de Chimie (le cas des profs qui
+              // regroupent — avant, la liste restait vide).
+              final matiereDs = normaliseMatiere(matiereCtl.text);
               final duSujet = m.chapitres
-                  .where(
-                      (c) => c.matiere == normaliseMatiere(matiereCtl.text))
+                  .where((c) =>
+                      c.matiere == matiereDs ||
+                      matiereCouvre(matiereDs, c.matiere))
                   .toList();
               if (duSujet.isEmpty) {
                 return Text(
@@ -547,10 +595,14 @@ Future<Ds?> editDsDialog(BuildContext context, {Ds? initial}) async {
                 ..date = DateTime(date.year, date.month, date.day)
                 ..coeff = coeff
                 ..interro = interro
+                ..debutMin = debutMinDs
+                ..dureeMin = dureeDs
                 ..chapitreIds = chapitreIds
                     .where((id) => m.chapitres.any((c) =>
                         c.id == id &&
-                        c.matiere == normaliseMatiere(matiereCtl.text)))
+                        (c.matiere == normaliseMatiere(matiereCtl.text) ||
+                            matiereCouvre(
+                                normaliseMatiere(matiereCtl.text), c.matiere))))
                     .toList()
                 ..moyenneClasse =
                     (moyClasse != null && moyClasse > 0 && moyClasse <= 20)
@@ -877,8 +929,12 @@ Future<double?> noteAvecRecalibrage(BuildContext context,
   if (!context.mounted) return note;
 
   final m = AppModel.instance;
+  // Une mauvaise note en « Physique-Chimie » recalibre les chapitres de
+  // Physique ET de Chimie.
   final chs = m.chapitres
-      .where((c) => c.matiere == matiere && c.etape > 0)
+      .where((c) =>
+          (c.matiere == matiere || matiereCouvre(matiere, c.matiere)) &&
+          c.etape > 0)
       .toList();
   if (chs.isEmpty) return note;
 

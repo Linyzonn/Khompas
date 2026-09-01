@@ -377,9 +377,13 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
       if (c.start.isBefore(limite)) proches.add(c.matiere);
     }
     for (final d in m.ds) {
+      // (les composantes d'un DS fusionne heritent de l'urgence)
       // A VENIR uniquement : un DS d'hier n'est plus une epreuve imminente.
       if (!d.date.isBefore(aujourdHui) && d.date.isBefore(limite)) {
         proches.add(d.matiere);
+        for (final mat2 in m.matieres) {
+          if (matiereCouvre(d.matiere, mat2)) proches.add(mat2);
+        }
       }
     }
     for (final mat in proches) {
@@ -448,12 +452,21 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
   final minuit = DateTime(now.year, now.month, now.day);
   for (final d in m.ds) {
     if (d.date.isBefore(minuit) || d.date.isAfter(horizon)) continue;
-    final e = echeances[d.matiere];
+    // Un DS de « Physique-Chimie » est une echeance pour Physique ET pour
+    // Chimie : sans ce lien, les deux matieres ignoraient l'epreuve.
+    final cibles = <String>{
+      d.matiere,
+      for (final mat2 in m.matieres)
+        if (matiereCouvre(d.matiere, mat2)) mat2,
+    };
+    for (final cible in cibles) {
+    final e = echeances[cible];
     if (e == null || d.date.isBefore(e.date)) {
       // Une interro de cours a sa propre consigne (relire le COURS, pas
       // enchainer les exos durs) — le genre la vehicule jusqu'a consigneDe.
-      echeances[d.matiere] =
+      echeances[cible] =
           _Echeance(d.date, '${d.titre} ', '', d.interro ? 'interro' : 'ds');
+    }
     }
   }
   for (final d in m.devoirsARendre()) {
@@ -565,11 +578,16 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     }
 
     // Bonus "cours du jour / du lendemain".
+    // matiereCouvre : un cours de « Physique-Chimie » a l'EDT compte
+    // comme un cours de Physique ET de Chimie pour le bonus.
+    bool aCours(Set<String> cours) =>
+        cours.contains(mat.toLowerCase()) ||
+        cours.any((c) => matiereCouvre(c, mat));
     var bonusCours = 1.0;
-    if (coursAujourdhui.contains(mat.toLowerCase())) {
+    if (aCours(coursAujourdhui)) {
       bonusCours = 1.5;
       if (e == null) raison = "Cours d'aujourd'hui — à revoir ce soir";
-    } else if (coursDemain.contains(mat.toLowerCase())) {
+    } else if (aCours(coursDemain)) {
       bonusCours = 1.2;
       if (e == null) raison = 'Cours demain — prends de l\'avance';
     }
@@ -838,7 +856,12 @@ List<Chapitre> _chapitresDuDs(AppModel m, String mat, DateTime now) {
   final aujourdHui = DateTime(now.year, now.month, now.day);
   Ds? prochain;
   for (final d in m.ds) {
-    if (d.matiere != mat || d.chapitreIds.isEmpty) continue;
+    // matiereCouvre : un DS de « Physique-Chimie » alimente aussi les
+    // blocs Physique et Chimie du plan du soir.
+    if ((d.matiere != mat && !matiereCouvre(d.matiere, mat)) ||
+        d.chapitreIds.isEmpty) {
+      continue;
+    }
     final jour = DateTime(d.date.year, d.date.month, d.date.day);
     if (jour.isBefore(aujourdHui)) continue;
     if (jour.difference(aujourdHui).inDays > 10) continue;

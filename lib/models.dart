@@ -56,14 +56,14 @@ String? repareJsonTronque(String raw) {
 
 /// Couleur stable par matiere (palette fixe, choisie par hachage du nom).
 const List<int> kSubjectPalette = [
-  0xFF6B5CEB, // violet
-  0xFFEB5C9E, // rose
-  0xFF2680F2, // bleu
-  0xFF12A66F, // vert
-  0xFFF2762E, // orange
-  0xFFE23A55, // rouge
-  0xFF8A6FBF, // lavande
-  0xFF0FA3B1, // sarcelle
+  0xFF5B54A8, // indigo
+  0xFF7D4A78, // prune
+  0xFF3A6EA5, // bleu acier
+  0xFF2E7D5B, // vert sapin
+  0xFFA85B32, // terracotta
+  0xFF9E4352, // bordeaux
+  0xFF2F7E9E, // cyan profond
+  0xFF5F6C80, // ardoise
 ];
 
 /// Hachage maison deterministe (djb2) : String.hashCode n'est pas garanti
@@ -76,23 +76,49 @@ int _djb2(String s) {
   return h;
 }
 
+/// Une epreuve de [matiereEpreuve] porte-t-elle sur [matiere] ?
+/// Vrai si les noms coincident, ou si l'epreuve est COMPOSEE
+/// (« Physique-Chimie », « Physique/Chimie ») et que [matiere] en est un
+/// composant — le cas des profs qui regroupent deux matieres en un DS :
+/// sans ce lien, le selecteur de chapitres du DS restait vide (chapitres
+/// saisis dans Physique et dans Chimie, jamais dans la matiere fusionnee).
+bool matiereCouvre(String matiereEpreuve, String matiere) {
+  final e = matiereEpreuve.trim().toLowerCase();
+  final m = matiere.trim().toLowerCase();
+  if (e.isEmpty || m.isEmpty) return false;
+  if (e == m) return true;
+  final composants = e
+      .split(RegExp(r'[\s\-/+&]+'))
+      .where((p) => p.isNotEmpty && p != 'et')
+      .toList();
+  return composants.length > 1 && composants.contains(m);
+}
+
 int subjectColor(String matiere) {
   final m = matiere.trim().toLowerCase();
   // Couleurs "canon" pour les matieres classiques de prepa.
+  // Teintes DESATUREES et profondes : lisibles en pleine surface (blocs
+  // d'emploi du temps, texte blanc dessus) comme en pastille sur fond
+  // clair ou sombre. Les couleurs vives d'origine (violet electrique,
+  // orange fluo) hurlaient des qu'un ecran en montrait plusieurs.
   const fixed = {
-    'maths': 0xFF6B5CEB,
-    'mathématiques': 0xFF6B5CEB,
-    'physique': 0xFF2680F2,
-    'chimie': 0xFF12A66F,
-    'physique-chimie': 0xFF2680F2,
-    'sii': 0xFFF2762E,
-    'si': 0xFFF2762E,
-    'anglais': 0xFFE23A55,
-    'lv1': 0xFFE23A55,
-    'français': 0xFFEB5C9E,
-    'francais': 0xFFEB5C9E,
-    'info': 0xFF0FA3B1,
-    'informatique': 0xFF0FA3B1,
+    'maths': 0xFF5B54A8,
+    'mathématiques': 0xFF5B54A8,
+    'physique': 0xFF3A6EA5,
+    'chimie': 0xFF2E7D5B,
+    // Matiere FUSIONNEE par certains profs : sa propre teinte, entre les
+    // deux composantes.
+    'physique-chimie': 0xFF2E6E7E,
+    'sii': 0xFFA85B32,
+    'si': 0xFFA85B32,
+    'anglais': 0xFF9E4352,
+    'lv1': 0xFF9E4352,
+    'français': 0xFF7D4A78,
+    'francais': 0xFF7D4A78,
+    'philosophie': 0xFF6E5A46,
+    'philo': 0xFF6E5A46,
+    'info': 0xFF2F7E9E,
+    'informatique': 0xFF2F7E9E,
   };
   if (fixed.containsKey(m)) return fixed[m]!;
   return kSubjectPalette[_djb2(m) % kSubjectPalette.length];
@@ -185,6 +211,12 @@ class Ds {
   /// soir les fait remonter avant l'epreuve, au lieu de proposer la matiere
   /// en general.
   List<String> chapitreIds;
+  /// Heure de debut (minutes depuis minuit), FACULTATIVE. Avec elle, le DS
+  /// devient un vrai bloc dans les grilles de la semaine — sans elle, une
+  /// pastille « toute la journee ». Permet aussi de masquer l'epreuve des
+  /// echeances une fois passee.
+  int? debutMin;
+  int dureeMin;
 
   Ds({
     String? id,
@@ -196,6 +228,8 @@ class Ds {
     this.moyenneClasse,
     this.interro = false,
     List<String>? chapitreIds,
+    this.debutMin,
+    this.dureeMin = 120,
   })  : chapitreIds = chapitreIds ?? [],
         id = id ?? _newId();
 
@@ -209,6 +243,8 @@ class Ds {
         'moyenneClasse': moyenneClasse,
         'interro': interro,
         'chapitreIds': chapitreIds,
+        'debutMin': debutMin,
+        'dureeMin': dureeMin,
       };
 
   static Ds fromJson(Map<String, dynamic> j) => Ds(
@@ -223,6 +259,8 @@ class Ds {
         chapitreIds: ((j['chapitreIds'] ?? []) as List)
             .map((e) => e.toString())
             .toList(),
+        debutMin: j['debutMin'] == null ? null : (j['debutMin'] as num).toInt(),
+        dureeMin: ((j['dureeMin'] ?? 120) as num).toInt(),
       );
 }
 

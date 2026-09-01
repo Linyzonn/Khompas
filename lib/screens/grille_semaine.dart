@@ -95,8 +95,22 @@ class _GrilleSemaineState extends State<GrilleSemaine> {
         if (ds.date.year == d.year &&
             ds.date.month == d.month &&
             ds.date.day == d.day) {
-          jour.add(
-              ('📝 ${ds.titre} ${ds.matiere}', Color(subjectColor(ds.matiere))));
+          // Avec une heure saisie, le DS est un VRAI bloc de la grille
+          // (comme une kholle) — sans heure, pastille de journee.
+          if (ds.debutMin != null) {
+            blocs.add(_Bloc(
+              ds.debutMin!,
+              ds.dureeMin,
+              '📝 ${ds.titre} ${ds.matiere}',
+              Color(subjectColor(ds.matiere)),
+              true,
+            ));
+          } else {
+            jour.add((
+              '📝 ${ds.titre} ${ds.matiere}',
+              Color(subjectColor(ds.matiere))
+            ));
+          }
         }
       }
       for (final dev in m.devoirsARendre()) {

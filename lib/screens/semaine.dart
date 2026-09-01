@@ -100,8 +100,13 @@ class VueSemaineColonnes extends StatelessWidget {
       if (ds.date.year == d.year &&
           ds.date.month == d.month &&
           ds.date.day == d.day) {
-        items.add(
-            (0, '📝 ${ds.titre} ${ds.matiere}', Color(subjectColor(ds.matiere)), true));
+        // L'heure saisie place le DS au bon endroit de la journee.
+        items.add((
+          ds.debutMin ?? 0,
+          '📝${ds.debutMin == null ? '' : ' ${ds.debutMin! ~/ 60}h'} ${ds.titre} ${ds.matiere}',
+          Color(subjectColor(ds.matiere)),
+          true
+        ));
       }
     }
     for (final dev in m.devoirsARendre()) {

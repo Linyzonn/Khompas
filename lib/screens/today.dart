@@ -1944,7 +1944,12 @@ class _TodayScreenState extends State<TodayScreen> {
 
   Future<void> _choisirChapitre(Routine r) async {
     final m = AppModel.instance;
-    final chapitres = m.chapitres.where((c) => c.matiere == r.matiere).toList();
+    // Un cours de « Physique-Chimie » a pu voir un chapitre de Physique
+    // OU de Chimie : sans matiereCouvre, la liste restait vide.
+    final chapitres = m.chapitres
+        .where((c) =>
+            c.matiere == r.matiere || matiereCouvre(r.matiere, c.matiere))
+        .toList();
     await feuilleAdaptative<void>(
       context,
       (context) => SafeArea(

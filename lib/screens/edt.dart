@@ -19,7 +19,7 @@ class EdtScreen extends StatefulWidget {
 
 class _EdtScreenState extends State<EdtScreen> {
   static const _jours = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-  static const _hDebut = 7; // 7h
+  static const _hDebut = 6; // 6h — trajets matinaux compris
   static const _hFin = 24; // minuit (les journees de prepa finissent tard)
   static const _cellH = 34.0;
 
@@ -120,16 +120,22 @@ class _EdtScreenState extends State<EdtScreen> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Colonne des heures
+                        // Colonne des heures : chaque label est centre
+                        // SUR sa ligne (et non enferme dans sa cellule, ou
+                        // le premier et le dernier se faisaient rogner).
+                        // La grille des jours est decalee de 8 px pour
+                        // laisser respirer le label du haut.
                         SizedBox(
                           width: 34,
-                          height: gridH,
-                          child: Column(
+                          height: gridH + 16,
+                          child: Stack(
+                            clipBehavior: Clip.none,
                             children: [
-                              for (var h = _hDebut; h < _hFin; h++)
-                                SizedBox(
-                                  height: _cellH,
-                                  child: Text('${h}h',
+                              for (var h = _hDebut; h <= _hFin; h++)
+                                Positioned(
+                                  top: 8.0 + (h - _hDebut) * _cellH - 7,
+                                  right: 6,
+                                  child: Text(h == 24 ? '0h' : '${h}h',
                                       style: TextStyle(
                                           fontSize: 10,
                                           color: couleurSecondaire(context))),
@@ -138,7 +144,9 @@ class _EdtScreenState extends State<EdtScreen> {
                           ),
                         ),
                         for (var jour = 1; jour <= 6; jour++)
-                          SizedBox(
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: SizedBox(
                             width: colW,
                             height: gridH,
                             child: Stack(
@@ -171,6 +179,7 @@ class _EdtScreenState extends State<EdtScreen> {
                               ],
                             ),
                           ),
+                          ),
                       ],
                     ),
                     const SizedBox(height: kEsp24),
@@ -200,10 +209,12 @@ class _EdtScreenState extends State<EdtScreen> {
       child: InkWell(
         onTap: () => _editer(r),
         child: Container(
-          padding: const EdgeInsets.all(2),
+          // Coins DOUX (8) et non kRayonJauge (999) : le rayon des jauges
+          // transformait les blocs en bulles dont le texte debordait.
+          padding: const EdgeInsets.fromLTRB(6, 3, 5, 3),
           decoration: BoxDecoration(
-            color: couleur.withValues(alpha: 0.85),
-            borderRadius: BorderRadius.circular(kRayonJauge),
+            color: couleur,
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Text(
             '${r.titre}${r.semaines == 1 ? ' (A)' : r.semaines == 2 ? ' (B)' : ''}',
@@ -211,7 +222,8 @@ class _EdtScreenState extends State<EdtScreen> {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
                 color: Colors.white,
-                fontSize: 9.5,
+                fontSize: 10,
+                height: 1.2,
                 fontWeight: FontWeight.w600),
           ),
         ),
