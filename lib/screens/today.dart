@@ -83,6 +83,9 @@ class _TodayScreenState extends State<TodayScreen> {
   // bloc, rien ne le remplace. « Refaire le plan » regenere a la demande.
   List<Suggestion>? _planFige;
   String _planCle = '';
+  // Taille du plan au moment du calcul : vide APRES des ✓ = « plan
+  // boucle » (proposer la suite), vide DES le calcul = rien a proposer.
+  int _planTaille = 0;
 
   List<Suggestion> _planDuSoir(AppModel m, int budget, DateTime now) {
     final cle = '${now.year}-${now.month}-${now.day}|$budget|'
@@ -91,6 +94,7 @@ class _TodayScreenState extends State<TodayScreen> {
     if (_planFige == null || cle != _planCle) {
       _planFige = budget < 15 ? <Suggestion>[] : suggere(m, budget);
       _planCle = cle;
+      _planTaille = _planFige!.length;
     }
     return _planFige!;
   }
@@ -1685,9 +1689,30 @@ class _TodayScreenState extends State<TodayScreen> {
                       color: scheme.primary),
                 ),
               ),
-            if (suggestions.isEmpty && !plafonne)
+            if (suggestions.isEmpty && !plafonne && _planTaille > 0)
+              // Plan fige vide APRES des ✓ : tout ce qui etait prevu est
+              // fait. Avant, on retombait sur « Importe ton colloscope »
+              // sans aucun bouton — l'eleve avec du temps devant lui etait
+              // bloque (« quand j'ai coche y'avait rien apres »).
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Plan du soir bouclé — tout ce qui était prévu est fait.',
+                    style: TextStyle(color: couleurSecondaire(context)),
+                  ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.more_time, size: 16),
+                    label: const Text('Il me reste du temps — la suite ?'),
+                    onPressed: () => setState(() => _planFige = null),
+                  ),
+                ],
+              )
+            else if (suggestions.isEmpty && !plafonne)
               Text(
-                'Importe ton colloscope et ajoute quelques chapitres : je te proposerai un plan pour chaque soirée.',
+                m.chapitres.isEmpty && m.colles.isEmpty && m.devoirs.isEmpty
+                    ? 'Importe ton colloscope et ajoute quelques chapitres : je te proposerai un plan pour chaque soirée.'
+                    : 'Rien d’autre à proposer ce soir pour ce budget : repos mérité (ou augmente le budget).',
                 style: TextStyle(color: couleurSecondaire(context)),
               )
             else if (m.methodeTravail == 'checklist')

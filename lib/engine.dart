@@ -353,7 +353,8 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
           !m.estFait('dm:${dmJour.id}', maintenant: now) &&
           // Deja servi ce soir par le creneau DM dedie (2 quater) : un
           // devoir de 6 h pouvait squatter DEUX blocs et evincer le reste.
-          !out.any((x) => x.devoirId == dmJour.id)) {
+          // (une simple lecture de l'enonce ne compte pas comme creneau)
+          !out.any((x) => !x.lecture && x.devoirId == dmJour.id)) {
         final d = dmJour;
         final joursRestants = d.dateRendu.difference(now).inDays + 1;
         out.add(Suggestion(
@@ -696,7 +697,10 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     if (e != null &&
         e.genre == 'dm' &&
         e.tache.isNotEmpty &&
-        !out.any((x) => x.devoirId != null && x.devoirId == e.devoirId)) {
+        // « Lis le DM » porte le devoir mais N'EST PAS son creneau : sans
+        // ce filtre, le soir de la distribution, le plan ne proposait que
+        // la lecture et plus jamais « Avance le DM » (regression v0.26).
+        !out.any((x) => !x.lecture && x.devoirId == e.devoirId)) {
       // Le travail impose s'affiche comme LA TACHE, pas comme un bloc de
       // matiere abstrait ("avance le DM 3 (exos 1 à 4)").
       quoi = '📥 Avance ${e.tache}';
@@ -818,7 +822,7 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
           // se disputaient le ✓ « Rendu ? ».
           devoirId: e != null &&
                   e.genre == 'dm' &&
-                  !out.any((x) => x.devoirId == e.devoirId)
+                  !out.any((x) => !x.lecture && x.devoirId == e.devoirId)
               ? e.devoirId
               : null,
           // Epreuve proche ou cours du jour : c'est l'essentiel du soir.

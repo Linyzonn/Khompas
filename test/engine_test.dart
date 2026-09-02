@@ -2287,4 +2287,40 @@ Voici le résultat demandé :
     expect(t3.date, isNull);
     expect(t3.titre, 'Travail donné');
   });
+
+  test('DM distribué aujourd’hui sans urgence : « Lis » ET « Avance » — la '
+      'lecture ne vole pas le créneau du DM', () {
+    final now = DateTime(2026, 10, 6, 18);
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 1, maitrise: 2));
+    m.devoirs.add(Devoir(
+        id: 'dm-7j',
+        matiere: 'Maths',
+        titre: 'Exos TD1',
+        dateRendu: DateTime(2026, 10, 13),
+        dateDonne: DateTime(2026, 10, 6)));
+    final s = suggere(m, 120, maintenant: now);
+    expect(s.any((x) => x.lecture && x.devoirId == 'dm-7j'), isTrue);
+    // Regression v0.26 : le bloc de lecture portait le devoirId, le scoring
+    // croyait le DM deja servi ce soir et ne proposait plus « Avance ».
+    expect(s.any((x) => !x.lecture && x.devoirId == 'dm-7j'), isTrue,
+        reason: 'le travail du prof doit avoir son bloc, pas seulement sa lecture');
+  });
+
+  test('prochainCoursDe : exos « pour le prochain cours » datés par l’EDT', () {
+    // Mercredi 2 septembre 2026 ; Maths le mardi (2) et le jeudi (4),
+    // Physique-Chimie le vendredi (5).
+    m.routines.add(Routine(
+        id: 'ma', titre: 'Maths', matiere: 'Maths', jour: 2, debutMin: 480, dureeMin: 120));
+    m.routines.add(Routine(
+        id: 'mj', titre: 'Maths', matiere: 'Maths', jour: 4, debutMin: 480, dureeMin: 120));
+    m.routines.add(Routine(
+        id: 'pc', titre: 'PC', matiere: 'Physique-Chimie', jour: 5, debutMin: 600, dureeMin: 120));
+    final mercredi = DateTime(2026, 9, 2, 19);
+    expect(m.prochainCoursDe('Maths', mercredi), DateTime(2026, 9, 3));
+    expect(m.prochainCoursDe('Chimie', mercredi), DateTime(2026, 9, 4),
+        reason: 'un cours de Physique-Chimie est un cours de Chimie');
+    expect(m.prochainCoursDe('Anglais', mercredi), isNull);
+    expect(m.prochainCoursDe('', mercredi), isNull);
+  });
 }

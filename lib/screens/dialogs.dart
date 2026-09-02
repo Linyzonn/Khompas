@@ -678,7 +678,15 @@ Future<Devoir?> editDevoirDialog(BuildContext context,
                     setState(() {
                       remCtl.text = extrait.detail;
                       titreCtl.text = extrait.titre;
-                      if (extrait.date != null) date = extrait.date!;
+                      if (extrait.date != null) {
+                        date = extrait.date!;
+                      } else {
+                        // Pas de date dans le message : « pour le prochain
+                        // cours » est la regle du prof — l'EDT la donne.
+                        date = m.prochainCoursDe(
+                                matiereCtl.text, DateTime.now()) ??
+                            date;
+                      }
                       colle = true;
                     });
                   },

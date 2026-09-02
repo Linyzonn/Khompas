@@ -1790,6 +1790,27 @@ class AppModel extends ChangeNotifier {
       ..sort((a, b) => a.debutMin.compareTo(b.debutMin));
   }
 
+  /// Prochain cours de [matiere] (EDT reel + evenements ponctuels) dans
+  /// les 14 jours apres [apres], a minuit. C'est la date de rendu par
+  /// defaut des « exos pour le prochain cours » colles depuis le message du
+  /// prof quand celui-ci ne contient pas de date — avant : J+7 silencieux,
+  /// et le travail attendait une semaine.
+  DateTime? prochainCoursDe(String matiere, DateTime apres) {
+    final mat = matiere.trim();
+    if (mat.isEmpty) return null;
+    bool couvre(String autre) =>
+        autre.trim().toLowerCase() == mat.toLowerCase() ||
+        matiereCouvre(autre.trim(), mat);
+    for (var i = 1; i <= 14; i++) {
+      final j = DateTime(apres.year, apres.month, apres.day + i);
+      if (routinesLe(j).any((r) => couvre(r.matiere)) ||
+          evenementsLe(j).any((e) => couvre(e.matiere))) {
+        return j;
+      }
+    }
+    return null;
+  }
+
   void setZoneVacances(String zone) {
     zoneVacances = zone.trim().toUpperCase();
     _touch();
