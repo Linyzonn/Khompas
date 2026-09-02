@@ -94,6 +94,58 @@ bool matiereCouvre(String matiereEpreuve, String matiere) {
   return composants.length > 1 && composants.contains(m);
 }
 
+/// Travail donne par un prof, extrait d'un message COLLE (Discord, mail,
+/// SMS) : titre, date de rendu si elle apparait, et le texte en detail.
+/// Pas d'IA ici : des regles simples et previsibles — la date est ce qui
+/// compte, le reste est garde tel quel pour relecture.
+class TravailColle {
+  final String titre;
+  final String detail;
+  final DateTime? date;
+  const TravailColle(this.titre, this.detail, this.date);
+}
+
+const _moisParNom = {
+  'janv': 1, 'janvier': 1, 'fev': 2, 'fév': 2, 'fevrier': 2, 'février': 2,
+  'mars': 3, 'avr': 4, 'avril': 4, 'mai': 5, 'juin': 6, 'juil': 7,
+  'juillet': 7, 'aout': 8, 'août': 8, 'sept': 9, 'septembre': 9, 'oct': 10,
+  'octobre': 10, 'nov': 11, 'novembre': 11, 'dec': 12, 'déc': 12,
+  'decembre': 12, 'décembre': 12,
+};
+
+TravailColle extraireTravailColle(String texte, DateTime maintenant) {
+  final t = texte.trim();
+  DateTime? date;
+  // « pour le 3 sept », « 3-sept », « 3 septembre », « 03/09 ».
+  final m1 = RegExp(r'(\d{1,2})[\s\-/]*(janv|janvier|f[eé]v(?:rier)?|mars|avr(?:il)?|mai|juin|juil(?:let)?|ao[uû]t|sept(?:embre)?|oct(?:obre)?|nov(?:embre)?|d[eé]c(?:embre)?)\b',
+          caseSensitive: false)
+      .firstMatch(t);
+  final m2 = RegExp(r'\b(\d{1,2})/(\d{1,2})\b').firstMatch(t);
+  int? jour, mois;
+  if (m1 != null) {
+    jour = int.tryParse(m1.group(1)!);
+    mois = _moisParNom[m1.group(2)!.toLowerCase()];
+  } else if (m2 != null) {
+    jour = int.tryParse(m2.group(1)!);
+    mois = int.tryParse(m2.group(2)!);
+  }
+  if (jour != null && mois != null && jour >= 1 && jour <= 31 && mois >= 1 && mois <= 12) {
+    var candidate = DateTime(maintenant.year, mois, jour);
+    // Une date deja passee de plus d'un mois vise l'annee prochaine.
+    if (candidate.isBefore(maintenant.subtract(const Duration(days: 30)))) {
+      candidate = DateTime(maintenant.year + 1, mois, jour);
+    }
+    date = candidate;
+  }
+  final titre = date == null
+      ? 'Travail donné'
+      : 'Travail pour le ${date.day} ${_moisParNom.entries.firstWhere((e) => e.value == date!.month && e.key.length > 3, orElse: () => const MapEntry('', 0)).key}'.trim();
+  // Le detail garde le message tel quel (lignes vides repliees), borne.
+  final detail = t.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+  return TravailColle(
+      titre, detail.length > 800 ? '${detail.substring(0, 800)}…' : detail, date);
+}
+
 int subjectColor(String matiere) {
   final m = matiere.trim().toLowerCase();
   // Couleurs "canon" pour les matieres classiques de prepa.

@@ -20,12 +20,27 @@ class Suggestion {
   final bool rappel;
   // Consigne d'action testable (rappel actif) affichee sous la suggestion.
   final String consigne;
+  // Lecture de l'enonce d'un DM distribue aujourd'hui (15 min) : porte le
+  // devoir (le ✓ le fait disparaitre) mais N'EST PAS une seance dessus —
+  // coche, le DM a rendre demain et le cours du jour restent en tete.
+  final bool lecture;
+  // ESSENTIEL = ce que l'eleve doit faire AVANT le reste : le travail
+  // impose par le prof (tout bloc portant un devoir), une epreuve proche,
+  // le cours du jour a consolider. Le reste (rappels espaces, entrainement)
+  // vient « s'il reste du temps ». C'est l'ordre de priorite REEL d'une
+  // prepa — avant, les rappels noyaient l'essentiel et l'eleve ouvrait
+  // l'app sans savoir par quoi commencer.
+  final bool _prioritaire;
+  bool get essentiel => _prioritaire || devoirId != null;
   Suggestion(this.matiere, this.titre, this.raison, this.minutes,
       {this.chapitreId,
       this.devoirId,
       this.oeuvreId,
       this.rappel = false,
-      this.consigne = ''});
+      this.consigne = '',
+      this.lecture = false,
+      bool essentiel = false})
+      : _prioritaire = essentiel;
 }
 
 /// Le mode revisions concours ne s'active qu'a l'approche des ecrits :
@@ -256,29 +271,26 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
   // avec un programme complet importe, un plafond fixe a 3 laissait la file
   // des revisions dues grossir sans limite ni signal.
   final dus = rappelsDus(m, maintenant: now);
-  // Cap ADAPTATIF : file d'attente gonflee -> plus de rappels servis (la
-  // garde du demi-budget ci-dessous borne deja le cout de la soiree).
-  final capRappels =
-      (minutesDispo ~/ 60 + 2).clamp(3, dus.length > 20 ? 8 : 5);
+  // Cap MODESTE : un rappel par heure de soiree (1 a 4) et jamais plus du
+  // quart du budget. Le cap adaptatif a 8 drainait la file plus vite mais
+  // NOYAIT le travail impose — l'eleve ouvrait l'app et ne savait plus par
+  // quoi commencer. Les rappels sont du « s'il reste du temps » : le credit
+  // du retard tenu (evaluerRevision) absorbe la file sans forcer le rythme.
+  final capRappels = (minutesDispo ~/ 60).clamp(1, 4);
   for (final c in dus.take(capRappels)) {
-    if (budget < 30 || (minutesDispo - budget) + 15 > minutesDispo ~/ 2) break;
+    if (budget < 30 || (minutesDispo - budget) + 15 > minutesDispo ~/ 4) break;
     final retard =
         DateTime(now.year, now.month, now.day).difference(c.prochaineRevision!).inDays;
     // La dette de revisions est AFFICHEE (transparence) au lieu de rester
     // cachee derriere le plafond du soir.
-    // Un compteur brut (« 70 chapitres en attente ») pese sans aider : on
-    // ne peut pas les faire ce soir. On ne le montre qu'au-dela d'une
-    // dette notable, et formule comme une file qui avance.
-    final enAttente = dus.length > capRappels + 10
-        ? ' · ${dus.length - capRappels} autres suivront'
-        : '';
+    // Plus de compteur de dette ici : « 70 chapitres en attente » pesait
+    // sans aider (le tableau de bord montre la file, sans oppresser).
     out.add(Suggestion(
       c.matiere,
       'Rappel 🔁 ${c.nom}',
-      (retard > 0
-              ? 'Révision espacée — en attente depuis $retard j'
-              : 'Révision espacée — c\'est le bon jour') +
-          enAttente,
+      retard > 0
+          ? 'Révision espacée — en attente depuis $retard j'
+          : 'Révision espacée — c\'est le bon jour',
       15,
       chapitreId: c.id,
       rappel: true,
@@ -292,6 +304,9 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     if (d.dateDonne.year == now.year &&
         d.dateDonne.month == now.month &&
         d.dateDonne.day == now.day &&
+        // Lu ce soir (cle « lu: »), ou deja travaille ce soir (« dm: ») :
+        // dans les deux cas la lecture n'a plus d'objet.
+        !m.estFait('lu:${d.id}', maintenant: now) &&
         !m.estFait('dm:${d.id}', maintenant: now) &&
         budget >= 30) {
       out.add(Suggestion(
@@ -299,6 +314,10 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
         '📖 Lis le ${d.titre} distribué aujourd\'hui',
         'Le lire le soir même désamorce la procrastination',
         15,
+        // devoirId : sans lui, le ✓ ne marquait pas le devoir « touche
+        // aujourd'hui » et le bloc revenait aussitot coche.
+        devoirId: d.id,
+        lecture: true,
         consigne:
             'Lis l\'énoncé en entier et repère les questions abordables — ton cerveau y travaillera en tâche de fond.',
       ));
@@ -397,7 +416,8 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
         15,
         consigne:
             'Ouvre ton cahier d\'erreurs et REFAIS une erreur sans regarder la correction. Si tu la maîtrises, coche « refaite ».',
-      ));
+      essentiel: true,
+    ));
       budget -= 15;
       break; // un seul bloc erreurs par soir
     }
@@ -487,6 +507,9 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
 
   // ---- Cours du jour / du lendemain (EDT reel + evenements ponctuels) ----
   final coursAujourdhui = <String>{};
+  // Matieres avec cours aujourd'hui/demain (composites comprises) :
+  // lues par la boucle d'emission pour marquer le bloc « essentiel ».
+  final matieresCoursProche = <String>{};
   final coursDemain = <String>{};
   final demain = now.add(const Duration(days: 1));
   for (final r in m.routinesLe(now)) {
@@ -583,6 +606,9 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
     bool aCours(Set<String> cours) =>
         cours.contains(mat.toLowerCase()) ||
         cours.any((c) => matiereCouvre(c, mat));
+    if (aCours(coursAujourdhui) || aCours(coursDemain)) {
+      matieresCoursProche.add(mat);
+    }
     var bonusCours = 1.0;
     if (aCours(coursAujourdhui)) {
       bonusCours = 1.5;
@@ -795,6 +821,8 @@ List<Suggestion> _suggereNormal(AppModel m, int minutesDispo, DateTime now) {
                   !out.any((x) => x.devoirId == e.devoirId)
               ? e.devoirId
               : null,
+          // Epreuve proche ou cours du jour : c'est l'essentiel du soir.
+          essentiel: e != null || matieresCoursProche.contains(mat),
           consigne: consigneCustom ?? consigneDe(mat, typeConsigne)));
     }
   }
@@ -991,6 +1019,7 @@ List<Suggestion> _suggereRevisions(
       'Khôlle ${frJour(c.start)} ${frHeure(c.start)} — le travail imposé d\'abord',
       30,
       consigne: consigneDe(c.matiere, 'kholle'),
+      essentiel: true,
     ));
     reste -= 30;
     break; // une seule kholle en tete, le reste au circuit revision
@@ -1010,6 +1039,7 @@ List<Suggestion> _suggereRevisions(
       mins,
       devoirId: d.id,
       consigne: consigneDe(d.matiere, 'dm'),
+      essentiel: true,
     ));
     reste -= mins;
     break; // un seul DM par soir en mode revisions
@@ -1372,6 +1402,7 @@ List<Suggestion> _suggereEte(
       oeuvreId: o.id,
       consigne:
           'Lecture ACTIVE : marque les passages forts et relève 2-3 citations par séance — ce sont elles qui font la note en khôlle et en dissertation.',
+      essentiel: true,
     ));
     reste -= 45;
   }
@@ -1453,6 +1484,7 @@ List<Suggestion> _suggereOraux(AppModel m, int minutesDispo, DateTime now) {
       raisonDe(urgent),
       mins,
       consigne: consigneOral(urgent.epreuve),
+      essentiel: true,
     ));
     reste -= mins;
   }
@@ -1472,6 +1504,7 @@ List<Suggestion> _suggereOraux(AppModel m, int minutesDispo, DateTime now) {
       raisonDe(o),
       mins,
       consigne: consigneOral(o.epreuve),
+      essentiel: true,
     ));
     reste -= mins;
     i++;

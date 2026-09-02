@@ -96,6 +96,11 @@ class Profil {
 void cocher(AppModel m, Suggestion s, DateTime now, int jour, int sel,
     Map<String, int> minParDevoir) {
   m.seances.add(Seance(matiere: s.matiere, date: now, minutes: s.minutes));
+  if (s.lecture) {
+    // Lire l'enonce : cle a part, ni la matiere ni le DM ne sont « faits ».
+    m.marquerFait('lu:${s.devoirId}', maintenant: now);
+    return;
+  }
   m.marquerFait(s.matiere, maintenant: now);
   if (s.devoirId != null) m.marquerFait('dm:${s.devoirId}', maintenant: now);
 

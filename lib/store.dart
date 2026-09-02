@@ -2145,18 +2145,19 @@ class AppModel extends ChangeNotifier {
   ///   seulement [Chapitre.entame] — pas d'etape, pas d'espacement. Un
   ///   chapitre a moitie vu n'est pas un chapitre vu.
   void setBilan(Bilan b, {bool chapitreTermine = true}) {
-    for (final e in bilans.where((e) =>
+    // Un bilan par TYPE et par creneau : un cours peut etre « Cours » ET
+    // « Exos » — avant, le second remplacait le premier, et l'eleve ne
+    // pouvait pas dire les deux.
+    bool memeCreneau(Bilan e) =>
         e.routineId == b.routineId &&
+        e.type == b.type &&
         e.jour.year == b.jour.year &&
         e.jour.month == b.jour.month &&
-        e.jour.day == b.jour.day)) {
+        e.jour.day == b.jour.day;
+    for (final e in bilans.where(memeCreneau)) {
       _tombe(e.id);
     }
-    bilans.removeWhere((e) =>
-        e.routineId == b.routineId &&
-        e.jour.year == b.jour.year &&
-        e.jour.month == b.jour.month &&
-        e.jour.day == b.jour.day);
+    bilans.removeWhere(memeCreneau);
     bilans.add(b);
     // ~13 mois d'historique, ALIGNE sur les seances : les stats annuelles
     // de la roadmap en auront besoin (ne pas re-raccourcir sans y penser).

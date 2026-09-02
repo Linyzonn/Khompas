@@ -629,6 +629,7 @@ Future<Devoir?> editDevoirDialog(BuildContext context,
   final remCtl = TextEditingController(text: initial?.remarque ?? '');
   var duree = initial?.dureeEstimeeMin ?? 0;
   var date = initial?.dateRendu ?? DateTime.now().add(const Duration(days: 7));
+  var colle = false;
 
   return showDialog<Devoir>(
     context: context,
@@ -658,6 +659,31 @@ Future<Devoir?> editDevoirDialog(BuildContext context,
                     ],
                   ),
                 ),
+              // Le prof donne le travail sur Discord (ou par mail) ? Copie
+              // son message, colle-le ici : la date de rendu est detectee
+              // et le texte est garde en detail pour relecture.
+              Padding(
+                padding: const EdgeInsets.only(top: kEsp8),
+                child: ActionChip(
+                  avatar: Icon(colle ? Icons.check : Icons.content_paste,
+                      size: 16),
+                  label: Text(colle
+                      ? 'Message collé — vérifie la date'
+                      : 'Coller le message du prof'),
+                  onPressed: () async {
+                    final clip = await Clipboard.getData(Clipboard.kTextPlain);
+                    final texte = clip?.text?.trim() ?? '';
+                    if (texte.isEmpty) return;
+                    final extrait = extraireTravailColle(texte, DateTime.now());
+                    setState(() {
+                      remCtl.text = extrait.detail;
+                      titreCtl.text = extrait.titre;
+                      if (extrait.date != null) date = extrait.date!;
+                      colle = true;
+                    });
+                  },
+                ),
+              ),
               TextField(
                 controller: titreCtl,
                 decoration:

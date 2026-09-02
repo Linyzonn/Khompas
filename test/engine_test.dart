@@ -2184,4 +2184,107 @@ Voici le résultat demandé :
     expect(phys.raison, contains('Cours d'), 
         reason: 'le cours fusionné doit booster la composante Physique');
   });
+
+  // ---------- Priorites reelles, plan fige, DM lu, message du prof ----------
+
+  test('« Lis le DM » : coché il disparaît, mais lire n est pas travailler — '
+      'le DM à rendre demain reste en tête', () {
+    final now = DateTime(2026, 10, 6, 18);
+    m.chapitres
+        .add(Chapitre(matiere: 'Maths', nom: 'Séries', etape: 2, maitrise: 2));
+    // Le cas Discord « travail-pour-3-sept » : distribue aujourd'hui, a
+    // rendre demain, 2 h annoncees.
+    m.devoirs.add(Devoir(
+        id: 'dm-lu',
+        matiere: 'Maths',
+        titre: 'DM 2',
+        dateRendu: DateTime(2026, 10, 7),
+        dateDonne: DateTime(2026, 10, 6),
+        dureeEstimeeMin: 120));
+    var s = suggere(m, 120, maintenant: now);
+    final lire = s.where((x) => x.lecture).toList();
+    expect(lire, hasLength(1));
+    expect(lire.first.titre, contains('Lis le'));
+    expect(lire.first.devoirId, 'dm-lu', reason: 'sans devoirId, le ✓ ne le marquait pas');
+    expect(lire.first.essentiel, isTrue, reason: 'travail impose = essentiel');
+    expect(s.any((x) => x.devoirId == 'dm-lu' && !x.lecture), isTrue,
+        reason: 'le creneau « Avance le DM » accompagne la lecture');
+    // ✓ sur « Lis le » (geste de today.dart) : cle « lu: », PAS « dm: » ni
+    // la matiere — lire l'enonce 15 min n'est pas avoir fait ses maths.
+    // Avant : le ✓ marquait dm: + Maths, et le plan recalcule (budget
+    // change, « Refaire le plan ») perdait le DM a rendre demain.
+    m.marquerFait('lu:dm-lu', maintenant: now);
+    s = suggere(m, 120, maintenant: now);
+    expect(s.any((x) => x.lecture), isFalse);
+    expect(s.any((x) => x.devoirId == 'dm-lu'), isTrue,
+        reason: 'le DM a rendre demain etait en tete avant ce ✓, il y reste');
+    // ✓ sur « Avance le DM » : matiere + dm: faits -> plus rien sur ce DM
+    // ce soir (la lecture n'a plus d'objet non plus).
+    m.marquerFait('Maths', maintenant: now);
+    m.marquerFait('dm:dm-lu', maintenant: now);
+    expect(suggere(m, 120, maintenant: now).any((x) => x.devoirId == 'dm-lu'),
+        isFalse);
+  });
+
+  test('essentiel : travail impose et epreuve proche d abord, rappels en '
+      'bonus et plafonnes au quart du budget', () {
+    final now = DateTime(2026, 10, 6, 18);
+    for (var i = 0; i < 12; i++) {
+      m.chapitres.add(Chapitre(
+          matiere: i.isEven ? 'Maths' : 'Physique',
+          nom: 'ch$i',
+          etape: 2,
+          maitrise: 2,
+          intervalleJours: 5,
+          prochaineRevision: DateTime(2026, 10, 1))); // 12 rappels dus
+    }
+    m.ds.add(Ds(matiere: 'Maths', titre: 'DS', date: DateTime(2026, 10, 9)));
+    final s = suggere(m, 120, maintenant: now);
+    final rappels = s.where((x) => x.rappel && x.titre.contains('Rappel')).toList();
+    // 120 min -> au plus 2 rappels (1/h), et jamais plus du quart (30 min).
+    expect(rappels.length, lessThanOrEqualTo(2));
+    expect(rappels.every((x) => !x.essentiel), isTrue);
+    // Le bloc Maths (DS dans 3 jours) est essentiel.
+    final maths = s.firstWhere((x) => x.matiere == 'Maths' && !x.rappel);
+    expect(maths.essentiel, isTrue);
+    // Plus de compteur de dette oppressant.
+    expect(s.any((x) => x.raison.contains('autres suivront')), isFalse);
+  });
+
+  test('bilan de creneau : Cours ET Exos coexistent (un bilan par type)', () {
+    final jour = DateTime(2026, 10, 6);
+    m.routines.add(Routine(
+        id: 'r1', titre: 'Maths', matiere: 'Maths', jour: 2, debutMin: 480, dureeMin: 120));
+    m.setBilan(Bilan(jour: jour, routineId: 'r1', matiere: 'Maths', type: 'Exos'));
+    m.setBilan(Bilan(jour: jour, routineId: 'r1', matiere: 'Maths', type: 'Cours'));
+    final types = m.bilans
+        .where((b) => b.routineId == 'r1')
+        .map((b) => b.type)
+        .toSet();
+    expect(types, {'Exos', 'Cours'}, reason: 'le second ne doit plus effacer le premier');
+    // Re-declarer le meme type ne cree pas de doublon.
+    m.setBilan(Bilan(jour: jour, routineId: 'r1', matiere: 'Maths', type: 'Exos'));
+    expect(m.bilans.where((b) => b.routineId == 'r1').length, 2);
+  });
+
+  test('message du prof colle (Discord) : date de rendu detectee, texte garde',
+      () {
+    // Le message reel du salon « travail-pour-3-sept ».
+    const msg = 'Déjà indiqué au tableau:\nTD Colle 0 ex 2: tout maîtriser\n'
+        'TD1:\n3g, 3m,\n6\n36 a), b), d)\nIntégrale de n π à …\n'
+        'Les exos pour le 2 non encore corrigés.\n'
+        'Assimiler en partie le TD du mercredi 2 (suite jeudi-vendredi soir chez vous).';
+    // Le nom du salon est colle avec : « travail-pour-3-sept ».
+    final t = extraireTravailColle('travail-pour-3-sept\n$msg', DateTime(2026, 9, 2));
+    expect(t.date, DateTime(2026, 9, 3));
+    expect(t.titre, contains('3 sept'));
+    expect(t.detail, contains('36 a), b), d)'));
+    // Format numerique et annee suivante : « pour le 05/01 » vu en septembre.
+    final t2 = extraireTravailColle('exos pour le 05/01', DateTime(2026, 9, 2));
+    expect(t2.date, DateTime(2027, 1, 5));
+    // Sans date : titre generique, aucune date inventee.
+    final t3 = extraireTravailColle('faire les exos du TD', DateTime(2026, 9, 2));
+    expect(t3.date, isNull);
+    expect(t3.titre, 'Travail donné');
+  });
 }

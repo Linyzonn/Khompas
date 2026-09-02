@@ -76,6 +76,24 @@ class TodayScreen extends StatefulWidget {
 
 class _TodayScreenState extends State<TodayScreen> {
   int minutes = 120;
+  // PLAN FIGE pour la soiree : regenerer a chaque geste faisait apparaitre
+  // un nouveau bloc a la place de celui qu'on venait de cocher — « on n'en
+  // finit jamais ». Le plan est calcule une fois par soiree (par duree et
+  // par methode, et re-calcule si du travail est ajoute) ; cocher RETIRE le
+  // bloc, rien ne le remplace. « Refaire le plan » regenere a la demande.
+  List<Suggestion>? _planFige;
+  String _planCle = '';
+
+  List<Suggestion> _planDuSoir(AppModel m, int budget, DateTime now) {
+    final cle = '${now.year}-${now.month}-${now.day}|$budget|'
+        '${m.methodeTravail}|${m.devoirs.length}|${m.ds.length}|'
+        '${m.colles.length}|${m.chapitres.length}|${m.joursOff.length}';
+    if (_planFige == null || cle != _planCle) {
+      _planFige = budget < 15 ? <Suggestion>[] : suggere(m, budget);
+      _planCle = cle;
+    }
+    return _planFige!;
+  }
   // Les alertes sont triees par gravite. Au-dela de deux, elles repoussent
   // le plan du soir hors de l'ecran sur un telephone : les suivantes se
   // deplient a la demande.
@@ -455,7 +473,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final now = DateTime.now();
     final prochaine = m.prochaineColle();
     final budget = _budgetSoir(m, now);
-    final suggestions = budget < 15 ? <Suggestion>[] : suggere(m, budget);
+    final suggestions = _planDuSoir(m, budget, now);
     final lundi = mondayOf(now);
     final dimanche = lundi.add(const Duration(days: 7));
     final semaineColles = m.colles
@@ -1673,24 +1691,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 style: TextStyle(color: couleurSecondaire(context)),
               )
             else if (m.methodeTravail == 'checklist')
-              // AnimatedSwitcher : la carte cochee s'efface en fondu au
-              // lieu de disparaitre sec — le geste est confirme visuellement.
-              ...[
-                for (final s in suggestions)
-                  AnimatedSwitcher(
-                    duration: kAnimMoyenne,
-                    switchInCurve: Curves.easeOut,
-                    switchOutCurve: Curves.easeOut,
-                    transitionBuilder: (enfant, animation) => SizeTransition(
-                      sizeFactor: animation,
-                      child: FadeTransition(opacity: animation, child: enfant),
-                    ),
-                    child: KeyedSubtree(
-                      key: ValueKey('${s.matiere}|${s.titre}'),
-                      child: _suggestionCard(context, s),
-                    ),
-                  ),
-              ]
+              ..._checklistEnSections(context, suggestions)
             else
               ..._planPomodoro(context, suggestions),
             if ((minSem[''] ?? 0) > 0)
@@ -1820,88 +1821,101 @@ class _TodayScreenState extends State<TodayScreen> {
 
   Future<void> _bilanSheet(Routine r) async {
     final m = AppModel.instance;
-    await feuilleAdaptative<void>(
+    // PLUSIEURS cases possibles : un creneau est souvent cours ET exos.
+    // Avant, un seul tap fermait la feuille et passait au creneau suivant.
+    final choix = <String>{};
+    final valide = await feuilleAdaptative<bool>(
       context,
-      (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(kEsp16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${r.titre} — qu\'avez-vous fait ?',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                children: [
-                  ActionChip(
-                    avatar: const Icon(Icons.menu_book, size: 16),
-                    label: const Text('Cours'),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _choisirChapitre(r);
-                    },
-                  ),
-                  ActionChip(
-                    avatar: const Icon(Icons.edit, size: 16),
-                    label: const Text('Exos'),
-                    onPressed: () {
-                      m.setBilan(Bilan(
-                          jour: DateTime.now(),
-                          routineId: r.id,
-                          matiere: r.matiere,
-                          type: 'Exos'));
-                      Navigator.pop(context);
-                    },
-                  ),
-                  ActionChip(
-                    avatar: const Icon(Icons.science, size: 16),
-                    label: const Text('TP'),
-                    onPressed: () {
-                      m.setBilan(Bilan(
-                          jour: DateTime.now(),
-                          routineId: r.id,
-                          matiere: r.matiere,
-                          type: 'TP'));
-                      Navigator.pop(context);
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: kEsp8),
-              Text(
-                'Cours → tu choisiras le chapitre vu (et s\'il est fini ou encore en cours).',
-                style: styleMeta(context),
-              ),
-              const Divider(height: 20),
-              Text('On vous a donné du travail ?',
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: couleurSecondaire(context))),
-              const SizedBox(height: 6),
-              ActionChip(
-                avatar: const Icon(Icons.move_to_inbox_outlined, size: 16),
-                label: const Text('DM / exos à faire pour un prochain cours'),
-                onPressed: () async {
-                  final d = await editDevoirDialog(context,
-                      matiere: r.matiere);
-                  if (d != null) {
-                    m.addDevoir(d);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(
-                              '${d.titre} ${d.matiere} ajouté — rappelé sur le tableau de bord')));
+      (context) => StatefulBuilder(
+        builder: (context, setSheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(kEsp16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${r.titre} — qu\u2019avez-vous fait ?',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: kEsp4),
+                Text(
+                  'Coche tout ce qui s\u2019applique. « Cours » : tu choisiras le chapitre vu juste après.',
+                  style: styleMeta(context),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final (type, icone) in const [
+                      ('Cours', Icons.menu_book),
+                      ('Exos', Icons.edit),
+                      ('TP', Icons.science),
+                    ])
+                      FilterChip(
+                        avatar: Icon(icone, size: 16),
+                        label: Text(type),
+                        selected: choix.contains(type),
+                        onSelected: (v) => setSheet(
+                            () => v ? choix.add(type) : choix.remove(type)),
+                      ),
+                  ],
+                ),
+                const Divider(height: 20),
+                Text('On vous a donné du travail ?',
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: couleurSecondaire(context))),
+                const SizedBox(height: 6),
+                ActionChip(
+                  avatar: const Icon(Icons.move_to_inbox_outlined, size: 16),
+                  label: const Text('DM / exos à faire pour un prochain cours'),
+                  onPressed: () async {
+                    final d = await editDevoirDialog(context,
+                        matiere: r.matiere);
+                    if (d != null) {
+                      m.addDevoir(d);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(
+                                '${d.titre} ${d.matiere} ajouté — rappelé sur le tableau de bord')));
+                      }
                     }
-                  }
-                },
-              ),
-            ],
+                  },
+                ),
+                const SizedBox(height: kEsp12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Passer')),
+                    const SizedBox(width: kEsp8),
+                    FilledButton(
+                        onPressed: choix.isEmpty
+                            ? null
+                            : () => Navigator.pop(context, true),
+                        child: const Text('Valider')),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
+    if (valide != true || !mounted) return;
+    for (final type in choix) {
+      if (type == 'Cours') continue; // le chapitre est demande juste apres
+      m.setBilan(Bilan(
+          jour: DateTime.now(),
+          routineId: r.id,
+          matiere: r.matiere,
+          type: type));
+    }
+    // AWAIT : le choix du chapitre se termine AVANT que le recap ne
+    // repropose le creneau suivant (avant, la feuille de chapitre passait
+    // derriere la suivante et il fallait finir tous les cours pour la voir).
+    if (choix.contains('Cours')) await _choisirChapitre(r);
   }
 
   /// Apres le choix du chapitre : le prof l'a FINI (-> etape "vu en cours"
@@ -1950,7 +1964,10 @@ class _TodayScreenState extends State<TodayScreen> {
         .where((c) =>
             c.matiere == r.matiere || matiereCouvre(r.matiere, c.matiere))
         .toList();
-    await feuilleAdaptative<void>(
+    // La feuille RENVOIE le choix ; la suite est attendue ici, hors de la
+    // feuille — sinon le dialogue « fini / en plein dedans » passait sous
+    // le recap suivant.
+    final choisi = await feuilleAdaptative<Object>(
       context,
       (context) => SafeArea(
         child: Padding(
@@ -1975,19 +1992,13 @@ class _TodayScreenState extends State<TodayScreen> {
                             ? const Text('le prof est en plein dedans',
                                 style: TextStyle(fontSize: 11))
                             : null,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _finirBilanCours(r, c.id, c.nom);
-                        },
+                        onTap: () => Navigator.pop(context, c),
                       ),
                     ListTile(
                       dense: true,
                       leading: const Icon(Icons.add, size: 18),
                       title: const Text('Nouveau chapitre…'),
-                      onTap: () async {
-                        Navigator.pop(context);
-                        await _nouveauChapitre(r);
-                      },
+                      onTap: () => Navigator.pop(context, 'nouveau'),
                     ),
                   ],
                 ),
@@ -1997,6 +2008,13 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
       ),
     );
+    if (!mounted || choisi == null) return;
+    if (choisi == 'nouveau') {
+      await _nouveauChapitre(r);
+      return;
+    }
+    final c = choisi as Chapitre;
+    await _finirBilanCours(r, c.id, c.nom);
   }
 
   Future<void> _nouveauChapitre(Routine r) async {
@@ -2150,6 +2168,65 @@ class _TodayScreenState extends State<TodayScreen> {
     return m.contains('info') || m.contains('itc') || m.contains('python');
   }
 
+  /// Deux sections : « A faire en priorite » (travail impose, epreuve
+  /// proche, cours du jour) puis « Si tu as encore du temps » (rappels,
+  /// entrainement). L'ordre d'affichage EST l'ordre de priorite reel d'une
+  /// prepa — avant, les rappels noyaient l'essentiel.
+  List<Widget> _checklistEnSections(
+      BuildContext context, List<Suggestion> suggestions) {
+    final essentiels = suggestions.where((s) => s.essentiel).toList();
+    final bonus = suggestions.where((s) => !s.essentiel).toList();
+    final separer = essentiels.isNotEmpty && bonus.isNotEmpty;
+    Widget entete(String texte, IconData icone) => Padding(
+          padding: const EdgeInsets.only(top: kEsp8, bottom: kEsp4),
+          child: Row(
+            children: [
+              Icon(icone, size: 14, color: couleurSecondaire(context)),
+              const SizedBox(width: 6),
+              Text(texte.toUpperCase(),
+                  style: TextStyle(
+                      fontSize: 11,
+                      letterSpacing: 0.5,
+                      fontWeight: FontWeight.w700,
+                      color: couleurSecondaire(context))),
+            ],
+          ),
+        );
+    return [
+      if (separer) entete('À faire en priorité', Icons.flag_outlined),
+      for (final s in essentiels) _carteAnimee(context, s),
+      if (separer) entete('Si tu as encore du temps', Icons.more_time),
+      for (final s in bonus) _carteAnimee(context, s),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          style: TextButton.styleFrom(
+              foregroundColor: couleurSecondaire(context),
+              visualDensity: VisualDensity.compact),
+          icon: const Icon(Icons.refresh, size: 15),
+          label: const Text('Refaire le plan', style: TextStyle(fontSize: 12)),
+          onPressed: () => setState(() => _planFige = null),
+        ),
+      ),
+    ];
+  }
+
+  // AnimatedSwitcher : la carte cochee s'efface en fondu au lieu de
+  // disparaitre sec — le geste est confirme visuellement.
+  Widget _carteAnimee(BuildContext context, Suggestion s) => AnimatedSwitcher(
+        duration: kAnimMoyenne,
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeOut,
+        transitionBuilder: (enfant, animation) => SizeTransition(
+          sizeFactor: animation,
+          child: FadeTransition(opacity: animation, child: enfant),
+        ),
+        child: KeyedSubtree(
+          key: ValueKey('${s.matiere}|${s.titre}'),
+          child: _suggestionCard(context, s),
+        ),
+      );
+
   // ---------- Cartes du plan checklist ----------
 
   Widget _suggestionCard(BuildContext context, Suggestion s) {
@@ -2231,15 +2308,24 @@ class _TodayScreenState extends State<TodayScreen> {
             }
             final m = AppModel.instance;
             m.addSeance(s.matiere, s.minutes);
-            // Trace du JOUR : sans elle, un bloc sans chapitre (« Français
-            // — cartes », « prépare ta khôlle ») revenait dans le plan
-            // aussitot coche.
-            m.marquerFait(s.matiere);
-            // Les blocs DM ont leur PROPRE cle : ils sont generes par une
-            // section dediee qui ignore le marquage par matiere — coche,
-            // le creneau du jour restait affiche (l'heure comptee, mais
-            // le bloc immortel).
-            if (s.devoirId != null) m.marquerFait('dm:${s.devoirId}');
+            _planFige?.remove(s);
+            if (s.lecture) {
+              // Lire l'enonce n'est pas travailler le DM ni « avoir fait
+              // ses maths » ce soir : cle a part, sinon le creneau
+              // « Avance le DM » a rendre demain et le cours du jour
+              // disparaissaient du plan recalcule.
+              m.marquerFait('lu:${s.devoirId}');
+            } else {
+              // Trace du JOUR : sans elle, un bloc sans chapitre (« Français
+              // — cartes », « prépare ta khôlle ») revenait dans le plan
+              // aussitot coche.
+              m.marquerFait(s.matiere);
+              // Les blocs DM ont leur PROPRE cle : ils sont generes par une
+              // section dediee qui ignore le marquage par matiere — coche,
+              // le creneau du jour restait affiche (l'heure comptee, mais
+              // le bloc immortel).
+              if (s.devoirId != null) m.marquerFait('dm:${s.devoirId}');
+            }
             if (s.chapitreId != null) {
               final i = m.chapitres.indexWhere((c) => c.id == s.chapitreId);
               if (i >= 0) {
@@ -2255,8 +2341,9 @@ class _TodayScreenState extends State<TodayScreen> {
                 }
               }
             }
-            // Bloc DM : le ✓ propose de marquer le devoir rendu.
-            final iDev = s.devoirId == null
+            // Bloc DM : le ✓ propose de marquer le devoir rendu (pas apres
+            // une simple lecture de l'enonce).
+            final iDev = s.devoirId == null || s.lecture
                 ? -1
                 : m.devoirs.indexWhere((d) => d.id == s.devoirId);
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -2285,6 +2372,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final m = AppModel.instance;
     m.addSeance(s.matiere, s.minutes);
     m.marquerFait(s.matiere);
+    _planFige?.remove(s);
     final i = m.oeuvres.indexWhere((o) => o.id == s.oeuvreId);
     if (i < 0) return;
     final o = m.oeuvres[i];
@@ -2335,6 +2423,7 @@ class _TodayScreenState extends State<TodayScreen> {
     m.evaluerRevision(s.chapitreId!, verdict);
     m.addSeance(s.matiere, s.minutes);
     m.marquerFait(s.matiere);
+    _planFige?.remove(s);
     final i = m.chapitres.indexWhere((c) => c.id == s.chapitreId);
     final jours = i >= 0 ? m.chapitres[i].intervalleJours : 1;
     if (!mounted) return;
